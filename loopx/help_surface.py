@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import __version__
@@ -191,6 +192,71 @@ COMMAND_GROUPS: list[dict[str, object]] = [
         ],
     },
 ]
+
+
+# Every top-level parser command must either be represented in COMMAND_GROUPS
+# or be explicitly kept on its command-specific help surface. This makes a new
+# command an intentional manual-visibility decision instead of a silent omission.
+MANPAGE_COMMAND_HELP_ONLY = frozenset(
+    {
+        "archive-runtime",
+        "backup-state",
+        "capability",
+        "codex-cli-bounded-visible-pilot-adapter",
+        "codex-cli-exec-handoff",
+        "codex-cli-local-driver-plan",
+        "codex-cli-local-scheduler-exec",
+        "codex-cli-local-scheduler-tick",
+        "codex-cli-one-message-loop-pilot",
+        "codex-cli-runtime-idle-detector",
+        "codex-cli-session-probe",
+        "codex-cli-visible-driver-plan",
+        "codex-cli-visible-driver-run",
+        "codex-cli-visible-first-response-capture-plan",
+        "codex-cli-visible-local-driver-pilot",
+        "codex-cli-visible-session-proof",
+        "configure-goal",
+        "content-ops",
+        "demo",
+        "dreaming",
+        "global-summary",
+        "import-doc-registry-authority",
+        "lark-inbox",
+        "migrate-state",
+        "ml-experiment",
+        "operator-gate",
+        "pr-review",
+        "promotion-gate",
+        "read-only-map",
+        "refresh-state",
+        "register-authority-source",
+        "registry-boundary",
+        "reward",
+        "reward-memory",
+        "semantic-preference",
+        "serve-status",
+        "uninstall-project",
+        "value-connectors",
+        "version",
+        "worker-bridge",
+    }
+)
+
+
+def manpage_top_level_commands() -> frozenset[str]:
+    commands = {"commands"}
+    for group in COMMAND_GROUPS:
+        entries = group.get("commands")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            command = str(entry.get("command") or "")
+            commands.update(
+                re.findall(r"(?:^| / )loopx ([a-z0-9][a-z0-9-]*)", command)
+            )
+    return frozenset(commands)
 
 
 def _program_name(program: str) -> str:
