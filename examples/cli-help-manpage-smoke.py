@@ -11,6 +11,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx import __version__  # noqa: E402
+from loopx.help_surface import COMMAND_GROUPS, render_manpage  # noqa: E402
+
+
 LONG_TAIL_COMMAND = "codex-cli-visible-first-response-capture-plan"
 
 
@@ -66,6 +73,21 @@ def assert_command_reference_surface() -> None:
     assert "codex-cli-bootstrap-message" in result.stdout, result.stdout
     assert "loopx ready-score --goal-id <goal-id>" in result.stdout, result.stdout
     assert result.stderr == "", result.stderr
+
+
+def assert_checked_in_manpage_surface() -> None:
+    manpage = REPO_ROOT / "man" / "loopx.1"
+    assert manpage.read_text(encoding="utf-8") == render_manpage()
+
+
+def assert_catalog_is_present(man_text: str) -> None:
+    assert f'"LoopX {__version__}"' in man_text, man_text
+    for group in COMMAND_GROUPS:
+        for entry in group["commands"]:
+            command = str(entry["command"])
+            purpose = str(entry["purpose"])
+            assert command.replace("-", r"\-") in man_text, command
+            assert purpose.replace("-", r"\-") in man_text, purpose
 
 
 def assert_installer_manpage_surface() -> None:
@@ -157,14 +179,17 @@ def assert_installer_manpage_surface() -> None:
         assert manpage.is_file(), manpage
         with gzip.open(manpage, "rt", encoding="utf-8") as handle:
             man_text = handle.read()
+        assert man_text == render_manpage(), man_text
+        assert_catalog_is_present(man_text)
         compact_man_text = " ".join(man_text.split())
         assert ".TH LOOPX 1" in man_text, man_text
-        assert ".SH LOOP DRIVERS" in man_text, man_text
+        assert ".SH LOOP DRIVER HINTS" in man_text, man_text
         assert "Codex App automation" in man_text, man_text
         assert "loopx commands" in man_text, man_text
-        assert "loopx evidence-log --goal-id" in man_text, man_text
+        assert "loopx extension" in man_text, man_text
+        assert r"loopx evidence\-log \-\-goal\-id" in man_text, man_text
         assert "before replan or handoff" in compact_man_text, man_text
-        assert "loopx COMMAND --help" in man_text, man_text
+        assert r"loopx COMMAND \-\-help" in man_text, man_text
 
         profile_text = profile.read_text(encoding="utf-8")
         assert 'export MANPATH="$HOME/.local/share/man:${MANPATH:-}"' in profile_text, profile_text
@@ -193,6 +218,7 @@ def assert_installer_manpage_surface() -> None:
 def main() -> int:
     assert_default_help_surface()
     assert_command_reference_surface()
+    assert_checked_in_manpage_surface()
     assert_installer_manpage_surface()
     print("cli-help-manpage-smoke ok")
     return 0

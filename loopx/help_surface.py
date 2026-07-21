@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import __version__
+
 
 GLOBAL_OPTIONS_WITH_VALUE = {"--registry", "--runtime-root", "--format"}
 GLOBAL_OPTIONS_WITH_EQUALS = tuple(f"{option}=" for option in sorted(GLOBAL_OPTIONS_WITH_VALUE))
@@ -307,6 +309,90 @@ def render_command_reference_markdown(payload: dict[str, Any]) -> str:
         [
             "For command-specific flags, run `loopx <command> --help`.",
             "For the manual page, run `man loopx` after installing LoopX.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _roff_text(value: object) -> str:
+    text = str(value).replace("\\", r"\e").replace("-", r"\-")
+    if text.startswith((".", "'")):
+        return rf"\&{text}"
+    return text
+
+
+def render_manpage(*, version: str = __version__) -> str:
+    """Render the CLI manual from the canonical command catalog."""
+
+    lines = [
+        f'.TH LOOPX 1 "" "LoopX {_roff_text(version)}" "User Commands"',
+        ".SH NAME",
+        r"loopx \- control-plane helper for long-running agent work",
+        ".SH SYNOPSIS",
+        ".B loopx",
+        r"[\fB\-\-registry\fR \fIPATH\fR]",
+        r"[\fB\-\-runtime\-root\fR \fIPATH\fR]",
+        r"[\fB\-\-format\fR \fImarkdown|json\fR]",
+        r"\fICOMMAND\fR",
+        r"[\fIARGS\fR]",
+        ".br",
+        ".B loopx",
+        r"\fICOMMAND\fR",
+        r"\fB\-\-help\fR",
+        ".br",
+        ".B loopx commands",
+        ".SH DESCRIPTION",
+        "LoopX keeps long-running agent work moving by preserving goals, todos, gates,",
+        "quota, and evidence between agent turns.",
+        ".PP",
+        "The command sections below are generated from the same canonical catalog used by",
+        r"\fBloopx commands\fR. Command-specific flags remain available through",
+        r"\fBloopx COMMAND \-\-help\fR.",
+    ]
+
+    for group in COMMAND_GROUPS:
+        title = _roff_text(str(group.get("title") or "Commands").upper())
+        lines.append(f".SH {title}")
+        commands = group.get("commands")
+        if not isinstance(commands, list):
+            continue
+        for entry in commands:
+            if not isinstance(entry, dict):
+                continue
+            command = str(entry.get("command") or "").strip()
+            purpose = str(entry.get("purpose") or "").strip()
+            if not command or not purpose:
+                continue
+            lines.extend(
+                [
+                    ".TP",
+                    rf"\fB{_roff_text(command)}\fR",
+                    _roff_text(purpose),
+                ]
+            )
+
+    lines.extend(
+        [
+            ".SH MORE",
+            ".TP",
+            r"\fBloopx COMMAND \-\-help\fR",
+            "Show flags for one command.",
+            ".TP",
+            r"\fBman loopx\fR",
+            "Open this installed manual page.",
+            ".TP",
+            r"\fBdocs/guides/getting\-started.md#command\-reference\fR",
+            "Read the longer operator and contributor guide.",
+            ".SH INSTALL NOTES",
+            "The LoopX local installer writes this manual to",
+            r"\fI$HOME/.local/share/man/man1/loopx.1.gz\fR by default and adds",
+            r"\fI$HOME/.local/share/man\fR to MANPATH in the selected shell profile.",
+            "If the current shell has not reloaded that profile, run:",
+            ".PP",
+            r"\fBMANPATH=\"$HOME/.local/share/man:${MANPATH:\-}\" man loopx\fR",
+            ".SH SEE ALSO",
+            ".BR man (1)",
             "",
         ]
     )
