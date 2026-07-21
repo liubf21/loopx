@@ -82,6 +82,7 @@ from typing import Any
 
 
 EXTENSION_ID = "{extension_id}"
+REQUEST_SCHEMA_VERSION = "{request_schema}"
 RESPONSE_SCHEMA_VERSION = "{response_schema}"
 
 
@@ -104,6 +105,16 @@ def run(argv: Sequence[str] | None = None) -> int:
         request = json.load(sys.stdin)
         if not isinstance(request, dict):
             raise ValueError("extension input must be a JSON object")
+        if request.get("schema_version") != REQUEST_SCHEMA_VERSION:
+            raise ValueError(
+                f"extension input must use {{REQUEST_SCHEMA_VERSION}}"
+            )
+        unexpected = sorted(set(request) - {{"schema_version", "message"}})
+        if unexpected:
+            raise ValueError(f"extension input has unsupported fields {{unexpected}}")
+        message = request.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("extension input requires non-empty string `message`")
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         _emit(
             {{
@@ -119,8 +130,8 @@ def run(argv: Sequence[str] | None = None) -> int:
             "ok": True,
             "schema_version": RESPONSE_SCHEMA_VERSION,
             "extension_id": EXTENSION_ID,
-            "request_schema_version": request.get("schema_version"),
-            "result": {{"message": "starter provider is ready"}},
+            "request_schema_version": REQUEST_SCHEMA_VERSION,
+            "result": {{"message": message}},
         }}
     )
     return 0
@@ -138,6 +149,70 @@ __all__ = ["__version__"]
 
 __version__ = "{version}"
 '''
+    request_contract = json.dumps(
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["schema_version", "message"],
+            "properties": {
+                "schema_version": {"const": request_schema},
+                "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": r"\S",
+                },
+            },
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    response_contract = json.dumps(
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok", "schema_version", "extension_id"],
+            "properties": {
+                "ok": {"type": "boolean"},
+                "schema_version": {"const": response_schema},
+                "extension_id": {"const": extension_id},
+                "request_schema_version": {"const": request_schema},
+                "result": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["message"],
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": r"\S",
+                        }
+                    },
+                },
+                "error": {"type": "string", "minLength": 1},
+            },
+            "oneOf": [
+                {
+                    "required": ["request_schema_version", "result"],
+                    "properties": {
+                        "ok": {"const": True},
+                        "error": False,
+                    },
+                },
+                {
+                    "required": ["error"],
+                    "properties": {
+                        "ok": {"const": False},
+                        "request_schema_version": False,
+                        "result": False,
+                    },
+                },
+            ],
+        },
+        indent=2,
+        sort_keys=True,
+    )
     request = json.dumps(
         {
             "schema_version": request_schema,
@@ -155,6 +230,10 @@ __version__ = "{version}"
         The starter declares no permissions because public standalone invocation
         cannot dispatch permissioned effects. Move permissioned work behind a
         capability or domain command with a request-bound execution envelope.
+
+        `schemas/request.schema.json` and `schemas/response.schema.json` are the
+        starter's versioned wire contracts. The provider rejects a missing or
+        mismatched request schema before doing work.
 
         Run the following commands from the same activated Python environment so
         the provider entrypoint is available on `PATH` when LoopX verifies it:
@@ -179,6 +258,8 @@ __version__ = "{version}"
         "pyproject.toml": pyproject,
         "README.md": readme,
         "examples/request.json": request + "\n",
+        "schemas/request.schema.json": request_contract + "\n",
+        "schemas/response.schema.json": response_contract + "\n",
         f"src/{module_name}/__init__.py": package_init,
         f"src/{module_name}/cli.py": provider,
     }
@@ -242,6 +323,9 @@ def scaffold_extension(
         "dry_run": not execute,
         "changed": execute,
         "extension_id": validated_id,
+        "starter_kind": "standalone",
+        "capability_id": None,
+        "managed_entrypoint": "loopx extension run",
         "version": validated_version,
         "destination": str(destination_path),
         "module_name": module_name,

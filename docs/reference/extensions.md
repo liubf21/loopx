@@ -69,9 +69,20 @@ loopx extension init loopx-example --execute --format json
 The default destination is `extensions/<extension-id>`. Use `--destination`
 when the provider is developed in another package or repository. The scaffold
 creates an independently installable Python package, declarative manifest,
-JSON stdin/stdout provider, side-effect-free doctor, example request, and a
-short README. It does not register a capability because a standalone extension
-does not need one.
+JSON stdin/stdout provider, versioned request and response JSON Schemas,
+side-effect-free doctor, example request, and a short README. The generated
+provider rejects missing, mismatched, or structurally invalid request contracts
+before doing work. The init receipt explicitly identifies the starter as
+`standalone` and names `loopx extension run` as its managed entrypoint.
+
+`extension init` intentionally does not register a capability. It currently
+generates only the complete standalone path. A `[[provides]]` extension needs a
+real caller contract and command, while an `[[implements]]` extension needs an
+existing capability-specific resolver, policy check, action/scope mapping, and
+execution-envelope adapter. A generic scaffold cannot infer those authority
+semantics safely. Add a capability integration profile first, then scaffold or
+author the provider against that profile; do not add manifest tables that are
+discoverable but not callable.
 
 The command refuses every existing destination, including an empty directory;
 there is no force or merge mode. It also does not build, install, register, or
