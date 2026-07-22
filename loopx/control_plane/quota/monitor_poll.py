@@ -292,6 +292,7 @@ def record_quota_monitor_poll_for_decision(
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
     next_claimed_by: str | None = None,
+    status_reloader: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
     safe_target_key = str(target_key or "").strip() or None
@@ -441,6 +442,8 @@ def record_quota_monitor_poll_for_decision(
                 goal["runs"] = [index_record, *runs]
         recent_runs = run_history.get("recent_runs") if isinstance(run_history.get("recent_runs"), list) else []
         run_history["recent_runs"] = [index_record, *recent_runs]
+        if material_change and status_reloader is not None:
+            after_status = status_reloader()
 
     after = after_decision(after_status)
     decision_summary = {

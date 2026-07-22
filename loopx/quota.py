@@ -2550,6 +2550,7 @@ def record_quota_monitor_poll(
     next_claimed_by: str | None = None,
     scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
     operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
+    status_reloader: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     def should_run(current_status: dict[str, Any]) -> dict[str, Any]:
@@ -2581,6 +2582,7 @@ def record_quota_monitor_poll(
         next_agent_todo=next_agent_todo,
         next_user_todo=next_user_todo,
         next_claimed_by=next_claimed_by,
+        status_reloader=status_reloader,
     )
 
 
