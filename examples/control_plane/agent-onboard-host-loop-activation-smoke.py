@@ -21,6 +21,7 @@ from loopx.bootstrap_command_pack import (  # noqa: E402
     build_loopx_bootstrap_command_pack,
     build_start_goal_guided_packet,
 )
+from loopx.cli import build_parser  # noqa: E402
 from loopx.host_loop_activation import (  # noqa: E402
     agent_type_for_host_surface,
     build_agent_type_catalog,
@@ -246,6 +247,14 @@ def main() -> int:
             available_capabilities=["network", "external_evidence_poll"],
         )
         assert selected_pack["host_loop_activation"]["activation_allowed"] is True
+        refresh_command = selected_pack["commands"]["goal_start_refresh_state"]
+        assert "--agent-id codex-product-capability" in refresh_command, refresh_command
+        assert "--progress-scope agent_lane" in refresh_command, refresh_command
+        assert "--health-check" not in refresh_command, refresh_command
+        refresh_args = build_parser().parse_args(shlex.split(refresh_command)[1:])
+        assert refresh_args.command == "refresh-state", refresh_args
+        assert refresh_args.agent_id == "codex-product-capability", refresh_args
+        assert refresh_args.progress_scope == "agent_lane", refresh_args
         for key in (
             "heartbeat_prompt_json",
             "quota_guard",
