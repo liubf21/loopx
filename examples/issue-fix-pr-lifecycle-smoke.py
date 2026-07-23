@@ -598,23 +598,6 @@ def main() -> int:
             "--project",
             str(project),
         ]
-        open_review = json.loads(
-            run_cli(
-                [
-                    *review_base_args,
-                    "--metadata-json",
-                    str(gate_open_metadata_path),
-                    "--owner-acknowledged",
-                    "--execute",
-                ],
-                registry_path=registry_path,
-                runtime_root=runtime_root,
-            ).stdout
-        )
-        assert open_review["terminal"] is False, open_review
-        assert open_review["write_performed"] is False, open_review
-        assert open_review["skip_reason"] == "pr_not_terminal", open_review
-
         unacknowledged_review = json.loads(
             run_cli(
                 [
@@ -634,9 +617,29 @@ def main() -> int:
         assert unacknowledged_review["write_performed"] is False, (
             unacknowledged_review
         )
-        assert unacknowledged_review["skip_reason"] == (
-            "owner_acknowledgement_required"
-        ), unacknowledged_review
+        assert unacknowledged_review["skip_reason"] == "ack_receipt_missing", (
+            unacknowledged_review
+        )
+
+        open_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_open_metadata_path),
+                    "--owner-acknowledged",
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert open_review["terminal"] is False, open_review
+        assert open_review["owner_acknowledged"] is True, open_review
+        assert open_review["ack_receipt_status"] == "matched", open_review
+        assert open_review["ack_receipt_id"], open_review
+        assert open_review["write_performed"] is False, open_review
+        assert open_review["skip_reason"] == "pr_not_terminal", open_review
 
         preview_review = json.loads(
             run_cli(
@@ -653,6 +656,9 @@ def main() -> int:
         assert preview_review["would_reconcile"] is True, preview_review
         assert preview_review["write_performed"] is False, preview_review
         assert preview_review["skip_reason"] == "execute_required", preview_review
+        assert preview_review["ack_receipt_id"] == open_review["ack_receipt_id"], (
+            preview_review
+        )
 
         reconciled_review = json.loads(
             run_cli(
@@ -740,9 +746,14 @@ def main() -> int:
         rollout_events = load_rollout_events(
             rollout_event_log_path(runtime_root, "example-goal")
         )
-        assert len(rollout_events) == 2, rollout_events
+        merge_events = [
+            event
+            for event in rollout_events
+            if event.get("event_kind") == "pr_merge"
+        ]
+        assert len(merge_events) == 2, rollout_events
         assert {
-            event["code_refs"]["pr_ref"] for event in rollout_events
+            event["code_refs"]["pr_ref"] for event in merge_events
         } == {"huangruiteng/loopx#1715", "huangruiteng/loopx#1716"}
         parsed = parse_active_state_todos(
             "## Agent Todo\n\n"

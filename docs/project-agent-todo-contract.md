@@ -407,24 +407,30 @@ delivery gate.
 
 Terminal PR state does not silently complete a review reminder: merged PRs may
 still need post-merge review. When the owner explicitly acknowledges that an
-exact review action is complete, reconcile the exact bound `user_action`
-against compact public PR lifecycle metadata:
+exact review action is complete, persist a typed acknowledgement receipt with
+the exact bound `user_action` and GitHub PR:
 
 ```bash
-loopx issue-fix pr-review-reconcile \
+loopx issue-fix pr-review-ack \
   --url https://github.com/owner/repo/pull/123 \
   --goal-id <goal-id> \
   --todo-id <review-todo-id> \
   --agent-id <bound-agent> \
-  --fetch-metadata \
-  --owner-acknowledged \
-  --execute
+  --owner-acknowledged
 ```
 
-The command is fail-closed and idempotent: it requires the exact todo id,
-matching bound agent, explicit owner acknowledgement, and a terminal PR
-observation. It writes the todo lifecycle before quota/status read it; quota
-does not fetch GitHub or infer completion from free-form reminder text.
+The receipt is fail-closed, idempotent, and read back after append. It binds the
+goal, todo, agent, provider, repository, PR number, and canonical permalink
+without parsing reminder prose. A Codex App heartbeat with a turn id runs the
+kernel `issue_fix` reconciliation hook before status/quota projection. The hook
+uses the GitHub provider only when `network` is available, completes the exact
+reminder only after terminal metadata, and then lets the ordinary quota
+decision run unchanged. Non-heartbeat quota calls perform no provider read;
+unsupported providers remain visible and unreconciled.
+
+`pr-review-reconcile` remains as an explicit operator path. Supplying
+`--owner-acknowledged` first records the same typed receipt, so both the manual
+and heartbeat paths share one binding and acknowledgement contract.
 
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
