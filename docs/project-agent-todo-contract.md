@@ -419,18 +419,18 @@ loopx issue-fix pr-review-ack \
   --owner-acknowledged
 ```
 
-The receipt is fail-closed, idempotent, and read back after append. It binds the
-goal, todo, agent, provider, repository, PR number, and canonical permalink
-without parsing reminder prose. A Codex App heartbeat with a turn id runs the
-kernel `issue_fix` reconciliation hook before status/quota projection. The hook
-uses the GitHub provider only when `network` is available, completes the exact
-reminder only after terminal metadata, and then lets the ordinary quota
-decision run unchanged. Non-heartbeat quota calls perform no provider read;
-unsupported providers remain visible and unreconciled.
+The receipt is fail-closed, idempotent per todo revision, and read back after
+append. It binds the goal, todo revision, agent, provider, repository, PR
+number, and canonical permalink without parsing reminder prose. Reopening or
+materially editing the todo invalidates the prior acknowledgement.
 
-`pr-review-reconcile` remains as an explicit operator path. Supplying
-`--owner-acknowledged` first records the same typed receipt, so both the manual
-and heartbeat paths share one binding and acknowledgement contract.
+Use `pr-review-reconcile` as the single reconciliation path. It may be invoked
+explicitly or by a due `continuous_monitor` through any scheduler or host
+adapter. Supplying `--owner-acknowledged` first records the same typed receipt.
+Reconciliation validates the current todo revision before provider access and
+again before completion, then closes the reminder only for the exact terminal
+PR. A missing receipt, stale revision, unavailable provider, or unsupported
+forge leaves the reminder open. Quota projection has no provider side effects.
 
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:

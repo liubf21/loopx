@@ -214,11 +214,6 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.issue_fix.pr_review_ack",
                 "doc": "docs/project-agent-todo-contract.md",
             },
-            {
-                "schema_version": "issue_fix_pr_review_pre_quota_v0",
-                "module": "loopx.capabilities.issue_fix.pr_review_pre_quota",
-                "doc": "docs/project-agent-todo-contract.md",
-            },
         ],
         "smokes": [
             "python3 examples/value-connectors-github-public-probe-smoke.py",
@@ -227,7 +222,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/issue-fix-feasibility-smoke.py",
             "python3 examples/issue-fix-discovered-issue-promotion-smoke.py",
             "python3 examples/issue-fix-pr-lifecycle-smoke.py",
-            "python3 examples/issue-fix-pr-review-heartbeat-smoke.py",
+            "python3 examples/issue-fix-pr-review-reconcile-smoke.py",
             "python3 examples/issue-fix-maintainer-correction-smoke.py",
             "python3 examples/issue-fix-outcome-projection-smoke.py",
             "python3 examples/issue-fix-validated-memory-writeback-smoke.py",

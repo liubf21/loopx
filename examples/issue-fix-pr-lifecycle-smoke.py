@@ -610,8 +610,11 @@ def main() -> int:
                 runtime_root=runtime_root,
             ).stdout
         )
-        assert unacknowledged_review["terminal"] is True, unacknowledged_review
+        assert unacknowledged_review["terminal"] is False, unacknowledged_review
         assert unacknowledged_review["owner_acknowledged"] is False, (
+            unacknowledged_review
+        )
+        assert unacknowledged_review["external_read_performed"] is False, (
             unacknowledged_review
         )
         assert unacknowledged_review["write_performed"] is False, (
@@ -666,7 +669,6 @@ def main() -> int:
                     *review_base_args,
                     "--metadata-json",
                     str(gate_merged_metadata_path),
-                    "--owner-acknowledged",
                     "--execute",
                 ],
                 registry_path=registry_path,
@@ -700,7 +702,6 @@ def main() -> int:
                     *review_base_args,
                     "--metadata-json",
                     str(gate_merged_metadata_path),
-                    "--owner-acknowledged",
                     "--execute",
                 ],
                 registry_path=registry_path,
