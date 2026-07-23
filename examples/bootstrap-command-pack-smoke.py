@@ -238,6 +238,10 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "--repo-path <approved-repo>" in reviewer_request_template
         assert "--execute" in reviewer_request_template
         assert "--agent-id codex-test-agent" in str(commands["goal_start_quota_should_run"])
+        refresh_command = str(commands["goal_start_refresh_state"])
+        assert "--agent-id codex-test-agent" in refresh_command
+        assert "--progress-scope agent_lane" in refresh_command
+        assert "--health-check" not in refresh_command
         assert "Same-priority items use that write order as the tie-breaker" in str(payload["message"])
         assert "preview the issue-fix route before todo writeback" in str(payload["message"])
         assert "PR lifecycle monitor" in str(payload["message"])

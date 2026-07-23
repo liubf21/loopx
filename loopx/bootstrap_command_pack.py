@@ -17,6 +17,7 @@ from .project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_STATUS,
     render_available_capability_args,
     render_quota_guard_command,
+    render_refresh_state_command,
     render_scheduler_execution_args,
     shell_arg,
 )
@@ -863,7 +864,12 @@ def build_loopx_bootstrap_command_pack(
             "bootstrap_after_user_confirmation": bootstrap_after_confirmation_command,
             "goal_start_connect_if_needed": goal_start_bootstrap_command,
             "goal_start_plan_prompt": goal_start_plan_prompt,
-            "goal_start_refresh_state": f"{shell_arg(cli_bin)} refresh-state --goal-id {shell_arg(resolved_goal_id)}",
+            "goal_start_refresh_state": render_refresh_state_command(
+                resolved_goal_id,
+                cli_bin=cli_bin,
+                agent_id=str(selected_agent_id) if selected_agent_id else None,
+                progress_scope="agent_lane" if selected_agent_id else None,
+            ),
             "goal_start_host_loop_activation": host_loop_activation.get("activation_input_command"),
             "goal_start_agent_onboard_recheck": (
                 f"{shell_arg(cli_bin)} agent-onboard "

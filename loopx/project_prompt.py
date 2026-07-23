@@ -391,6 +391,7 @@ def build_codex_cli_bootstrap_message(
         resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        progress_scope="agent_lane" if agent_id else None,
     )
     first_run_validation_checklist = [
         f"{cli_bin} doctor passed after no-clone install repair or existing install",
