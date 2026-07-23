@@ -12,6 +12,10 @@ from .pr_gate_reconcile import (
     render_issue_fix_pr_gate_reconciliation_markdown,
     render_issue_fix_pr_review_reconciliation_markdown,
 )
+from .pr_review_ack import (
+    find_issue_fix_pr_review_ack_receipt,
+    record_issue_fix_pr_review_ack,
+)
 
 
 def register_pr_gate_reconciliation_command(
@@ -163,6 +167,54 @@ def register_pr_gate_reconciliation_command(
         default=None,
         help="Public-safe reconciliation timestamp; defaults to current UTC.",
     )
+    ack_parser = issue_fix_sub.add_parser(
+        "pr-review-ack",
+        help=(
+            "Persist one typed owner acknowledgement receipt with an exact "
+            "goal/todo/agent/GitHub PR binding for heartbeat reconciliation."
+        ),
+    )
+    ack_parser.add_argument(
+        "--format",
+        dest="subcommand_format",
+        choices=["markdown", "json"],
+        help="Output format for this subcommand.",
+    )
+    ack_parser.add_argument(
+        "--url",
+        required=True,
+        help="Public https://github.com/owner/repo/pull/123 URL.",
+    )
+    ack_parser.add_argument(
+        "--goal-id",
+        required=True,
+        help="Goal containing the nonblocking PR review action.",
+    )
+    ack_parser.add_argument(
+        "--todo-id",
+        required=True,
+        help="Exact task_class=user_action todo id acknowledged by the owner.",
+    )
+    ack_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Registered lifecycle actor matching the user_action bound_agent.",
+    )
+    ack_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root containing the goal state.",
+    )
+    ack_parser.add_argument(
+        "--owner-acknowledged",
+        action="store_true",
+        help="Assert that the owner explicitly acknowledged this exact review.",
+    )
+    ack_parser.add_argument(
+        "--generated-at",
+        default=None,
+        help="Public-safe acknowledgement timestamp; defaults to current UTC.",
+    )
 
 
 def _load_json_object(input_text: str) -> dict[str, Any]:
@@ -219,6 +271,29 @@ def build_pr_review_reconciliation_from_args(
         raise ValueError("pr-review-reconcile requires a LoopX registry")
     if args.fetch_metadata and args.metadata_json:
         raise ValueError("--fetch-metadata cannot be combined with --metadata-json")
+    ack_receipt = None
+    if args.owner_acknowledged:
+        acknowledgement = record_issue_fix_pr_review_ack(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            goal_id=args.goal_id,
+            todo_id=args.todo_id,
+            agent_id=args.agent_id,
+            project=Path(args.project).expanduser(),
+            url=args.url,
+            owner_acknowledged=True,
+            generated_at=generated_at,
+        )
+        ack_receipt = acknowledgement["ack_receipt"]
+    else:
+        ack_receipt = find_issue_fix_pr_review_ack_receipt(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            goal_id=args.goal_id,
+            todo_id=args.todo_id,
+            agent_id=args.agent_id,
+            url=args.url,
+        )
     return reconcile_issue_fix_pr_review(
         registry_path=registry_path,
         runtime_root_arg=runtime_root_arg,
@@ -227,7 +302,7 @@ def build_pr_review_reconciliation_from_args(
         agent_id=args.agent_id,
         project=Path(args.project).expanduser(),
         url=args.url,
-        owner_acknowledged=args.owner_acknowledged,
+        ack_receipt=ack_receipt,
         provider_payload=(
             _load_json_object(args.metadata_json) if args.metadata_json else None
         ),
@@ -238,10 +313,58 @@ def build_pr_review_reconciliation_from_args(
     )
 
 
+def build_pr_review_ack_from_args(
+    args: argparse.Namespace,
+    registry_path: Path | None,
+    runtime_root_arg: str | None,
+    generated_at: str,
+) -> dict[str, Any]:
+    if registry_path is None:
+        raise ValueError("pr-review-ack requires a LoopX registry")
+    return record_issue_fix_pr_review_ack(
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        goal_id=args.goal_id,
+        todo_id=args.todo_id,
+        agent_id=args.agent_id,
+        project=Path(args.project).expanduser(),
+        url=args.url,
+        owner_acknowledged=args.owner_acknowledged,
+        generated_at=generated_at,
+    )
+
+
+def render_issue_fix_pr_review_ack_markdown(payload: dict[str, Any]) -> str:
+    binding = (
+        payload.get("binding")
+        if isinstance(payload.get("binding"), dict)
+        else {}
+    )
+    receipt = (
+        payload.get("ack_receipt")
+        if isinstance(payload.get("ack_receipt"), dict)
+        else {}
+    )
+    return "\n".join(
+        [
+            "# LoopX Issue Fix PR Review Acknowledgement",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- todo_id: `{payload.get('todo_id')}`",
+            f"- pr: `{binding.get('pr_ref')}`",
+            f"- receipt_id: `{receipt.get('receipt_id')}`",
+            f"- write_performed: `{payload.get('write_performed')}`",
+            f"- replayed: `{payload.get('replayed')}`",
+        ]
+    )
+
+
 __all__ = [
     "build_pr_gate_reconciliation_from_args",
+    "build_pr_review_ack_from_args",
     "build_pr_review_reconciliation_from_args",
     "register_pr_gate_reconciliation_command",
     "render_issue_fix_pr_gate_reconciliation_markdown",
+    "render_issue_fix_pr_review_ack_markdown",
     "render_issue_fix_pr_review_reconciliation_markdown",
 ]

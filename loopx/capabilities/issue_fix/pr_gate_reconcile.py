@@ -12,6 +12,10 @@ from ...control_plane.todos.projection import todo_item_task_class
 from ...todos import complete_goal_todo, list_goal_todos
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
+from .pr_review_ack import (
+    build_issue_fix_pr_review_binding,
+    validate_issue_fix_pr_review_ack_receipt,
+)
 
 
 PR_GATE_RECONCILIATION_SCHEMA_VERSION = "issue_fix_pr_gate_reconciliation_v0"
@@ -54,7 +58,7 @@ def _pr_lifecycle_todo(
     registry_path: Path,
     goal_id: str,
     todo_id: str,
-    project: Path,
+    project: Path | None,
 ) -> dict[str, Any]:
     todo_payload = list_goal_todos(
         registry_path=registry_path,
@@ -76,7 +80,7 @@ def reconcile_issue_fix_pr_gate(
     goal_id: str,
     todo_id: str,
     agent_id: str | None = None,
-    project: Path,
+    project: Path | None,
     url: str,
     provider_payload: Mapping[str, Any] | None = None,
     fetch_metadata: bool = False,
@@ -191,9 +195,9 @@ def reconcile_issue_fix_pr_review(
     goal_id: str,
     todo_id: str,
     agent_id: str,
-    project: Path,
+    project: Path | None,
     url: str,
-    owner_acknowledged: bool = False,
+    ack_receipt: Mapping[str, Any] | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     fetch_metadata: bool = False,
     fetch_timeout_seconds: int = 10,
@@ -222,6 +226,16 @@ def reconcile_issue_fix_pr_review(
     )
     _validate_review_action(todo, agent_id=agent_id)
 
+    binding = build_issue_fix_pr_review_binding(
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        url=url,
+    )
+    ack_valid, ack_status = validate_issue_fix_pr_review_ack_receipt(
+        ack_receipt,
+        binding=binding,
+    )
     state = str(observation.get("state") or "UNKNOWN").upper()
     terminal = state in TERMINAL_PR_STATES
     already_reconciled = bool(todo.get("done")) or str(todo.get("status") or "") == "done"
@@ -238,11 +252,18 @@ def reconcile_issue_fix_pr_review(
             "merged_at": observation.get("merged_at"),
             "closed_at": observation.get("closed_at"),
         },
+        "binding": binding,
+        "ack_receipt_id": (
+            ack_receipt.get("receipt_id")
+            if isinstance(ack_receipt, Mapping)
+            else None
+        ),
+        "ack_receipt_status": ack_status,
         "terminal": terminal,
-        "owner_acknowledged": owner_acknowledged,
+        "owner_acknowledged": ack_valid,
         "execute": execute,
         "would_reconcile": (
-            terminal and owner_acknowledged and not already_reconciled
+            terminal and ack_valid and not already_reconciled
         ),
         "write_performed": False,
         "already_reconciled": already_reconciled,
@@ -254,8 +275,8 @@ def reconcile_issue_fix_pr_review(
     if not terminal:
         receipt["skip_reason"] = "pr_not_terminal"
         return receipt
-    if not owner_acknowledged:
-        receipt["skip_reason"] = "owner_acknowledgement_required"
+    if not ack_valid:
+        receipt["skip_reason"] = ack_status
         return receipt
     if not execute:
         receipt["skip_reason"] = "execute_required"

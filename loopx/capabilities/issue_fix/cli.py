@@ -1072,6 +1072,7 @@ def handle_issue_fix_command(
             renderer = render_issue_fix_feasibility_markdown
         elif args.issue_fix_command in {
             "pr-gate-reconcile",
+            "pr-review-ack",
             "pr-review-reconcile",
         }:
             if args.issue_fix_command == "pr-gate-reconcile":
@@ -1082,6 +1083,13 @@ def handle_issue_fix_command(
                 )
                 renderer = (
                     pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
+                )
+            elif args.issue_fix_command == "pr-review-ack":
+                payload = pr_gate_reconcile_cli.build_pr_review_ack_from_args(
+                    args, registry_path, runtime_root_arg, generated_at
+                )
+                renderer = (
+                    pr_gate_reconcile_cli.render_issue_fix_pr_review_ack_markdown
                 )
             else:
                 payload = (
