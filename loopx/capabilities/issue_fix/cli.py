@@ -1070,13 +1070,28 @@ def handle_issue_fix_command(
                         "goal_id_or_ledger_path_missing"
                     )
             renderer = render_issue_fix_feasibility_markdown
-        elif args.issue_fix_command == "pr-gate-reconcile":
-            payload = pr_gate_reconcile_cli.build_pr_gate_reconciliation_from_args(
-                args, registry_path, runtime_root_arg, generated_at
-            )
-            renderer = (
-                pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
-            )
+        elif args.issue_fix_command in {
+            "pr-gate-reconcile",
+            "pr-review-reconcile",
+        }:
+            if args.issue_fix_command == "pr-gate-reconcile":
+                payload = (
+                    pr_gate_reconcile_cli.build_pr_gate_reconciliation_from_args(
+                        args, registry_path, runtime_root_arg, generated_at
+                    )
+                )
+                renderer = (
+                    pr_gate_reconcile_cli.render_issue_fix_pr_gate_reconciliation_markdown
+                )
+            else:
+                payload = (
+                    pr_gate_reconcile_cli.build_pr_review_reconciliation_from_args(
+                        args, registry_path, runtime_root_arg, generated_at
+                    )
+                )
+                renderer = (
+                    pr_gate_reconcile_cli.render_issue_fix_pr_review_reconciliation_markdown
+                )
         elif args.issue_fix_command == "pr-lifecycle":
             if args.fetch_metadata and args.metadata_json:
                 raise ValueError(
