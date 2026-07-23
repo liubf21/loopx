@@ -81,6 +81,7 @@ def run_cli(
     extra_args: list[str] | None = None,
     dry_run: bool = True,
     include_agent_id: bool = True,
+    autonomous_replan_recorded: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -101,9 +102,10 @@ def run_cli(
         "single_surface",
         "--delivery-outcome",
         "outcome_progress",
-        "--autonomous-replan-recorded",
         "--no-global-sync",
     ]
+    if autonomous_replan_recorded:
+        command.append("--autonomous-replan-recorded")
     if include_agent_id:
         command.extend(["--agent-id", AGENT_ID])
     if vision_path is not None:
@@ -188,6 +190,8 @@ def main() -> int:
         registry_path, runtime, project = write_fixture(root)
         valid_path = root / "valid-vision.json"
         invalid_path = root / "invalid-vision.json"
+        drift_path = root / "drift-vision.json"
+        explained_drift_path = root / "explained-drift-vision.json"
 
         write_json(
             valid_path,
@@ -324,6 +328,83 @@ def main() -> int:
             "autonomous_replan_recorded"
         ), latest_status_checkpoint
 
+        partial_inline = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                inline_vision_args=[
+                    "--vision-replan-trigger",
+                    "The current dependency remains blocked; preserve the research mainline.",
+                ],
+                check=True,
+            )
+        )
+        partial_patch = partial_inline["agent_vision"]["vision_patch"]
+        assert partial_patch["vision_summary"] == (
+            "Map the next evidence frontier and hand off one runnable claim."
+        ), partial_inline
+        assert partial_patch["acceptance_summary"] == (
+            "One successor todo plus evidence references."
+        ), partial_inline
+        assert partial_patch["advancement_policy"] == (
+            "repeat_until_closed"
+        ), partial_inline
+        assert partial_patch["replan_trigger_summary"] == (
+            "The current dependency remains blocked; preserve the research mainline."
+        ), partial_inline
+
+        unexplained_inline_drift = run_cli(
+            registry_path,
+            runtime,
+            inline_vision_args=[
+                "--vision-summary",
+                "Wait for one supporting pull request.",
+            ],
+            check=False,
+        )
+        assert unexplained_inline_drift.returncode == 1, unexplained_inline_drift
+        assert "provide goal_path_delta_v0 with outcome=replan" in payload(
+            unexplained_inline_drift
+        )["error"], unexplained_inline_drift.stdout
+
+        drift_packet = json.loads(valid_path.read_text(encoding="utf-8"))
+        drift_packet["vision_patch"]["vision_summary"] = (
+            "Wait for one supporting pull request."
+        )
+        write_json(drift_path, drift_packet)
+        unexplained_drift = run_cli(
+            registry_path,
+            runtime,
+            vision_path=drift_path,
+            check=False,
+        )
+        assert unexplained_drift.returncode == 1, unexplained_drift
+        assert "provide goal_path_delta_v0 with outcome=replan" in payload(
+            unexplained_drift
+        )["error"], unexplained_drift.stdout
+
+        explained_drift_packet = dict(drift_packet)
+        explained_drift_packet["path_delta"] = {
+            "schema_version": "goal_path_delta_v0",
+            "outcome": "replan",
+            "prior_assumption": "The research mainline remained directly runnable.",
+            "observed_reality": "A required dependency now blocks the next experiment.",
+            "retained": ["Keep the experiment acceptance and evidence boundary."],
+            "changed": ["Wait on the dependency before the next experiment."],
+        }
+        write_json(explained_drift_path, explained_drift_packet)
+        explained_drift = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                vision_path=explained_drift_path,
+                check=True,
+            )
+        )
+        assert explained_drift["agent_vision"]["path_delta"]["outcome"] == (
+            "replan"
+        ), explained_drift
+
         inline = payload(
             run_cli(
                 registry_path,
@@ -345,6 +426,7 @@ def main() -> int:
                     "create_successor",
                 ],
                 check=True,
+                autonomous_replan_recorded=False,
             )
         )
         assert inline["ok"] is True, inline
@@ -370,6 +452,7 @@ def main() -> int:
                     "Close the bounded research route after authoritative validation.",
                 ],
                 check=True,
+                autonomous_replan_recorded=False,
             )
         )
         assert closed_alias["agent_vision"]["state"] == "vision_closed", (
