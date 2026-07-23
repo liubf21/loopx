@@ -20,6 +20,7 @@ from .control_plane.todos.contract import (
     TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_USER_GATE,
     build_todo_id,
@@ -935,6 +936,11 @@ def add_goal_todo(
         if unblocks_todo_id and not normalized_unblocks_todo_id:
             raise ValueError("unblocks_todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
         normalized_resume_when = require_supported_todo_resume_when(resume_when)
+        if task_class == TODO_TASK_CLASS_MONITOR and normalized_resume_when:
+            raise ValueError(
+                "continuous_monitor todos cannot use resume_when; use target_key, "
+                "cadence, and next_due_at so the monitor can observe the transition"
+            )
         if normalized_status == TODO_STATUS_DEFERRED and not normalized_resume_when:
             raise ValueError("deferred todo add requires --resume-when with a supported condition")
         normalized_monitor_metadata = require_monitor_metadata_scope(
@@ -1303,6 +1309,19 @@ def update_goal_todo(
             else normalized_resume_when
             or normalize_supported_todo_resume_when(existing_block.get("resume_when"))
         )
+        if target_task_class == TODO_TASK_CLASS_MONITOR and normalized_resume_when:
+            raise ValueError(
+                "continuous_monitor todos cannot use resume_when; use target_key, "
+                "cadence, and next_due_at so the monitor can observe the transition"
+            )
+        if (
+            task_class == TODO_TASK_CLASS_MONITOR
+            and effective_resume_when
+            and not clear_resume_when
+        ):
+            raise ValueError(
+                "moving a todo to continuous_monitor requires --clear-resume-when"
+            )
         if target_status == TODO_STATUS_DEFERRED and not effective_resume_when:
             raise ValueError("transition to deferred requires --resume-when with a supported condition")
         normalized_monitor_metadata = require_monitor_metadata_scope(

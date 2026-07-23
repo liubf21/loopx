@@ -205,9 +205,11 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--claimed-by",
         help=(
-            "For agent todo add/claim/update/complete, soft-claim execution for a "
-            "registered public-safe agent id such as codex-main-control. User todos "
-            "use --bound-agent or --goal-bound instead."
+            "For agent todo add/claim/update, assign the soft execution owner to a "
+            "registered public-safe agent id such as codex-main-control. This names "
+            "the assignment target, not the lifecycle actor; multi-agent lifecycle "
+            "commands still require --agent-id. User todos use --bound-agent or "
+            "--goal-bound instead."
         ),
     )
     todo_parser.add_argument(

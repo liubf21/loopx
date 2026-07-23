@@ -30,12 +30,32 @@ def resolve_monitor_todo_item(
     if not normalized_todo_id and not safe_target_key:
         raise ValueError("monitor todo writeback requires --todo-id or --target-key")
     payload = list_goal_todos(registry_path=registry_path, goal_id=goal_id, role="agent")
+    items = payload.get("todos") if isinstance(payload.get("todos"), list) else []
+    if normalized_todo_id:
+        matches = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and normalize_todo_id(item.get("todo_id")) == normalized_todo_id
+        ]
+        if not matches:
+            raise ValueError(f"monitor todo_id {normalized_todo_id!r} was not found")
+        if len(matches) > 1:
+            raise ValueError(f"monitor todo_id {normalized_todo_id!r} matched multiple todos")
+        item = matches[0]
+        item_target_key = str(item.get("target_key") or "").strip()
+        if safe_target_key and item_target_key and safe_target_key != item_target_key:
+            raise ValueError(
+                f"monitor todo_id {normalized_todo_id!r} resolves target_key "
+                f"{item_target_key!r}, not {safe_target_key!r}"
+            )
+        if monitor_todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+            raise ValueError("monitor-poll todo writeback target must be task_class=continuous_monitor")
+        return item
+
     matches: list[dict[str, Any]] = []
-    for item in payload.get("todos") if isinstance(payload.get("todos"), list) else []:
+    for item in items:
         if not isinstance(item, dict):
-            continue
-        if normalized_todo_id and normalize_todo_id(item.get("todo_id")) == normalized_todo_id:
-            matches.append(item)
             continue
         if safe_target_key and str(item.get("target_key") or "").strip() == safe_target_key:
             matches.append(item)

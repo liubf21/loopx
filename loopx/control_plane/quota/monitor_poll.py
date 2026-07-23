@@ -255,6 +255,32 @@ def _status_with_monitor_poll(
     return after_status
 
 
+def _reload_status_after_monitor_writeback(
+    status_payload: dict[str, Any],
+    *,
+    status_reloader: Callable[[], dict[str, Any]] | None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    if status_reloader is None:
+        return deepcopy(status_payload), None
+    try:
+        reloaded_status = status_reloader()
+        if not isinstance(reloaded_status, dict):
+            raise TypeError("status reloader must return a dictionary")
+    except Exception as exc:  # noqa: BLE001
+        return deepcopy(status_payload), {
+            "schema_version": "monitor_poll_status_reload_warning_v0",
+            "reason": (
+                "material monitor writeback persisted, but a fresh status "
+                "projection could not be collected"
+            ),
+            "error_type": type(exc).__name__,
+            "persisted_writeback": True,
+            "after_projection_fresh": False,
+            "recommended_action": "rerun quota should-run to select the persisted successor",
+        }
+    return reloaded_status, None
+
+
 def _load_monitor_poll_artifact(index_record: dict[str, Any]) -> dict[str, Any]:
     raw_path = str(index_record.get("json_path") or "").strip()
     if not raw_path:
@@ -392,6 +418,7 @@ def record_quota_monitor_poll_for_decision(
     next_claimed_by: str | None = None,
     turn_instance_id: str | None = None,
     _index_lock_held: bool = False,
+    status_reloader: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     normalized_turn_instance_id = normalize_turn_instance_id(turn_instance_id)
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
@@ -513,6 +540,7 @@ def record_quota_monitor_poll_for_decision(
                 next_claimed_by=next_claimed_by,
                 turn_instance_id=normalized_turn_instance_id,
                 _index_lock_held=True,
+                status_reloader=status_reloader,
             )
     due_monitor_poll = allows_due_monitor_poll(
         before,
@@ -616,13 +644,21 @@ def record_quota_monitor_poll_for_decision(
         index_record["material_change"] = record["monitor_event"]["material_change"]
 
     after_status = deepcopy(status_payload)
+    status_reload_warning = None
+    if execute and material_change:
+        after_status, status_reload_warning = _reload_status_after_monitor_writeback(
+            status_payload,
+            status_reloader=status_reloader,
+        )
+        if status_reload_warning:
+            record["monitor_event"]["status_reload_warning"] = status_reload_warning
     if execute:
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         markdown_path.write_text(render_markdown(record) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
         after_status = _status_with_monitor_poll(
-            status_payload,
+            after_status,
             goal_id=goal_id,
             index_record=index_record,
         )
@@ -666,4 +702,6 @@ def record_quota_monitor_poll_for_decision(
     if normalized_turn_instance_id:
         result["turn_instance_id"] = normalized_turn_instance_id
         result["replayed"] = False
+    if status_reload_warning:
+        result["status_reload_warning"] = status_reload_warning
     return result
