@@ -14,6 +14,8 @@ from loopx.control_plane.testing.canary_harness import (
     run_json_cli,
     write_fixture_registry,
 )
+from loopx.quota import record_quota_monitor_poll
+from loopx.status import collect_status
 from loopx.todos import add_goal_todo, update_goal_todo
 
 
@@ -88,7 +90,7 @@ def test_exact_todo_id_precedes_ambiguous_target_key(tmp_path: Path) -> None:
     assert first["todo_id"] != second["todo_id"]
 
 
-def test_monitor_resume_when_is_rejected_but_legacy_row_remains_actionable(
+def test_monitor_resume_when_is_rejected_without_legacy_bypass(
     tmp_path: Path,
 ) -> None:
     registry, _runtime, _state = _write_fixture(tmp_path)
@@ -126,7 +128,7 @@ def test_monitor_resume_when_is_rejected_but_legacy_row_remains_actionable(
             "resume_when": "pr_merged:owner/repo#42",
             "resume_ready": False,
         }
-    ) is True
+    ) is False
 
 
 def test_material_poll_reloads_status_and_projects_declared_successor(
@@ -170,6 +172,54 @@ def test_material_poll_reloads_status_and_projects_declared_successor(
     assert result["after"]["selected_todo"]["todo_id"] == successor["todo_id"]
     assert result["after"]["effective_action"] == "normal_run"
     assert "Validate the exact merged release head." in state.read_text(encoding="utf-8")
+
+
+def test_material_poll_reload_failure_reports_persisted_writeback(
+    tmp_path: Path,
+) -> None:
+    registry, runtime, state = _write_fixture(tmp_path)
+    monitor = _add_monitor(
+        registry,
+        text="Poll a public release target.",
+        target_key="public-release:42",
+        next_due_at="2000-01-01T00:00:00+00:00",
+    )
+    status_payload = collect_status(
+        registry_path=registry,
+        runtime_root_override=str(runtime),
+        scan_roots=[Path(__file__).resolve()],
+        limit=20,
+    )
+
+    def fail_status_reload() -> dict:
+        raise RuntimeError("synthetic status reload failure")
+
+    result = record_quota_monitor_poll(
+        status_payload,
+        goal_id=GOAL_ID,
+        registry_path=registry,
+        execute=True,
+        source="heartbeat",
+        agent_id=AGENT_ID,
+        todo_id=monitor["todo_id"],
+        result_hash="merged-42",
+        material_change=True,
+        next_agent_todo="Validate the persisted material transition successor.",
+        status_reloader=fail_status_reload,
+    )
+
+    assert result["ok"] is True
+    warning = result["status_reload_warning"]
+    assert warning["schema_version"] == "monitor_poll_status_reload_warning_v0"
+    assert warning["error_type"] == "RuntimeError"
+    assert warning["persisted_writeback"] is True
+    assert warning["after_projection_fresh"] is False
+    assert "rerun quota should-run" in warning["recommended_action"]
+    assert result["monitor_event"]["status_reload_warning"] == warning
+    assert result["todo_writeback"]["next_todos"]
+    assert "Validate the persisted material transition successor." in state.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_todo_help_distinguishes_assignment_from_lifecycle_actor() -> None:

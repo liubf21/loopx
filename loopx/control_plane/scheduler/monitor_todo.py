@@ -84,10 +84,6 @@ def monitor_todo_is_actionable_open(item: dict[str, Any]) -> bool:
     status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
     if status != TODO_STATUS_OPEN:
         return False
-    # Legacy monitor rows may carry resume_when even though observing the
-    # condition is the monitor's job. Do not require the event before polling.
-    if monitor_todo_task_class(item) == TODO_TASK_CLASS_MONITOR:
-        return True
     if normalize_todo_resume_when(item.get("resume_when")):
         return item.get("resume_ready") is True
     return True

@@ -13,6 +13,7 @@ from .benchmark_core import (
     classify_benchmark_artifact_path,
     classify_product_mode_main_table_pair,
 )
+from .benchmark_core.lifecycle import compact_benchmark_live_worker_phase_from_run
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )
@@ -53,6 +54,7 @@ LEDGER_LOGICAL_BACKFILL_FIELDS = (
     "native_goal_verifier_output_forwarded_to_worker",
     "official_feedback_blinded",
     "reward_feedback_forwarded",
+    "benchmark_live_worker_phase",
     "task_setup_preflight",
     "task_staging",
 )
@@ -1076,6 +1078,17 @@ _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
     ),
 }
 
+_SKILLSBENCH_PRE_AGENT_SETUP_FAILURE_CLASSES = frozenset(
+    _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.values()
+)
+
+_SKILLSBENCH_SETUP_PREFLIGHT_REPAIR_ATTRIBUTIONS = {
+    "skillsbench_docker_apt_setup_risk_preflight_blocked",
+    "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked",
+    "skillsbench_verifier_bootstrap_risk_preflight_blocked",
+    "skillsbench_task_source_preflight_blocked",
+}
+
 
 def _skillsbench_pre_agent_setup_failure_class(
     benchmark_run: dict[str, Any],
@@ -1234,6 +1247,20 @@ def _failure_scope(failure_class: str, score: float | int | None, passed: bool |
     if failure_class.startswith("verifier_"):
         return "verifier_or_infra"
     return "runner_or_setup"
+
+
+def _repair_route_failure_class(
+    benchmark_run: dict[str, Any], failure_class: str
+) -> str:
+    if failure_class not in _SKILLSBENCH_PRE_AGENT_SETUP_FAILURE_CLASSES:
+        return failure_class
+    attribution = _compact_text(
+        benchmark_run.get("score_failure_attribution"),
+        limit=120,
+    )
+    if attribution in _SKILLSBENCH_SETUP_PREFLIGHT_REPAIR_ATTRIBUTIONS:
+        return attribution
+    return failure_class
 
 
 def _repair_route(
@@ -1912,7 +1939,7 @@ def build_benchmark_run_ledger_entry(
         else (first_success_round is not None)
     )
     repair_route = _repair_route(
-        failure_class,
+        _repair_route_failure_class(benchmark_run, failure_class),
         failure_scope,
         agent_model=agent_model,
         round_success_observed=round_success_observed,
@@ -2139,6 +2166,9 @@ def build_benchmark_run_ledger_entry(
     )
     if operator_simulator_run:
         entry["operator_simulator_run"] = operator_simulator_run
+    live_worker_phase = compact_benchmark_live_worker_phase_from_run(benchmark_run)
+    if live_worker_phase:
+        entry["benchmark_live_worker_phase"] = live_worker_phase
     attempt_accounting = (
         benchmark_run.get("attempt_accounting")
         if isinstance(benchmark_run.get("attempt_accounting"), dict)
@@ -2366,7 +2396,10 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
         normalized["arm_id"] = resolved_arm
     normalized["benchmark_id"] = benchmark_id
     repair_route = _repair_route(
-        _compact_text(normalized.get("failure_class"), limit=120),
+        _repair_route_failure_class(
+            normalized,
+            _compact_text(normalized.get("failure_class"), limit=120),
+        ),
         _compact_text(normalized.get("failure_scope"), limit=80),
         agent_model=_compact_text(normalized.get("agent_model"), limit=120),
         round_success_observed=normalized.get("round_success_observed") is True
@@ -2403,6 +2436,11 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
     else:
         for key in ("archive_state", "archive_reason", "archive_batch_id", "archived_at"):
             normalized.pop(key, None)
+    live_worker_phase = compact_benchmark_live_worker_phase_from_run(normalized)
+    if live_worker_phase:
+        normalized["benchmark_live_worker_phase"] = live_worker_phase
+    else:
+        normalized.pop("benchmark_live_worker_phase", None)
     refs = normalized.get("artifact_refs")
     if isinstance(refs, dict):
         safe_refs: dict[str, str] = {}

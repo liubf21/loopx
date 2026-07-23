@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import ast
 import asyncio
+import inspect
 import json
 import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +25,11 @@ from scripts.skillsbench_automation_loop import (
     DOCKER_APT_RETRY_BEGIN,
     _effective_setup_only_stage_timeout_sec,
     _public_runner_config,
+    _write_public_runner_lifecycle_receipt,
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
+    run_benchflow_case,
     stage_task_for_sandbox,
 )
 
@@ -155,6 +160,111 @@ def test_setup_only_preflight_projects_incremental_public_stages() -> None:
     assert all(snapshot["raw_logs_recorded"] is False for snapshot in snapshots)
 
 
+def test_formal_run_lifecycle_receipt_projects_live_worker_without_private_logs(
+    tmp_path: Path,
+) -> None:
+    plan = {
+        "jobs_dir": str(tmp_path / "jobs"),
+        "job_name": "skillsbench-public-live-phase",
+        "runner_prerequisites": {
+            "schema_version": "skillsbench_runner_prerequisites_v0",
+            "private_detail": "PRIVATE_RAW_RUN_DETAIL_SHOULD_NOT_PROJECT",
+        },
+    }
+
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="benchflow_run_started",
+        worker_status="worker_running",
+    )
+    path = _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="agent_install_started",
+        worker_status="agent_install_started",
+        host_local_acp_status="connecting",
+        agent_install_started=True,
+    )
+
+    assert path is not None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["benchflow_run_stage"] == "agent_install_started"
+    assert payload["benchflow_case_worker_status"] == "agent_install_started"
+    assert payload["host_local_acp_launch_status"] == "connecting"
+    assert payload["benchflow_agent_install_started"] is True
+    assert payload["benchflow_lifecycle_receipt_sequence"] == 2
+    assert payload["benchflow_lifecycle_private_logs_read"] is False
+    live_phase = payload["benchmark_live_worker_phase"]
+    assert live_phase["current_phase"] == "worker_running"
+    assert live_phase["worker_live"] is True
+    assert live_phase["agent_active_observed"] is False
+    assert live_phase["terminal_disposition"] == "open"
+    assert live_phase["public_evidence_only"] is True
+    assert "PRIVATE_RAW_RUN_DETAIL_SHOULD_NOT_PROJECT" not in json.dumps(
+        payload,
+        sort_keys=True,
+    )
+
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        worker_status="agent_active",
+    )
+    completed_path = _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="benchflow_run_completed",
+        worker_status="worker_completed",
+    )
+    assert completed_path is not None
+    completed = json.loads(completed_path.read_text(encoding="utf-8"))
+    completed_phase = completed["benchmark_live_worker_phase"]
+    assert completed_phase["current_phase"] == "agent_active"
+    assert completed_phase["agent_active_observed"] is True
+    assert completed_phase["worker_live"] is False
+    assert completed_phase["terminal_disposition"] == "completed"
+
+
+def test_host_local_acp_callsite_writes_live_phase_receipts() -> None:
+    tree = ast.parse(textwrap.dedent(inspect.getsource(run_benchflow_case)))
+    receipts: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "_write_public_runner_lifecycle_receipt"
+        ):
+            continue
+        receipts.append(
+            {
+                keyword.arg: keyword.value.value
+                for keyword in node.keywords
+                if keyword.arg
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, (str, bool))
+            }
+        )
+
+    for expected in (
+        {
+            "worker_status": "worker_running",
+            "run_stage": "benchflow_run_started",
+        },
+        {
+            "worker_status": "agent_install_started",
+            "run_stage": "agent_install_started",
+            "agent_install_started": True,
+        },
+        {
+            "worker_status": "acp_connecting",
+            "host_local_acp_status": "connecting",
+        },
+        {
+            "worker_status": "acp_connected",
+            "host_local_acp_status": "connected",
+        },
+    ):
+        assert expected in receipts
+
+
 def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     args = parse_args(
         [
@@ -238,6 +348,10 @@ def test_primary_apt_source_mode_skips_mirror_patches() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            not in staged_text
+        )
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
         assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" not in staged_text
 
@@ -265,7 +379,9 @@ def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
         dockerfile = task / "environment" / "Dockerfile"
         dockerfile.parent.mkdir(parents=True)
         dockerfile.write_text(
-            "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y curl\n",
+            "FROM ubuntu:24.04\n\n"
+            "# custom source: http://packages.example.test/repository\n"
+            "RUN apt-get update && apt-get install -y curl\n",
             encoding="utf-8",
         )
         (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
@@ -287,6 +403,19 @@ def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
         assert 'Acquire::http::Pipeline-Depth "0";' in staged_text
         assert 'Acquire::https::Pipeline-Depth "0";' in staged_text
         assert 'Acquire::ForceIPv4 "true";' in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            in staged_text
+        )
+        assert (
+            "http://security.ubuntu.com/ubuntu#https://security.ubuntu.com/ubuntu"
+            in staged_text
+        )
+        assert (
+            "http://deb.debian.org/debian#https://deb.debian.org/debian"
+            in staged_text
+        )
+        assert "http://packages.example.test/repository" in staged_text
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
 
 
@@ -321,8 +450,11 @@ def test_proxy_compatible_apt_transport_covers_each_apt_stage() -> None:
         assert staged_text.count(DOCKER_APT_RETRY_BEGIN) == 1
         runtime_stage = staged_text.index("FROM ubuntu:24.04 AS runtime")
         transport_config = staged_text.rindex('Acquire::ForceIPv4 "true";')
+        source_upgrade = staged_text.rindex(
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+        )
         apt_update = staged_text.index("RUN apt-get update")
-        assert runtime_stage < transport_config < apt_update
+        assert runtime_stage < source_upgrade < transport_config < apt_update
 
 
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:
@@ -556,6 +688,44 @@ def test_compose_producer_fingerprints_exception_output_without_recording_it() -
     assert raw_stderr not in str(typed)
 
 
+def test_compose_producer_preserves_terminal_cause_from_long_build_output() -> None:
+    raw_failure = (
+        "Docker compose command failed. Stdout:\n"
+        + ("# build output without failure detail\n" * 3000)
+        + "apt-get update failed to fetch http://archive.ubuntu.com/index: "
+        "407 Proxy Authentication Required at /private/job\n"
+    )
+
+    class FakeComposeEnvironment:
+        async def _run_docker_compose_build(self) -> None:
+            raise RuntimeError(raw_failure)
+
+    environment = FakeComposeEnvironment()
+    restore = install_skillsbench_compose_typed_cause_boundary(environment)
+    assert restore is not None
+
+    async def invoke() -> None:
+        await environment._run_docker_compose_build()
+
+    with pytest.raises(SkillsBenchComposeCommandFailure) as error:
+        asyncio.run(invoke())
+
+    typed = error.value
+    serialized = json.dumps(typed.fingerprint, sort_keys=True)
+    assert typed.fingerprint["apt_failure_subtype"] == (
+        "proxy_authentication_required"
+    )
+    assert typed.fingerprint["terminal_failure_reason_codes"] == [
+        "proxy_authentication_required",
+        "apt_fetch_failed",
+    ]
+    assert typed.fingerprint["retryability"] == "non_retryable"
+    assert typed.fingerprint["error_len_bucket"] == "2000_plus"
+    assert raw_failure not in serialized
+    assert "/private/job" not in serialized
+    assert "archive.ubuntu.com" not in serialized
+
+
 @pytest.mark.parametrize(
     ("message", "subtype"),
     [
@@ -765,6 +935,21 @@ def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
         (
             "apt update failed to fetch index: Certificate verification failed",
             "tls_or_certificate",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: 407 Proxy Authentication Required",
+            "proxy_authentication_required",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: HTTP/1.1 403 Forbidden",
+            "http_forbidden",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: 470 status code 470",
+            "http_client_error",
             "non_retryable",
         ),
         (
