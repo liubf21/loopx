@@ -832,15 +832,6 @@ accumulates while the agent frontier is empty, follow
 `autonomous_replan_required`: create and claim a concrete runnable agent todo,
 then record `runnable_todo_set`. Only authoritative terminal-closure evidence
 may replace that todo writeback with explicit no-follow-up.
-Terminal PR state alone does not complete a review reminder because post-merge
-review may still be intentional. When the owner explicitly says that an exact
-review is complete, the kernel records a typed `pr-review-ack` receipt binding
-the exact goal, todo revision, bound agent, and GitHub PR. Reconcile it through
-the shared `pr-review-reconcile` command, either explicitly or from a due
-`continuous_monitor`; do not attach provider reads to quota projection. Missing,
-stale, unsupported, or unavailable provider evidence leaves the reminder open.
-See `docs/project-agent-todo-contract.md` for the operator command and receipt
-contract.
 `successor_todo_ids` records lineage only: linking successors does not suspend
 an open parent. When splitting a parent into explicit successors, decide whether
 the parent still has an independent immediate action. If it does not, explicitly
