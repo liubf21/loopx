@@ -592,6 +592,12 @@ def handle_quota_command(
                 next_claimed_by=args.next_claimed_by,
                 scheduler_execution_context=scheduler_context,
                 operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+                status_reloader=lambda: collect_status(
+                    registry_path=registry_path,
+                    runtime_root_override=runtime_root_arg,
+                    scan_roots=scan_roots,
+                    limit=status_limit,
+                ),
             )
         elif args.quota_command in {"scheduler-ack", "scheduler-ack-current"}:
             if not args.goal_id:

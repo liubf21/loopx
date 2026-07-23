@@ -43,7 +43,7 @@ from .history import (
 )
 from .control_plane.runtime.local_state_write_correctness import build_local_state_write_correctness_dry_run_packet
 from .paths import resolve_runtime_root
-from .control_plane.goals.goal_vision import normalize_goal_vision_packet
+from .control_plane.goals.goal_vision import normalize_goal_vision_update
 from .control_plane.goals.goal_frontier import latest_agent_vision_from_runs
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
@@ -822,6 +822,7 @@ def refresh_state_run(
     autonomous_replan_recorded: bool = False,
     repair_delta_kinds: list[str] | None = None,
     agent_vision_packet: dict[str, Any] | None = None,
+    merge_agent_vision_patch: bool = False,
     vision_unchanged_reason: str | None = None,
     dry_run: bool,
     sync_global: bool = True,
@@ -919,21 +920,20 @@ def refresh_state_run(
     if normalized_progress_scope == GOAL_PROGRESS_SCOPE:
         if normalized_agent_lane:
             raise ValueError("--agent-lane requires --progress-scope agent_lane")
-    agent_vision: dict[str, Any] | None = None
     if (agent_vision_packet is not None or vision_unchanged_reason) and not normalized_agent_id:
         raise ValueError("vision writeback requires --agent-id")
-    if agent_vision_packet is not None:
-        agent_vision = normalize_goal_vision_packet(
-            agent_vision_packet,
-            goal_id=safe_goal_id,
-            agent_id=normalized_agent_id or None,
-        )
     normalized_vision_unchanged_reason = normalize_vision_unchanged_reason(
         vision_unchanged_reason
     )
+    agent_vision: dict[str, Any] | None = None
     existing_agent_vision: dict[str, Any] | None = None
     autonomous_replan_frontier_identity: str | None = None
-    if normalized_agent_id and normalized_vision_unchanged_reason:
+    existing_runs: list[dict[str, Any]] = []
+    if normalized_agent_id and (
+        agent_vision_packet is not None
+        or normalized_vision_unchanged_reason
+        or autonomous_replan_recorded
+    ):
         existing_runs, _ = load_index(
             runtime_root / "goals" / safe_goal_id / "runs" / "index.jsonl"
         )
@@ -950,10 +950,16 @@ def refresh_state_run(
             goal_id=safe_goal_id,
             agent_id=normalized_agent_id,
         )
-    if autonomous_replan_recorded:
-        existing_runs, _ = load_index(
-            runtime_root / "goals" / safe_goal_id / "runs" / "index.jsonl"
+    if agent_vision_packet is not None:
+        agent_vision = normalize_goal_vision_update(
+            agent_vision_packet,
+            goal_id=safe_goal_id,
+            agent_id=normalized_agent_id or None,
+            existing_agent_vision=existing_agent_vision,
+            merge_patch=merge_agent_vision_patch,
+            require_path_delta_for_durable_change=autonomous_replan_recorded,
         )
+    if autonomous_replan_recorded:
         newest_first_runs = [
             run
             for _, run in sorted(

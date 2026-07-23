@@ -432,9 +432,20 @@ self-repair fallback. Agents should write a bounded vision patch when:
   it.
 
 The inline flags keep the common path small. A role can update only the fields
-it knows, while the CLI still enforces field budgets and projects the resulting
-`agent_vision` through status/quota. JSON packets are for generated patches,
-tests, or multi-field updates where a file is clearer than a long command.
+it knows: inline writes merge those fields into that agent's latest active
+vision, preserving omitted durable mainline fields and the current state. A
+todo, PR, capability, or monitor wait should normally update its own todo plus
+`replan_trigger_summary` or `last_patch_summary`; it must not replace the
+role's broader `vision_summary` merely because that dependency is current.
+
+JSON packets are complete generated updates. During
+`--autonomous-replan-recorded`, changing an existing `vision_summary`,
+`role_scope`, `acceptance_summary`, or `advancement_policy` requires a
+`goal_path_delta_v0` with `outcome=replan`, regardless of whether the update
+arrived through JSON or inline flags. This keeps a real mainline change
+possible while making the prior assumption, observed reality, and
+retained/changed/stopped route machine-auditable. Unchanged full packets,
+non-replan inline edits, and initial baselines do not need a path delta.
 
 When no patch is needed, the agent should still close a required checkpoint with
 `--vision-unchanged-reason`. That reason is per-agent and must explain why the

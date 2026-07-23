@@ -119,12 +119,14 @@ def _inline_agent_vision_packet(args: argparse.Namespace) -> dict[str, object] |
         raise ValueError("inline agent vision requires --agent-id")
     if not patch:
         raise ValueError("inline agent vision requires at least one --vision-* patch field")
-    return {
+    packet: dict[str, object] = {
         "schema_version": "goal_vision_replan_contract_v0",
-        "state": state or "vision_patch_proposed",
         "vision_patch": patch,
         "todo_delta": todo_delta,
     }
+    if state:
+        packet["state"] = state
+    return packet
 
 
 def register_project_lifecycle_commands(
@@ -210,8 +212,9 @@ def register_project_lifecycle_commands(
     refresh_state_parser.add_argument(
         "--agent-vision-json",
         help=(
-            "Path to a goal_vision_replan_contract_v0 JSON packet. The CLI enforces "
-            "per-field and total vision budgets before recording it."
+            "Path to a complete generated goal_vision_replan_contract_v0 update. "
+            "The CLI enforces budgets; any autonomous replan that changes durable "
+            "mainline fields requires goal_path_delta_v0."
         ),
     )
     refresh_state_parser.add_argument(
@@ -225,7 +228,10 @@ def register_project_lifecycle_commands(
     )
     refresh_state_parser.add_argument(
         "--vision-summary",
-        help="Inline bounded vision_summary for a normal refresh-state vision patch.",
+        help=(
+            "Inline bounded vision_summary for a field-level patch merged into the "
+            "current agent's latest active vision."
+        ),
     )
     refresh_state_parser.add_argument(
         "--vision-role-scope",
@@ -463,6 +469,7 @@ def handle_project_lifecycle_command(
     fmt = output_format(args)
     if args.command == "refresh-state":
         agent_vision_packet: dict[str, object] | None = None
+        merge_agent_vision_patch = False
         try:
             inline_agent_vision_packet = _inline_agent_vision_packet(args)
             if args.agent_vision_json and inline_agent_vision_packet:
@@ -475,6 +482,7 @@ def handle_project_lifecycle_command(
                 )
             elif inline_agent_vision_packet:
                 agent_vision_packet = inline_agent_vision_packet
+                merge_agent_vision_patch = True
         except Exception as exc:
             payload = {
                 "ok": False,
@@ -511,6 +519,7 @@ def handle_project_lifecycle_command(
                 autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
                 repair_delta_kinds=args.repair_delta_kinds,
                 agent_vision_packet=agent_vision_packet,
+                merge_agent_vision_patch=merge_agent_vision_patch,
                 vision_unchanged_reason=args.vision_unchanged_reason,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),

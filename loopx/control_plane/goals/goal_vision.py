@@ -25,6 +25,12 @@ GOAL_VISION_FIELD_LIMITS: dict[str, int] = {
     "last_patch_summary": 240,
 }
 GOAL_VISION_TOTAL_LIMIT = 1200
+GOAL_VISION_DURABLE_FIELDS = (
+    "vision_summary",
+    "role_scope",
+    "acceptance_summary",
+    "advancement_policy",
+)
 GOAL_PATH_DELTA_OUTCOMES = frozenset(
     {"continue", "replan", "wait", "no_change", "ask_human", "stop"}
 )
@@ -368,4 +374,70 @@ def normalize_goal_vision_packet(
     }
     if path_delta:
         normalized["path_delta"] = path_delta
+    return normalized
+
+
+def normalize_goal_vision_update(
+    packet: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    existing_agent_vision: dict[str, Any] | None,
+    merge_patch: bool,
+    require_path_delta_for_durable_change: bool,
+) -> dict[str, Any]:
+    """Normalize one full replacement or field-level vision patch."""
+
+    update_packet = dict(packet)
+    existing = (
+        existing_agent_vision if isinstance(existing_agent_vision, dict) else {}
+    )
+    if merge_patch and existing:
+        existing_patch = (
+            existing.get("vision_patch")
+            if isinstance(existing.get("vision_patch"), dict)
+            else {}
+        )
+        incoming_patch = (
+            packet.get("vision_patch")
+            if isinstance(packet.get("vision_patch"), dict)
+            else packet
+        )
+        update_packet["vision_patch"] = {
+            **existing_patch,
+            **incoming_patch,
+        }
+        if not str(packet.get("state") or "").strip():
+            update_packet["state"] = existing.get("state")
+
+    normalized = normalize_goal_vision_packet(
+        update_packet,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    if not require_path_delta_for_durable_change or not existing:
+        return normalized
+
+    existing_patch = (
+        existing.get("vision_patch")
+        if isinstance(existing.get("vision_patch"), dict)
+        else {}
+    )
+    normalized_patch = normalized["vision_patch"]
+    changed_fields = [
+        field
+        for field in GOAL_VISION_DURABLE_FIELDS
+        if existing_patch.get(field) != normalized_patch.get(field)
+    ]
+    path_delta = (
+        normalized.get("path_delta")
+        if isinstance(normalized.get("path_delta"), dict)
+        else {}
+    )
+    if changed_fields and path_delta.get("outcome") != "replan":
+        raise ValueError(
+            "autonomous agent vision replan changes durable fields "
+            f"{', '.join(changed_fields)}; provide goal_path_delta_v0 with "
+            "outcome=replan so the mainline change is explicit"
+        )
     return normalized
