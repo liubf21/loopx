@@ -171,7 +171,7 @@ def register_pr_gate_reconciliation_command(
         "pr-review-ack",
         help=(
             "Persist one typed owner acknowledgement receipt with an exact "
-            "goal/todo/agent/GitHub PR binding for heartbeat reconciliation."
+            "goal/todo/agent/GitHub PR binding for later reconciliation."
         ),
     )
     ack_parser.add_argument(

@@ -4,18 +4,13 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ...control_plane.todos.contract import (
-    TODO_TASK_CLASS_USER_ACTION,
-    normalize_todo_bound_agent,
     normalize_todo_decision_scope,
 )
 from ...control_plane.todos.projection import todo_item_task_class
 from ...todos import complete_goal_todo, list_goal_todos
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
-from .pr_review_ack import (
-    build_issue_fix_pr_review_binding,
-    validate_issue_fix_pr_review_ack_receipt,
-)
+from .pr_review_ack import resolve_issue_fix_pr_review_context
 
 
 PR_GATE_RECONCILIATION_SCHEMA_VERSION = "issue_fix_pr_gate_reconciliation_v0"
@@ -34,22 +29,6 @@ def _validate_merge_gate(todo: Mapping[str, Any], *, pr_number: int) -> None:
         raise ValueError(
             "PR gate decision_scope must match "
             f"direction:action:{expected_scope_key}"
-        )
-
-
-def _validate_review_action(
-    todo: Mapping[str, Any],
-    *,
-    agent_id: str,
-) -> None:
-    if str(todo.get("role") or "") != "user":
-        raise ValueError("PR review reconciliation requires a user todo")
-    if todo_item_task_class(dict(todo)) != TODO_TASK_CLASS_USER_ACTION:
-        raise ValueError("PR review reconciliation requires task_class=user_action")
-    bound_agent = normalize_todo_bound_agent(todo.get("bound_agent"))
-    if bound_agent and bound_agent != agent_id:
-        raise ValueError(
-            "PR review reconciliation agent_id must match the user_action bound_agent"
         )
 
 
@@ -204,6 +183,46 @@ def reconcile_issue_fix_pr_review(
     execute: bool = False,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
+    context = resolve_issue_fix_pr_review_context(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        project=project,
+        url=url,
+        ack_receipt=ack_receipt,
+    )
+    context_status = str(context.get("status") or "ack_receipt_invalid")
+    if context_status == "current" and ack_receipt is None:
+        context_status = "ack_receipt_missing"
+    binding = context.get("binding")
+    if context_status != "matched":
+        return {
+            "ok": True,
+            "schema_version": PR_REVIEW_RECONCILIATION_SCHEMA_VERSION,
+            "goal_id": goal_id,
+            "todo_id": todo_id,
+            "pr": None,
+            "binding": binding,
+            "ack_receipt_id": (
+                ack_receipt.get("receipt_id")
+                if isinstance(ack_receipt, Mapping)
+                else None
+            ),
+            "ack_receipt_status": context_status,
+            "terminal": False,
+            "owner_acknowledged": False,
+            "execute": execute,
+            "would_reconcile": False,
+            "write_performed": False,
+            "already_reconciled": context_status == "todo_not_open",
+            "external_read_performed": False,
+            "external_write_performed": False,
+            "private_material_read": False,
+            "raw_provider_payload_recorded": False,
+            "skip_reason": context_status,
+        }
+
     lifecycle = build_issue_fix_pr_lifecycle_monitor_packet(
         url=url,
         provider_payload=provider_payload,
@@ -218,27 +237,24 @@ def reconcile_issue_fix_pr_review(
     if not isinstance(number, int) or number <= 0:
         raise ValueError("PR lifecycle observation requires a numeric PR")
 
-    todo = _pr_lifecycle_todo(
+    current = resolve_issue_fix_pr_review_context(
         registry_path=registry_path,
         goal_id=goal_id,
         todo_id=todo_id,
-        project=project,
-    )
-    _validate_review_action(todo, agent_id=agent_id)
-
-    binding = build_issue_fix_pr_review_binding(
-        goal_id=goal_id,
-        todo_id=todo_id,
         agent_id=agent_id,
+        project=project,
         url=url,
+        ack_receipt=ack_receipt,
     )
-    ack_valid, ack_status = validate_issue_fix_pr_review_ack_receipt(
-        ack_receipt,
-        binding=binding,
-    )
+    ack_status = str(current.get("status") or "ack_receipt_invalid")
+    ack_valid = ack_status == "matched"
+    todo = current.get("todo")
+    if not isinstance(todo, Mapping):
+        ack_valid = False
+    binding = current.get("binding") or binding
     state = str(observation.get("state") or "UNKNOWN").upper()
     terminal = state in TERMINAL_PR_STATES
-    already_reconciled = bool(todo.get("done")) or str(todo.get("status") or "") == "done"
+    already_reconciled = ack_status == "todo_not_open"
     receipt: dict[str, Any] = {
         "ok": True,
         "schema_version": PR_REVIEW_RECONCILIATION_SCHEMA_VERSION,
@@ -272,11 +288,11 @@ def reconcile_issue_fix_pr_review(
         "private_material_read": False,
         "raw_provider_payload_recorded": False,
     }
-    if not terminal:
-        receipt["skip_reason"] = "pr_not_terminal"
-        return receipt
     if not ack_valid:
         receipt["skip_reason"] = ack_status
+        return receipt
+    if not terminal:
+        receipt["skip_reason"] = "pr_not_terminal"
         return receipt
     if not execute:
         receipt["skip_reason"] = "execute_required"

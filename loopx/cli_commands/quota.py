@@ -21,9 +21,6 @@ from ..control_plane.quota.live_decision import build_live_quota_should_run_deci
 from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
-from ..capabilities.issue_fix.pr_review_pre_quota import (
-    reconcile_issue_fix_pr_reviews_before_quota,
-)
 from ..presentation.renderers.quota_event_markdown import (
     render_quota_monitor_poll_markdown,
     render_quota_slot_preview_markdown,
@@ -365,7 +362,6 @@ def handle_quota_command(
     heartbeat_receipt_existing: dict[str, object] | None = None
     heartbeat_receipt_ready = False
     heartbeat_stall_observation = "not_evaluated"
-    pre_quota_reconciliation: dict[str, object] | None = None
     try:
         if bool(getattr(args, "turn_envelope", False)) and args.quota_command != "should-run":
             raise ValueError("--turn-envelope is only valid with `quota should-run`")
@@ -387,35 +383,6 @@ def handle_quota_command(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
         )
-        if (
-            args.quota_command == "should-run"
-            and heartbeat_turn_id
-            and bool(args.codex_app)
-            and args.goal_id
-            and args.agent_id
-        ):
-            try:
-                pre_quota_reconciliation = (
-                    reconcile_issue_fix_pr_reviews_before_quota(
-                        registry_path=registry_path,
-                        runtime_root=runtime_root,
-                        runtime_root_arg=runtime_root_arg,
-                        goal_id=args.goal_id,
-                        agent_id=args.agent_id,
-                        project=None,
-                        available_capabilities=args.available_capabilities or [],
-                    )
-                )
-            except Exception as exc:
-                pre_quota_reconciliation = {
-                    "ok": False,
-                    "schema_version": "issue_fix_pr_review_pre_quota_v0",
-                    "mode": "heartbeat_pre_quota",
-                    "status": "hook_error",
-                    "error_type": type(exc).__name__,
-                    "write_performed": False,
-                    "quota_decision_mutated": False,
-                }
         operator_inbox_urgency_projector = (
             build_lark_operator_inbox_urgency_projector(
                 runtime_root_arg=runtime_root,
@@ -424,10 +391,6 @@ def handle_quota_command(
         status_payload = None
         cache_metadata = None
         use_projection_cache = bool(getattr(args, "use_projection_cache", False))
-        if pre_quota_reconciliation and pre_quota_reconciliation.get(
-            "write_performed"
-        ):
-            use_projection_cache = False
         write_projection_cache_enabled = bool(getattr(args, "write_projection_cache", False))
         projection_cache_ttl_seconds = int(getattr(args, "projection_cache_ttl_seconds", 120))
         if use_projection_cache:
@@ -485,8 +448,6 @@ def handle_quota_command(
                 scheduler_execution_context=scheduler_context,
                 operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
-            if pre_quota_reconciliation is not None:
-                payload["pre_quota_reconciliation"] = pre_quota_reconciliation
             if heartbeat_turn_id:
                 heartbeat_receipt_existing = _find_heartbeat_receipt(
                     runtime_root,
@@ -551,10 +512,6 @@ def handle_quota_command(
                             scheduler_execution_context=scheduler_context,
                             operator_inbox_urgency_projector=operator_inbox_urgency_projector,
                         )
-                        if pre_quota_reconciliation is not None:
-                            payload["pre_quota_reconciliation"] = (
-                                pre_quota_reconciliation
-                            )
                         cache_metadata = None
                         heartbeat_stall_observation = (
                             "replayed" if poll.get("replayed") else "appended"
