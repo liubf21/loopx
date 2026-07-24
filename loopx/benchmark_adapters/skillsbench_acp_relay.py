@@ -99,6 +99,7 @@ SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
 CODEX_EXEC_TRANSPORT_RETRY_LIMIT = 1
 CODEX_EXEC_SESSION_ROLLOVER_LIMIT = 1
+CODEX_EXEC_SAME_SESSION_CONTINUATION_LIMIT = 1
 
 
 def _loopx_turn_local_session_root(
@@ -466,6 +467,34 @@ def _codex_exec_transport_retry_allowed(
     )
 
 
+def _codex_exec_same_session_continuation_allowed(
+    *,
+    category: str,
+    bridge_summary_path: Path | None,
+    continuation_count: int,
+    thread_present: bool,
+    final_message_present: bool,
+    turn_deadline: float | None,
+) -> bool:
+    if (
+        continuation_count >= CODEX_EXEC_SAME_SESSION_CONTINUATION_LIMIT
+        or category not in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES
+        or not thread_present
+        or final_message_present
+        or bridge_summary_path is None
+        or turn_deadline is not None
+        and time.monotonic() >= turn_deadline
+        or _bridge_summary_has_inflight_operation(bridge_summary_path)
+    ):
+        return False
+    receipt = _bridge_summary_task_progress_receipt(bridge_summary_path)
+    return bool(
+        receipt.get("task_facing_operation_count", 0) > 0
+        and receipt.get("task_facing_success_count", 0) > 0
+        and receipt.get("raw_material_recorded") is False
+    )
+
+
 def _codex_exec_session_rollover_allowed(
     *,
     category: str,
@@ -484,6 +513,21 @@ def _codex_exec_session_rollover_allowed(
             final_message_present=final_message_present,
             turn_deadline=turn_deadline,
         )
+    )
+
+
+def _codex_exec_same_session_continuation_prompt() -> str:
+    return (
+        "Continue the same bounded task in this thread after the recoverable "
+        "host interruption.\n"
+        "- Preserve and inspect the progress already made in this thread and "
+        "the current workspace.\n"
+        "- Do not replay completed operations or restart the task from its "
+        "original prompt.\n"
+        "- Complete the next necessary task-facing work, validate it from "
+        "visible task context, then finish this Turn.\n"
+        "- Do not use or request official verifier, reward, pass/fail, hidden-test, "
+        "or gold-answer feedback."
     )
 
 
@@ -728,6 +772,7 @@ class SkillsBenchLocalAcpRelay:
         _turn_deadline: float | None = None,
         _transport_retry_count: int = 0,
         _session_rollover_index: int = 0,
+        _same_session_continuation_count: int = 0,
     ) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
@@ -787,7 +832,6 @@ class SkillsBenchLocalAcpRelay:
             resumable_loopx_turn = bool(
                 _bypass_loopx_turn
                 and self._config.loopx_turn_agent_cli
-                and self._config.loopx_turn_max_turns > 1
             )
             resume_session_id = (
                 str(session.get("_loopx_turn_codex_thread_id") or "")
@@ -1054,14 +1098,50 @@ class SkillsBenchLocalAcpRelay:
                             and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                         ):
                             self._terminate_codex_process(proc)
+                            stdout_text = (
+                                stdout_path.read_text(
+                                    encoding="utf-8", errors="replace"
+                                )
+                                if stdout_path.exists()
+                                else ""
+                            )
+                            stderr_text = (
+                                stderr_path.read_text(
+                                    encoding="utf-8", errors="replace"
+                                )
+                                if stderr_path.exists()
+                                else ""
+                            )
+                            if resumable_loopx_turn and not resume_session_id:
+                                observed_session_id = (
+                                    codex_cli_session_id_from_jsonl(stdout_text)
+                                )
+                                if observed_session_id:
+                                    session["_loopx_turn_codex_thread_id"] = (
+                                        observed_session_id
+                                    )
+                            continuation_scheduled = (
+                                _codex_exec_same_session_continuation_allowed(
+                                    category="codex_exec_bridge_idle_timeout",
+                                    bridge_summary_path=bridge_summary_path,
+                                    continuation_count=(
+                                        _same_session_continuation_count
+                                    ),
+                                    thread_present=bool(
+                                        session.get("_loopx_turn_codex_thread_id")
+                                    ),
+                                    final_message_present=output_path.exists(),
+                                    turn_deadline=_turn_deadline,
+                                )
+                            )
                             self._publish_remote_bridge_agent_operations_trace(
                                 bridge_summary_path=bridge_summary_path,
                             )
                             self._publish_codex_exec_failure_trace(
                                 stage="bridge_idle_timeout",
                                 returncode=124,
-                                stdout_text="",
-                                stderr_text="codex_exec_bridge_idle_timeout\n",
+                                stdout_text=stdout_text,
+                                stderr_text=stderr_text,
                                 final_message_present=output_path.exists(),
                                 final_message_bytes=(
                                     output_path.stat().st_size
@@ -1069,7 +1149,65 @@ class SkillsBenchLocalAcpRelay:
                                     else 0
                                 ),
                                 failure_category="codex_exec_bridge_idle_timeout",
+                                same_session_continuation_index=(
+                                    _same_session_continuation_count
+                                ),
+                                same_session_continuation_scheduled=(
+                                    continuation_scheduled
+                                ),
                             )
+                            if continuation_scheduled:
+                                self._terminate_bridge_server_process(
+                                    bridge_server_proc
+                                )
+                                bridge_server_proc = None
+                                next_continuation_index = (
+                                    _same_session_continuation_count + 1
+                                )
+                                try:
+                                    response = self._run_codex(
+                                        _codex_exec_same_session_continuation_prompt(),
+                                        session=session,
+                                        session_id=session_id,
+                                        stdout=stdout,
+                                        _bypass_loopx_turn=_bypass_loopx_turn,
+                                        _turn_deadline=_turn_deadline,
+                                        _transport_retry_count=0,
+                                        _session_rollover_index=(
+                                            _session_rollover_index
+                                        ),
+                                        _same_session_continuation_count=(
+                                            next_continuation_index
+                                        ),
+                                    )
+                                except (RuntimeError, TimeoutError):
+                                    self._publish_codex_exec_same_session_continuation_trace(
+                                        stage="failed",
+                                        continuation_index=(
+                                            next_continuation_index
+                                        ),
+                                        thread_present=bool(
+                                            session.get(
+                                                "_loopx_turn_codex_thread_id"
+                                            )
+                                        ),
+                                    )
+                                    raise
+                                continuation_succeeded = not response.startswith(
+                                    RECOVERABLE_CODEX_TURN_FAILURE_PREFIX
+                                )
+                                self._publish_codex_exec_same_session_continuation_trace(
+                                    stage=(
+                                        "completed"
+                                        if continuation_succeeded
+                                        else "failed"
+                                    ),
+                                    continuation_index=next_continuation_index,
+                                    thread_present=bool(
+                                        session.get("_loopx_turn_codex_thread_id")
+                                    ),
+                                )
+                                return response
                             return _recoverable_codex_turn_failure_message(
                                 "codex_exec_bridge_idle_timeout"
                             )
@@ -1200,6 +1338,9 @@ class SkillsBenchLocalAcpRelay:
                         _turn_deadline=_turn_deadline,
                         _transport_retry_count=_transport_retry_count + 1,
                         _session_rollover_index=_session_rollover_index,
+                        _same_session_continuation_count=(
+                            _same_session_continuation_count
+                        ),
                     )
                 if session_rollover_scheduled:
                     original_prompt = str(
@@ -1228,6 +1369,9 @@ class SkillsBenchLocalAcpRelay:
                                 CODEX_EXEC_TRANSPORT_RETRY_LIMIT
                             ),
                             _session_rollover_index=next_rollover_index,
+                            _same_session_continuation_count=(
+                                _same_session_continuation_count
+                            ),
                         )
                     except (RuntimeError, TimeoutError):
                         self._publish_codex_exec_session_rollover_trace(
@@ -3255,6 +3399,8 @@ raise SystemExit(proc.returncode)
         retry_scheduled: bool = False,
         session_rollover_index: int = 0,
         session_rollover_scheduled: bool = False,
+        same_session_continuation_index: int = 0,
+        same_session_continuation_scheduled: bool = False,
     ) -> None:
         if not self._config.worker_public_trace_dir:
             return
@@ -3291,6 +3437,12 @@ raise SystemExit(proc.returncode)
                     0, int(session_rollover_index or 0)
                 ),
                 "session_rollover_scheduled": bool(session_rollover_scheduled),
+                "same_session_continuation_index": max(
+                    0, int(same_session_continuation_index or 0)
+                ),
+                "same_session_continuation_scheduled": bool(
+                    same_session_continuation_scheduled
+                ),
                 "returncode": (
                     returncode
                     if isinstance(returncode, int)
@@ -3307,6 +3459,53 @@ raise SystemExit(proc.returncode)
                 "raw_trajectory_recorded": False,
                 "credential_values_recorded": False,
                 "host_paths_recorded": False,
+            },
+            "boundary": {
+                "raw_command_recorded": False,
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "raw_task_text_recorded": False,
+                "raw_logs_recorded": False,
+                "raw_trajectory_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+                "remote_paths_recorded": False,
+                "upload_performed": False,
+                "submit_performed": False,
+            },
+        }
+        self._write_worker_public_trace(trace)
+
+    def _publish_codex_exec_same_session_continuation_trace(
+        self,
+        *,
+        stage: str,
+        continuation_index: int,
+        thread_present: bool,
+    ) -> None:
+        if not self._config.worker_public_trace_dir:
+            return
+        safe_stage = str(stage or "failed").strip().lower()
+        if safe_stage not in {"completed", "failed"}:
+            safe_stage = "failed"
+        trace = {
+            "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+            "ok": safe_stage == "completed",
+            "route": self._config.route,
+            "trace_kind": "codex_exec_same_session_continuation",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "codex_exec_same_session_continuation": {
+                "schema_version": (
+                    "skillsbench_codex_exec_same_session_continuation_v0"
+                ),
+                "stage": safe_stage,
+                "continuation_index": max(1, int(continuation_index or 1)),
+                "thread_present": bool(thread_present),
+                "shared_sequence_deadline_preserved": True,
+                "original_prompt_replayed": False,
+                "thread_ids_recorded": False,
+                "raw_task_text_recorded": False,
             },
             "boundary": {
                 "raw_command_recorded": False,

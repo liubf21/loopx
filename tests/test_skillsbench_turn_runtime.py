@@ -1004,6 +1004,232 @@ print(json.dumps({"type": "thread.started", "thread_id": "thread-fixture-001"}))
     assert not private_cwd_root.exists()
 
 
+def test_codex_exec_same_session_continuation_requires_safe_progress(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "bridge-summary.jsonl"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "record_phase": "complete",
+                "operation": "run_command",
+                "task_facing_operation": True,
+                "success": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=0,
+        thread_present=True,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=acp_relay.CODEX_EXEC_SAME_SESSION_CONTINUATION_LIMIT,
+        thread_present=True,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=0,
+        thread_present=False,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=0,
+        thread_present=True,
+        final_message_present=True,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=0,
+        thread_present=True,
+        final_message_present=False,
+        turn_deadline=time.monotonic() - 1,
+    )
+
+    summary_path.write_text(
+        json.dumps(
+            {
+                "record_phase": "start",
+                "operation": "run_command",
+                "task_facing_operation": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert not acp_relay._codex_exec_same_session_continuation_allowed(
+        category="codex_exec_bridge_idle_timeout",
+        bridge_summary_path=summary_path,
+        continuation_count=0,
+        thread_present=True,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+
+
+def test_skillsbench_single_turn_codex_exec_resumes_progressful_idle_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    invocation_log = tmp_path / "invocations.jsonl"
+    fake_codex = tmp_path / "fake-codex"
+    fake_codex.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import sys
+import time
+
+log_path = pathlib.Path(os.environ["FAKE_CODEX_INVOCATION_LOG"])
+attempt = len(log_path.read_text().splitlines()) + 1 if log_path.exists() else 1
+prompt = sys.stdin.read()
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps({"argv": sys.argv[1:], "prompt": prompt}) + "\\n")
+if attempt == 1:
+    print(json.dumps({"type": "thread.started", "thread_id": "thread-single-001"}), flush=True)
+    time.sleep(10)
+output_index = sys.argv.index("--output-last-message") + 1
+pathlib.Path(sys.argv[output_index]).write_text("bounded turn complete", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+    monkeypatch.setenv("FAKE_CODEX_INVOCATION_LOG", str(invocation_log))
+    trace_dir = tmp_path / "public-traces"
+    trace_dir.mkdir()
+    relay = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(
+            codex_bin=str(fake_codex),
+            loopx_turn_agent_cli=True,
+            loopx_turn_max_turns=1,
+            remote_command_file_bridge_command="synthetic-bridge",
+            worker_public_trace_dir=str(trace_dir),
+            bridge_idle_timeout_sec=0.5,
+            timeout_sec=30,
+        )
+    )
+    monkeypatch.setattr(
+        relay,
+        "_consume_remote_bridge_for_solver",
+        lambda: {"ready": True},
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_consumption_trace",
+        lambda _probe: None,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_start_json_file_bridge_server",
+        lambda **_kwargs: ("synthetic-agent-bridge", None),
+    )
+
+    def write_progress_summary(**kwargs: Any) -> Path:
+        kwargs["summary_path"].write_text(
+            json.dumps(
+                {
+                    "record_phase": "complete",
+                    "operation": "run_command",
+                    "task_facing_operation": True,
+                    "success": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return kwargs["tmp_path"] / "synthetic-wrapper"
+
+    monkeypatch.setattr(
+        relay,
+        "_write_instrumented_bridge_wrapper",
+        write_progress_summary,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_prompt_with_remote_bridge_packet",
+        lambda prompt, **_kwargs: prompt,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_agent_operations_trace",
+        lambda **_kwargs: None,
+    )
+    session: dict[str, Any] = {"cwd": str(tmp_path), "model": None}
+    private_original_prompt = "private original task prompt fixture"
+
+    response = relay._run_codex(
+        private_original_prompt,
+        session=session,
+        session_id="fixture-session",
+        stdout=SimpleNamespace(write=lambda _value: None, flush=lambda: None),
+        _bypass_loopx_turn=True,
+        _turn_deadline=time.monotonic() + 20,
+    )
+
+    invocations = [json.loads(line) for line in invocation_log.read_text().splitlines()]
+    assert response == "bounded turn complete"
+    assert len(invocations) == 2
+    assert invocations[0]["argv"][:2] == ["exec", "--skip-git-repo-check"]
+    assert "--ephemeral" not in invocations[0]["argv"]
+    assert invocations[1]["argv"][:3] == [
+        "exec",
+        "resume",
+        "--skip-git-repo-check",
+    ]
+    assert "thread-single-001" in invocations[1]["argv"]
+    assert private_original_prompt in invocations[0]["prompt"]
+    assert private_original_prompt not in invocations[1]["prompt"]
+    assert "Continue the same bounded task in this thread" in invocations[1]["prompt"]
+
+    traces = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in trace_dir.glob("*.compact.json")
+    ]
+    failure = next(
+        trace
+        for trace in traces
+        if trace.get("trace_kind") == "codex_exec_process_failure"
+    )
+    assert (
+        failure["codex_exec_process"]["same_session_continuation_scheduled"] is True
+    )
+    continuation = next(
+        trace
+        for trace in traces
+        if trace.get("trace_kind") == "codex_exec_same_session_continuation"
+    )
+    assert continuation["codex_exec_same_session_continuation"] == {
+        "schema_version": "skillsbench_codex_exec_same_session_continuation_v0",
+        "stage": "completed",
+        "continuation_index": 1,
+        "thread_present": True,
+        "shared_sequence_deadline_preserved": True,
+        "original_prompt_replayed": False,
+        "thread_ids_recorded": False,
+        "raw_task_text_recorded": False,
+    }
+    public_trace_text = json.dumps(traces, sort_keys=True)
+    assert private_original_prompt not in public_trace_text
+    assert "thread-single-001" not in public_trace_text
+
+
 def test_codex_exec_transport_retry_requires_no_task_facing_operation(
     tmp_path: Path,
 ) -> None:
