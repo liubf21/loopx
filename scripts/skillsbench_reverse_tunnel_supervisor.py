@@ -17,6 +17,7 @@ import json
 import os
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -89,6 +90,113 @@ def _forward_public_contract(remote_forward: str) -> dict[str, Any]:
         "local_port": parsed["local_port"],
         "raw_forward_recorded": False,
     }
+
+
+def _local_forward_dependency_public_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    parsed = _parse_remote_forward(args.remote_forward)
+    configured = bool(args.local_forward_managed_command)
+    return {
+        "schema_version": "skillsbench_local_forward_dependency_v0",
+        "configured": configured,
+        "state": "not_started" if configured else "not_requested",
+        "local_host_kind": _host_kind(parsed["local_host"]),
+        "local_port": parsed["local_port"],
+        "managed_command_configured": configured,
+        "managed_process_owned": False,
+        "start_attempt_count": 0,
+        "start_success_count": 0,
+        "restart_attempt_limit": max(
+            0,
+            int(args.local_forward_restart_attempts),
+        ),
+        "restart_attempt_count": 0,
+        "restart_success_count": 0,
+        "failure_count": 0,
+        "last_status": "not_started" if configured else "not_requested",
+        "raw_command_recorded": False,
+        "raw_output_recorded": False,
+    }
+
+
+def _local_forward_endpoint_ready(args: argparse.Namespace) -> bool:
+    parsed = _parse_remote_forward(args.remote_forward)
+    try:
+        with socket.create_connection(
+            (parsed["local_host"], parsed["local_port"]),
+            timeout=max(0.05, float(args.local_forward_probe_timeout_sec)),
+        ):
+            return True
+    except OSError:
+        return False
+
+
+def _wait_for_local_forward_endpoint(
+    args: argparse.Namespace,
+    proc: subprocess.Popen[Any],
+) -> tuple[bool, str]:
+    deadline = time.monotonic() + max(
+        0.1,
+        float(args.local_forward_ready_timeout_sec),
+    )
+    while time.monotonic() < deadline:
+        if _local_forward_endpoint_ready(args):
+            return True, "ready"
+        if proc.poll() is not None:
+            return False, "managed_process_exited_before_ready"
+        time.sleep(0.05)
+    return False, "endpoint_ready_timeout"
+
+
+def _start_local_forward_dependency(
+    args: argparse.Namespace,
+    dependency: dict[str, Any],
+    *,
+    previous_proc: subprocess.Popen[Any] | None,
+    restart: bool,
+) -> tuple[subprocess.Popen[Any] | None, bool]:
+    if previous_proc is not None:
+        _stop_process_group(previous_proc, grace_sec=1.0)
+    counter = "restart_attempt_count" if restart else "start_attempt_count"
+    dependency[counter] = int(dependency[counter]) + 1
+    dependency["state"] = "restarting" if restart else "starting"
+    try:
+        command = shlex.split(args.local_forward_managed_command)
+    except ValueError:
+        command = []
+    if not command:
+        dependency["failure_count"] = int(dependency["failure_count"]) + 1
+        dependency["last_status"] = "managed_command_invalid"
+        dependency["state"] = "failed"
+        return None, False
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        dependency["failure_count"] = int(dependency["failure_count"]) + 1
+        dependency["last_status"] = (
+            f"managed_process_launch_failed_{type(exc).__name__[:40]}"
+        )
+        dependency["state"] = "failed"
+        return None, False
+    dependency["managed_process_owned"] = True
+    ready, status = _wait_for_local_forward_endpoint(args, proc)
+    dependency["last_status"] = status
+    if not ready:
+        dependency["failure_count"] = int(dependency["failure_count"]) + 1
+        dependency["state"] = "failed"
+        _stop_process_group(proc, grace_sec=1.0)
+        return None, False
+    success_counter = "restart_success_count" if restart else "start_success_count"
+    dependency[success_counter] = int(dependency[success_counter]) + 1
+    dependency["state"] = "recovered" if restart else "ready"
+    return proc, True
 
 
 def _ssh_base_command(args: argparse.Namespace) -> list[str]:
@@ -1233,6 +1341,9 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "raw_remote_output_recorded": False,
         "private_log_written": False,
         "remote_forward": _forward_public_contract(args.remote_forward),
+        "local_forward_dependency": (
+            _local_forward_dependency_public_contract(args)
+        ),
         "json_bridge": _json_bridge_public_contract(args),
         "codex_bridge": _codex_bridge_public_contract(args),
         "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
@@ -1259,6 +1370,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     checkpoint("starting")
 
     tunnel_proc: subprocess.Popen[Any] | None = None
+    local_forward_proc: subprocess.Popen[Any] | None = None
     json_bridge_proc: subprocess.Popen[Any] | None = None
     codex_bridge_proc: subprocess.Popen[Any] | None = None
     runtime_dir_obj: tempfile.TemporaryDirectory[str] | None = None
@@ -1274,6 +1386,16 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             )
             if tunnel_proc.returncode is not None:
                 payload["tunnel_exit_code"] = tunnel_proc.returncode
+        if local_forward_proc is not None:
+            dependency = payload["local_forward_dependency"]
+            dependency["managed_process_cleanup_status"] = _stop_process_group(
+                local_forward_proc,
+                grace_sec=1.0,
+            )
+            if local_forward_proc.returncode is not None:
+                dependency["managed_process_exit_code"] = (
+                    local_forward_proc.returncode
+                )
         if json_bridge_proc is not None:
             payload["json_bridge"]["server_cleanup_status"] = _stop_process_group(
                 json_bridge_proc,
@@ -1298,6 +1420,25 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
     try:
         payload["stale_forward_cleanup"] = _cleanup_stale_local_forward(args)
+        local_dependency = payload["local_forward_dependency"]
+        if local_dependency["configured"]:
+            if _local_forward_endpoint_ready(args):
+                local_dependency["state"] = "external_ready"
+                local_dependency["last_status"] = "ready"
+            else:
+                local_forward_proc, local_forward_ready = (
+                    _start_local_forward_dependency(
+                        args,
+                        local_dependency,
+                        previous_proc=None,
+                        restart=False,
+                    )
+                )
+                if not local_forward_ready:
+                    payload["first_blocker"] = (
+                        "local_forward_dependency_unavailable"
+                    )
+                    return finish(2)
         runtime_dir_obj = tempfile.TemporaryDirectory(
             prefix="loopx-rt-",
             dir="/tmp",
@@ -1590,6 +1731,51 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     next_health_probe = time.monotonic() + health_interval
                     continue
 
+                local_dependency = payload["local_forward_dependency"]
+                if (
+                    local_dependency["configured"]
+                    and tunnel_proc.poll() is None
+                    and not _local_forward_endpoint_ready(args)
+                ):
+                    liveness["health_probe_failure_count"] = (
+                        int(liveness["health_probe_failure_count"]) + 1
+                    )
+                    consecutive_failures += 1
+                    liveness["max_consecutive_failure_count"] = max(
+                        int(liveness["max_consecutive_failure_count"]),
+                        consecutive_failures,
+                    )
+                    recovered_local_dependency = False
+                    for _attempt in range(
+                        int(local_dependency["restart_attempt_limit"])
+                    ):
+                        local_forward_proc, recovered_local_dependency = (
+                            _start_local_forward_dependency(
+                                args,
+                                local_dependency,
+                                previous_proc=local_forward_proc,
+                                restart=True,
+                            )
+                        )
+                        if recovered_local_dependency:
+                            break
+                    if recovered_local_dependency:
+                        liveness["last_probe_status"] = (
+                            "local_forward_dependency_recovered"
+                        )
+                        liveness["state"] = "degraded"
+                        consecutive_failures = 0
+                        consecutive_inconclusive = 0
+                        next_health_probe = time.monotonic()
+                        continue
+                    liveness["state"] = "failed"
+                    liveness["last_probe_status"] = (
+                        "local_forward_dependency_unrecoverable"
+                    )
+                    tunnel_liveness_failed = True
+                    _stop_process_group(remote_proc, grace_sec=1.0)
+                    break
+
                 if (
                     health_status == "ssh_transport_unavailable"
                     and tunnel_proc.poll() is None
@@ -1772,6 +1958,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--server-alive-interval-sec", type=int, default=30)
     parser.add_argument("--server-alive-count-max", type=int, default=3)
     parser.add_argument("--remote-forward", default=DEFAULT_REMOTE_FORWARD)
+    parser.add_argument(
+        "--local-forward-managed-command",
+        default="",
+        help=(
+            "Optional private foreground command that owns the local endpoint "
+            "targeted by --remote-forward. The supervisor starts it when the "
+            "endpoint is absent and restarts it after bounded liveness failure; "
+            "the raw command and output are never written publicly."
+        ),
+    )
+    parser.add_argument(
+        "--local-forward-probe-timeout-sec",
+        type=float,
+        default=1.0,
+        help="TCP probe timeout for the managed local-forward endpoint.",
+    )
+    parser.add_argument(
+        "--local-forward-ready-timeout-sec",
+        type=float,
+        default=10.0,
+        help="Readiness budget after starting the managed local-forward command.",
+    )
+    parser.add_argument(
+        "--local-forward-restart-attempts",
+        type=int,
+        default=2,
+        help="Bounded managed local-forward restarts after endpoint loss.",
+    )
     parser.add_argument("--test-host", default=DEFAULT_TEST_HOST)
     parser.add_argument("--test-port", type=int, default=DEFAULT_TEST_PORT)
     parser.add_argument("--probe-timeout-sec", type=float, default=8.0)
