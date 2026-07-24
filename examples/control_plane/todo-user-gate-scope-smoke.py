@@ -475,6 +475,7 @@ def main() -> int:
             agent_id=PRIMARY_AGENT,
             evidence="fixture validation",
             next_user_todo="Approve publishing the release notes.",
+            next_user_task_class="user_gate",
         )
         state_text = state.read_text(encoding="utf-8")
         assert "Approve publishing the release notes." in state_text, state_text

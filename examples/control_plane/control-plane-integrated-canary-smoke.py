@@ -237,23 +237,25 @@ def find_queue_item(status_payload: dict[str, Any], *, goal_id: str = GOAL_ID) -
     raise AssertionError(f"{goal_id} missing from attention queue: {status_payload}")
 
 
-def assert_event_projected_agent_todo(summary: dict[str, Any]) -> None:
-    items = summary.get("items") if isinstance(summary.get("items"), list) else []
-    if not items:
-        items = (
-            summary.get("first_open_items")
-            if isinstance(summary.get("first_open_items"), list)
-            else []
-        )
-    if not items:
-        items = (
-            summary.get("first_executable_items")
-            if isinstance(summary.get("first_executable_items"), list)
-            else []
-        )
+def assert_event_projected_agent_todo(
+    summary: dict[str, Any],
+    *,
+    compact_quota: bool = False,
+) -> None:
+    item_lane = "first_executable_items" if compact_quota else "first_open_items"
+    items = summary.get(item_lane) if isinstance(summary.get(item_lane), list) else []
+    if not items and not compact_quota:
+        items = summary.get("items") if isinstance(summary.get("items"), list) else []
     assert [item.get("todo_id") for item in items] == [CANARY_TODO_ID], summary
     item = items[0]
-    assert item["title"] == CANARY_TODO_TITLE, summary
+    if compact_quota:
+        assert summary["payload_compaction"]["schema_version"] == (
+            "quota_cli_todo_summary_compaction_v0"
+        ), summary
+        assert "title" not in item, summary
+        assert item["text"] == f"[P1] {CANARY_TODO_TITLE}", summary
+    else:
+        assert item["title"] == CANARY_TODO_TITLE, summary
     assert item["claimed_by"] == AGENT_ID, summary
     assert item["task_class"] == "advancement_task", summary
     assert "todo_markdown_fallback" not in json.dumps(summary, sort_keys=True), summary
@@ -826,7 +828,10 @@ def run_fixture_canary(root: Path) -> None:
     assert quota_payload["effective_action"] == "normal_run", quota_payload
     assert quota_payload["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota_payload
     assert CANARY_TODO_TITLE in quota_payload["recommended_action"], quota_payload
-    assert_event_projected_agent_todo(quota_payload["agent_todo_summary"])
+    assert_event_projected_agent_todo(
+        quota_payload["agent_todo_summary"],
+        compact_quota=True,
+    )
     assert_bounded_delivery_state_machine_bundle(quota_payload)
     assert_scheduler_ack_state_machine(registry_path, runtime_root, quota_payload)
     assert_event_todo_completion_successor_state_machine(registry_path, runtime_root)
