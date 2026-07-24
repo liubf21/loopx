@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from loopx.cli_commands.status import (
-    _compact_agent_lane_todos_for_status_display,
     _status_collection_limit_for_agent_lane,
     _trim_run_history_for_status_display,
     attach_agent_lane_next_actions,
+)
+from loopx.control_plane.todos.quota_summary import (
+    compact_agent_lane_todos_for_status_display,
 )
 from loopx.review_packet import build_review_packet
 from loopx.presentation.renderers.status_markdown import render_status_markdown
@@ -282,7 +284,7 @@ def assert_status_agent_lane_todo_summary_display_compaction() -> None:
         }
     }
 
-    _compact_agent_lane_todos_for_status_display(payload)
+    compact_agent_lane_todos_for_status_display(payload)
 
     item = payload["attention_queue"]["items"][0]
     compact_agent = item["agent_todos"]

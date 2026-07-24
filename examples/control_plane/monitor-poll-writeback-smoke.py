@@ -1045,6 +1045,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
         next_due_at=None,
         next_agent_todo=None,
         next_user_todo=None,
+        next_user_task_class=None,
         next_claimed_by=None,
         codex_app=True,
         runtime_profile=None,

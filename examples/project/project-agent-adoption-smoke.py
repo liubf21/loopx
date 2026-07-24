@@ -177,7 +177,7 @@ def main() -> int:
             "--bound-agent <id> --text '<action>'"
         ), first_quota
         assert first_quota["agent_todo_summary"]["open_count"] == 1, first_quota
-        assert first_quota["agent_todo_summary"]["first_open_items"][0]["text"] == AGENT_TODO, first_quota
+        assert first_quota["selected_todo"]["text"] == AGENT_TODO, first_quota
 
         todo_payload = run_cli(
             root,

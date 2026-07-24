@@ -138,9 +138,11 @@ def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -
     assert agent_todos["open_count"] == 2, agent_todos
     assert agent_todos["done_count"] == 3, agent_todos
     assert agent_todos["deferred_count"] == 2, agent_todos
-    assert [item["index"] for item in agent_todos["first_open_items"]] == [1, 5], agent_todos
+    item_lane = "first_executable_items" if hot_path else "first_open_items"
+    visible_items = agent_todos[item_lane]
+    assert [item["index"] for item in visible_items] == [1, 5], agent_todos
 
-    first_open = agent_todos["first_open_items"][0]
+    first_open = visible_items[0]
     assert first_open["schema_version"] == "todo_item_v0", first_open
     assert first_open["status"] == "open", first_open
     assert first_open["priority"] == "P1", first_open
@@ -149,13 +151,14 @@ def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -
         assert first_open["archive_state"] == "active", first_open
         assert first_open["source_section"] == "Agent Todo", first_open
     assert first_open["text"] == FIRST_OPEN_TODO, first_open
-    assert (
-        first_open["title"]
-        == "Add a parseable todo fixture when discovered planning work cannot be represented by the current Markdown parser."
-    ), first_open
+    if not hot_path:
+        assert (
+            first_open["title"]
+            == "Add a parseable todo fixture when discovered planning work cannot be represented by the current Markdown parser."
+        ), first_open
     assert str(first_open["todo_id"]).startswith("todo_"), first_open
 
-    second_open = agent_todos["first_open_items"][1]
+    second_open = visible_items[1]
     assert second_open["priority"] == "P2", second_open
     assert second_open["status"] == "open", second_open
     assert second_open["text"] == SECOND_OPEN_TODO, second_open
@@ -168,7 +171,14 @@ def assert_parseable_agent_todos(agent_todos: dict, *, hot_path: bool = False) -
         assert handoff_note["intent"] == "review_pr", handoff_note
         assert handoff_note["evidence_refs"] == ["todo:todo_handoff_review:evidence"], handoff_note
 
-    deferred = agent_todos["deferred_items"][0]
+    if hot_path:
+        assert "first_open_items" not in agent_todos, agent_todos
+        assert "deferred_items" not in agent_todos, agent_todos
+        assert agent_todos["payload_compaction"]["schema_version"] == (
+            "quota_cli_todo_summary_compaction_v0"
+        ), agent_todos
+        return
+
     deferred_by_id = {item["todo_id"]: item for item in agent_todos["deferred_items"]}
     assert set(deferred_by_id) == {"todo_deferred_surface", "todo_pr_deferred"}, agent_todos
     deferred = deferred_by_id["todo_deferred_surface"]
@@ -318,7 +328,7 @@ def main() -> int:
         assert_parseable_agent_todos(guard["agent_todo_summary"], hot_path=True)
         assert "completed_todo_archive_warning" not in guard, guard
 
-        first_todo_id = guard["agent_todo_summary"]["first_open_items"][0]["todo_id"]
+        first_todo_id = guard["agent_todo_summary"]["first_executable_items"][0]["todo_id"]
         lifecycle_result = run_cli(
             "todo",
             "complete",
