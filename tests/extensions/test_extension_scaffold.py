@@ -187,7 +187,12 @@ def test_generated_starter_installs_and_runs_through_managed_lifecycle(
         execute=True,
     )
     environment = tmp_path / "venv"
-    venv.EnvBuilder(with_pip=True, system_site_packages=True).create(environment)
+    # Match `python -m venv` so relocatable POSIX runtimes keep their libpython path.
+    venv.EnvBuilder(
+        with_pip=True,
+        system_site_packages=True,
+        symlinks=os.name != "nt",
+    ).create(environment)
     binary_dir = environment / ("Scripts" if os.name == "nt" else "bin")
     python = binary_dir / ("python.exe" if os.name == "nt" else "python")
     wheel_dir = tmp_path / "wheelhouse"
