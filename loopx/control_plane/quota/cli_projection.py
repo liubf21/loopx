@@ -27,6 +27,7 @@ _RETAINED_AGENT_ITEM_LANES = {
     "monitor_due_items": 1,
     "monitor_capability_blocked_due_items": 2,
     "monitor_schedule_gap_items": 1,
+    "current_agent_blocker_items": 2,
 }
 _RETAINED_USER_ITEM_LANES = {
     "first_open_items": 3,
@@ -62,6 +63,7 @@ _RETAINED_AGENT_ITEM_FIELDS = (
     "consecutive_no_change",
     "material_change",
     "result_hash",
+    "reason",
 )
 _RETAINED_SUCCESSION_WARNING_TODO_IDS = 3
 
@@ -128,7 +130,11 @@ def _compact_agent_todo_summary(summary: dict[str, Any]) -> dict[str, Any]:
 
     compact["payload_compaction"] = {
         "schema_version": QUOTA_CLI_TODO_SUMMARY_COMPACTION_SCHEMA_VERSION,
-        "retained_item_lanes": sorted(_RETAINED_AGENT_ITEM_LANES),
+        "retained_item_lanes": sorted(
+            lane
+            for lane in _RETAINED_AGENT_ITEM_LANES
+            if lane != "current_agent_blocker_items" or summary.get(lane)
+        ),
         "omitted_lanes": omitted_lanes,
         "full_detail_cold_path": QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     }

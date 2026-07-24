@@ -40,6 +40,7 @@ CROSS_DOMAIN_WAITING_ID = "todo_cross_domain_waiting"
 CLAIMED_WAITING_ID = "todo_claimed_waiting"
 MONITOR_ID = "todo_future_monitor"
 MONITOR_BLOCKED_ID = "todo_monitor_blocked_advancement"
+PROJECTED_BLOCKER_ID = "todo_projected_agent_blocker"
 
 
 def _vision_run(
@@ -190,6 +191,48 @@ def _quota(payload: dict) -> dict:
     )
 
 
+def _current_agent_blocker_status_payload(
+    *,
+    claimed_by: str = AGENT_ID,
+    reason: str | None = "Candidate promotion requires controller assignment.",
+    latest_runs: list[dict] | None = None,
+) -> dict:
+    peer_items = [
+        quota_todo_item(
+            todo_id=f"todo_peer_{index}",
+            index=index + 1,
+            text=f"[P0] Peer advancement {index}.",
+            claimed_by=PRIMARY_AGENT,
+        )
+        for index in range(20)
+    ]
+    blocker = quota_todo_item(
+        todo_id=PROJECTED_BLOCKER_ID,
+        index=21,
+        text="[P2 blocker] Wait for a qualifying advancement assignment.",
+        status="blocked",
+        task_class="blocker",
+        priority="P2",
+        claimed_by=claimed_by,
+        reason=reason,
+    )
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action="Wait for a qualifying advancement assignment.",
+        agent_todos=quota_todo_summary(
+            [*peer_items, blocker],
+            role="agent",
+            item_limit=12,
+        ),
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": [PRIMARY_AGENT, AGENT_ID],
+        },
+        latest_runs=latest_runs if latest_runs is not None else [_vision_run()],
+    )
+
+
 def _blocked_wait_polls() -> list[dict]:
     guard = _quota(_status_payload())
     return [
@@ -202,6 +245,103 @@ def _blocked_wait_polls() -> list[dict]:
             generated_at="2026-07-16T00:01:00+00:00",
         ),
     ]
+
+
+def test_current_agent_blocker_defers_open_vision_gap_without_hiding_reason() -> None:
+    guard = _quota(_current_agent_blocker_status_payload())
+
+    assert guard["decision"] == "reassignment_required"
+    assert guard["should_run"] is False
+    assert guard.get("autonomous_replan_obligation") is None
+    summary = guard["agent_todo_summary"]
+    assert summary["current_agent_blocker_count"] == 1
+    assert summary["current_agent_blocker_items"][0]["todo_id"] == (
+        PROJECTED_BLOCKER_ID
+    )
+    frontier = guard["goal_frontier_projection"]
+    assert frontier["acceptance_gaps"] == []
+    assert frontier["replan_required"] is False
+    assert "current_agent_blocker" in frontier["autonomy_blockers"]
+    wait = frontier["vision_wait_state"]
+    assert wait["reason_code"] == "current_agent_blocker"
+    assert wait["selected_todo_id"] == PROJECTED_BLOCKER_ID
+    assert wait["blocker_reason"] == (
+        "Candidate promotion requires controller assignment."
+    )
+    assert wait["automatic_resume"] is False
+
+    markdown = render_quota_should_run_markdown(guard)
+    assert (
+        "current_agent_blocker=1"
+    ) in markdown
+    assert (
+        f"todo_id={PROJECTED_BLOCKER_ID} "
+        "reason=Candidate promotion requires controller assignment."
+    ) in markdown
+
+
+@pytest.mark.parametrize(
+    ("claimed_by", "reason"),
+    [
+        (PRIMARY_AGENT, "Peer-owned blocker."),
+        (AGENT_ID, None),
+    ],
+    ids=["other-agent", "missing-reason"],
+)
+def test_unscoped_or_malformed_blocker_does_not_defer_open_vision_gap(
+    claimed_by: str,
+    reason: str | None,
+) -> None:
+    guard = _quota(
+        _current_agent_blocker_status_payload(
+            claimed_by=claimed_by,
+            reason=reason,
+        )
+    )
+
+    assert guard["decision"] == "autonomous_replan_required"
+    assert "vision_wait_state" not in guard["goal_frontier_projection"]
+    assert guard["goal_frontier_projection"]["replan_required"] is True
+
+
+def test_blocker_delta_ack_clears_existing_vision_replan_obligation() -> None:
+    obligation = {
+        "schema_version": "autonomous_replan_obligation_v0",
+        "required": True,
+        "agent_id": AGENT_ID,
+        "triggers": [{"kind": "vision_acceptance_gap"}],
+    }
+    ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": "2026-07-16T00:03:00+00:00",
+        "agent_id": AGENT_ID,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["blocker"],
+            },
+        },
+    }
+    payload = _current_agent_blocker_status_payload(
+        latest_runs=[ack, _vision_run()]
+    )
+    item = payload["attention_queue"]["items"][0]
+    item["autonomous_replan_obligation"] = obligation
+    item["project_asset"]["autonomous_replan_obligation"] = obligation
+
+    guard = _quota(payload)
+
+    assert guard["decision"] == "reassignment_required"
+    assert guard["should_run"] is False
+    assert guard.get("autonomous_replan_obligation") is None
+    assert guard["goal_frontier_projection"]["replan_required"] is False
+    assert guard["goal_frontier_projection"]["vision_wait_state"][
+        "reason_code"
+    ] == "current_agent_blocker"
 
 
 def _quota_with_replan_runs(

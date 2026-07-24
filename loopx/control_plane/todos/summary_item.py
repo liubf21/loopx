@@ -84,6 +84,7 @@ TODO_SUMMARY_SOURCE_KEYS = (
     "current_agent_claimed_open_items",
     "current_agent_claimed_advancement_items",
     "current_agent_claimed_monitor_items",
+    "blocker_items",
     "resume_blocked_items",
     "monitor_blocked_resume_candidates",
     "current_agent_monitor_blocked_resume_candidates",
@@ -153,6 +154,8 @@ def compact_todo_summary_item(
     else:
         compact.pop("removed_continuation_policy", None)
     compact["task_class"] = todo_item_task_class(compact)
+    if compact["task_class"] == "blocker" and str(item.get("reason") or "").strip():
+        compact["reason"] = str(item.get("reason") or "").strip()
     attach_todo_handoff_note(compact)
     return compact
 

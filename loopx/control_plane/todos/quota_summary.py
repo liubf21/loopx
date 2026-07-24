@@ -7,6 +7,7 @@ from ..agents.agent_scope import (
     _agent_scope_filter_user_action_items,
     _agent_scope_filter_user_gate_items,
     _agent_scope_selectable_todo_item,
+    agent_scope_item_claimed_by,
 )
 from ..agents.capability_gate import missing_required_capabilities
 from .claim_visibility import (
@@ -15,6 +16,7 @@ from .claim_visibility import (
 )
 from .contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
 )
 from .deferred_resume import (
@@ -91,6 +93,7 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "completed_at",
     "updated_at",
     "gate_state",
+    "reason",
 )
 QUOTA_PAYLOAD_LANE_LIMITS = {
     "monitor_due_items": MONITOR_DUE_ITEM_LIMIT,
@@ -110,6 +113,7 @@ QUOTA_PAYLOAD_LANE_LIMITS = {
     "current_agent_claimed_open_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
     "current_agent_claimed_advancement_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
     "current_agent_claimed_monitor_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
+    "current_agent_blocker_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "claimed_by_others_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "other_agent_scoped_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "other_agent_bound_user_action_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
@@ -412,6 +416,19 @@ def summarize_user_todos_for_quota(
         for item in lanes.open_items
         if is_user_gate_todo_item(item)
     ]
+    blocker_items = [
+        item
+        for item in lanes.all_open_items
+        if todo_item_task_class(item) == TODO_TASK_CLASS_BLOCKER
+        and str(item.get("status") or "").strip().lower() == "blocked"
+        and str(item.get("reason") or "").strip()
+    ]
+    agent_id = str((agent_identity or {}).get("agent_id") or "").strip()
+    current_agent_blocker_items = [
+        item
+        for item in blocker_items
+        if agent_id and agent_scope_item_claimed_by(item) == agent_id
+    ]
     summary = {
         "schema_version": value.get("schema_version"),
         "source_section": value.get("source_section"),
@@ -439,6 +456,13 @@ def summarize_user_todos_for_quota(
         "backlog_items": lanes.display_open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": lanes.executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    if blocker_items:
+        summary["blocker_open_count"] = len(blocker_items)
+    if current_agent_blocker_items:
+        summary["current_agent_blocker_count"] = len(current_agent_blocker_items)
+        summary["current_agent_blocker_items"] = current_agent_blocker_items[
+            :QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT
+        ]
     if closure_intent:
         summary["closure_intent"] = closure_intent
     monitor_writeback = todo_summary_monitor_writeback_contract(value)

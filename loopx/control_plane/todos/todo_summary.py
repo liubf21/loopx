@@ -9,6 +9,7 @@ from .contract import (
     TODO_RESUME_KIND_PR_MERGED,
     TODO_RESUME_KIND_TODO_DONE,
     TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_ACTION,
     build_todo_id,
@@ -91,6 +92,7 @@ class _TodoGroupLanes:
     claimed_open_items: list[dict[str, Any]]
     unclaimed_open_items: list[dict[str, Any]]
     executable_items: list[dict[str, Any]]
+    blocker_items: list[dict[str, Any]]
     resume_blocked_items: list[dict[str, Any]]
     monitor_items: list[dict[str, Any]]
     monitor_due_items: list[dict[str, Any]]
@@ -1038,6 +1040,12 @@ def _todo_group_lanes(
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
     ]
+    blocker_items = [
+        item
+        for item in projected_open_items
+        if normalize_todo_status(item.get("status")) == "blocked"
+        if todo_item_task_class(item) == TODO_TASK_CLASS_BLOCKER
+    ]
     resume_blocked_items = [
         item
         for item in projected_open_items
@@ -1094,6 +1102,7 @@ def _todo_group_lanes(
         claimed_open_items=claimed_open_items,
         unclaimed_open_items=unclaimed_open_items,
         executable_items=executable_items,
+        blocker_items=blocker_items,
         resume_blocked_items=resume_blocked_items,
         monitor_items=monitor_items,
         monitor_due_items=monitor_due_items,
@@ -1217,6 +1226,11 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": lanes.budgeted_items if item_limit is None else lanes.budgeted_items[:item_limit],
     }
+    if lanes.blocker_items:
+        summary["blocker_open_count"] = len(lanes.blocker_items)
+        summary["blocker_items"] = [
+            compact_todo_item(item) for item in lanes.blocker_items
+        ]
     if not lanes.open_items and not lanes.deferred_items:
         summary["source_proof"] = {
             "schema_version": TODO_SOURCE_PROOF_SCHEMA_VERSION,

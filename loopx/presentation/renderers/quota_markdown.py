@@ -306,13 +306,22 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 )
         vision_wait_state = as_dict(goal_frontier.get("vision_wait_state"))
         if vision_wait_state:
-            lines.append(
-                "- vision_wait_state: "
-                f"state={vision_wait_state.get('state')} "
-                f"todo_id={vision_wait_state.get('selected_todo_id')} "
-                f"resume_when={vision_wait_state.get('resume_when')} "
-                f"automatic_resume={vision_wait_state.get('automatic_resume')}"
-            )
+            if vision_wait_state.get("reason_code") == "current_agent_blocker":
+                lines.append(
+                    "- vision_wait_state: "
+                    f"state={vision_wait_state.get('state')} "
+                    f"todo_id={vision_wait_state.get('selected_todo_id')} "
+                    f"reason={vision_wait_state.get('blocker_reason')} "
+                    "automatic_resume=False"
+                )
+            else:
+                lines.append(
+                    "- vision_wait_state: "
+                    f"state={vision_wait_state.get('state')} "
+                    f"todo_id={vision_wait_state.get('selected_todo_id')} "
+                    f"resume_when={vision_wait_state.get('resume_when')} "
+                    f"automatic_resume={vision_wait_state.get('automatic_resume')}"
+                )
     task_orchestration = as_dict(payload.get("task_orchestration_contract"))
     if task_orchestration:
         peer_lanes = as_list(task_orchestration.get("eligible_peer_lanes"))
@@ -730,6 +739,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             summary_parts.append(
                 f"monitor_schedule_gap={summary.get('monitor_schedule_gap_count')}"
             )
+        if summary.get("current_agent_blocker_count"):
+            summary_parts.append(
+                f"current_agent_blocker={summary.get('current_agent_blocker_count')}"
+            )
         if summary.get("completed_without_successor_count"):
             summary_parts.append(
                 f"succession_warning={summary.get('completed_without_successor_count')}"
@@ -744,6 +757,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 2,
             ),
             ("monitor_schedule_gap_items", "monitor_schedule_gap", 1),
+            ("current_agent_blocker_items", "current_agent_blocker", 2),
         ):
             lane_items = (
                 summary.get(lane)
@@ -751,7 +765,13 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 else []
             )
             identities = [
-                compact_todo_identity(item)
+                (
+                    f"{compact_todo_identity(item)} "
+                    f"reason={str(item.get('reason') or '').strip()[:120]}"
+                    if lane == "current_agent_blocker_items"
+                    and str(item.get("reason") or "").strip()
+                    else compact_todo_identity(item)
+                )
                 for item in lane_items[:limit]
                 if isinstance(item, dict) and item.get("todo_id")
             ]

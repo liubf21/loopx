@@ -1967,7 +1967,10 @@ def build_goal_frontier_projection(
     if replan_required:
         blockers.append("autonomous_replan_obligation")
     if isinstance(vision_wait_state, dict):
-        blockers.append("vision_blocked_successor_wait")
+        if vision_wait_state.get("reason_code") == "current_agent_blocker":
+            blockers.append("current_agent_blocker")
+        else:
+            blockers.append("vision_blocked_successor_wait")
 
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)

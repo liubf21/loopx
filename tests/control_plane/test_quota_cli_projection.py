@@ -39,6 +39,15 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     monitor_due = _items(2, prefix="monitor")
     monitor_capability_blocked = _items(3, prefix="monitor-capability")
     monitor_schedule_gap = _items(2, prefix="monitor-gap")
+    current_agent_blockers = [
+        {
+            **item,
+            "status": "blocked",
+            "task_class": "blocker",
+            "reason": f"blocker reason {index}",
+        }
+        for index, item in enumerate(_items(3, prefix="blocker"))
+    ]
     payload = {
         "interaction_contract": {"mode": "bounded_delivery"},
         "selected_todo": first_executable[0],
@@ -55,6 +64,8 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
             "monitor_capability_blocked_due_items": monitor_capability_blocked,
             "monitor_schedule_gap_count": 2,
             "monitor_schedule_gap_items": monitor_schedule_gap,
+            "current_agent_blocker_count": 3,
+            "current_agent_blocker_items": current_agent_blockers,
             "backlog_items": backlog,
             "claimed_open_items": backlog,
             "claim_scope": {
@@ -98,6 +109,29 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     assert [item["todo_id"] for item in summary["monitor_schedule_gap_items"]] == [
         "monitor-gap-0",
     ]
+    assert summary["current_agent_blocker_count"] == 3
+    assert summary["current_agent_blocker_items"] == [
+        {
+            "schema_version": "todo_item_v0",
+            "todo_id": "blocker-0",
+            "text": "blocker item 0",
+            "status": "blocked",
+            "priority": "P1",
+            "task_class": "blocker",
+            "action_kind": "blocker-action",
+            "reason": "blocker reason 0",
+        },
+        {
+            "schema_version": "todo_item_v0",
+            "todo_id": "blocker-1",
+            "text": "blocker item 1",
+            "status": "blocked",
+            "priority": "P1",
+            "task_class": "blocker",
+            "action_kind": "blocker-action",
+            "reason": "blocker reason 1",
+        },
+    ]
     assert "backlog_items" not in summary
     assert "claimed_open_items" not in summary
     assert "other_agent_claimed_items" not in summary["claim_scope"]
@@ -111,6 +145,7 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
         "backlog_items": 40,
         "claim_scope.other_agent_claimed_items": 40,
         "claimed_open_items": 40,
+        "current_agent_blocker_items": 1,
         "first_executable_items": 1,
         "first_open_items": 5,
         "monitor_due_items": 1,
