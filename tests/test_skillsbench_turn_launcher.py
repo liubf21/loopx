@@ -197,6 +197,7 @@ def test_launcher_split_control_is_opt_in_and_redacts_provider_values(
     output = proc.stdout
     assert "local_codex_split_control=1" in output
     assert "local_codex_provider=reverse_channel" in output
+    assert "local_codex_exec_timeout_sec=runner-default" in output
     assert "remote_codex_bin_mode=split_control_client" in output
     assert (
         "exact_host_codex_sandbox_preflight=split_control_not_applicable"
@@ -219,6 +220,55 @@ def test_launcher_split_control_is_opt_in_and_redacts_provider_values(
     assert "codex_bridge_client" not in output
     assert "loopx-codex-" not in output
     assert "example.invalid" not in output
+
+
+def test_launcher_wires_explicit_local_codex_exec_timeout(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL": "1",
+            "SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC": "14400",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "exec-timeout"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "local_codex_exec_timeout_sec=14400" in proc.stdout
+    assert "--local-codex-exec-timeout-sec" in proc.stdout
+
+
+def test_launcher_rejects_invalid_local_codex_exec_timeout(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC"] = "0"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "exec-timeout"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC must be a positive integer"
+        in proc.stderr
+    )
+    assert "supervisor_command=" not in proc.stdout
 
 
 def test_launcher_split_control_requires_workspace_write(tmp_path: Path) -> None:
