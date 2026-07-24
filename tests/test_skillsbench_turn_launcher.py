@@ -13,6 +13,7 @@ LAUNCHER = REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"
 def _base_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("SKILLSBENCH_RUNNER_PROFILE", None)
+    env.pop("SKILLSBENCH_LOCAL_CODEX_PROXY_COMMAND", None)
     env.update(
         {
             "XDG_STATE_HOME": str(tmp_path / "state"),
@@ -45,6 +46,9 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
         "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND": (
             "private-validator-command sentinel-validator"
         ),
+        "SKILLSBENCH_LOCAL_CODEX_PROXY_COMMAND": (
+            "private-local-proxy-command sentinel-local-proxy"
+        ),
     }
     env.update(private_values)
     env.update(
@@ -74,6 +78,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "remote_command_file_bridge_solver_command_configured=1" in output
     assert "remote_command_file_bridge_agent_command_configured=1" in output
     assert "remote_command_file_bridge_agent_command_instrumented=1" in output
+    assert "local_codex_proxy_command_configured=1" in output
     assert "loopx_turn_validation_command_configured=1" in output
     assert "loopx_turn_max_turns=4" in output
     assert "loopx_turn_progress_exit_code=10" in output
@@ -88,6 +93,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
         "--remote-command-file-bridge-solver-command",
         "--remote-command-file-bridge-agent-command",
         "--remote-command-file-bridge-agent-command-instrumented",
+        "--local-forward-managed-command",
         "--loopx-turn-validation-command",
         "--loopx-turn-max-turns",
         "--loopx-turn-progress-exit-code",

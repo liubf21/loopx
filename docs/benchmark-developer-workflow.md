@@ -1276,6 +1276,15 @@ next benchmark-family blocker. Prefer per-command tunnels or short-lived
 operator-managed proxy sessions for benchmark slices; long-running unattended
 network bridges should have an explicit owner and cleanup rule.
 
+When the SkillsBench reverse-tunnel supervisor should own the local CONNECT
+process, store its foreground argv-style command in the owner-only runner
+profile as `SKILLSBENCH_LOCAL_CODEX_PROXY_COMMAND`. The supervisor starts the
+process when the local endpoint is absent, performs bounded restarts if that
+endpoint disappears while the SSH tunnel is still alive, and cleans up only
+processes it started. The raw command and process output remain private. Without
+this setting, the local endpoint remains externally owned and the launcher
+keeps its existing fail-fast behavior.
+
 For SkillsBench setup/verifier egress on a cloud host, prefer the runner's
 runtime-only proxy switch over editing task files or committing host details.
 Set `LOOPX_SKILLSBENCH_EGRESS_PROXY` in the private remote shell environment

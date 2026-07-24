@@ -57,6 +57,9 @@ def _environment() -> dict[str, str]:
         "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND": (
             "private-validator-marker"
         ),
+        "SKILLSBENCH_LOCAL_CODEX_PROXY_COMMAND": (
+            "private-local-proxy-marker"
+        ),
     }
 
 
@@ -216,6 +219,7 @@ def main() -> None:
             not in completed.stderr
         )
         assert "private_runner_command_values_redacted=true" in output
+        assert "local_codex_proxy_command_configured=1" in output
         assert "loopx_turn_validation_command_configured=1" in output
         for key, private_value in source_environment.items():
             assert private_value not in output, key
