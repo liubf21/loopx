@@ -207,6 +207,32 @@ def test_unknown_canary_relation_does_not_stale_current_default_release(tmp_path
     assert freshness["manifest_source_freshness_relation"] == "same"
 
 
+def test_other_agent_freshness_does_not_require_codex_skill_directory(
+    tmp_path: Path,
+) -> None:
+    freshness = build_install_freshness(
+        command_path=tmp_path / "loopx",
+        release_root=None,
+        repo_root=tmp_path,
+        skills={
+            "loopx-project": {
+                "exists": False,
+                "required_phrases": False,
+            }
+        },
+        require_installed_skills=False,
+        doctor_agent_type="other-agent",
+    )
+
+    assert freshness["status"] == "live_checkout"
+    assert freshness["requires_upgrade"] is False
+    assert freshness["installed_skills_required"] is False
+    assert freshness["doctor_after_upgrade"] == "loopx doctor --agent-type other-agent"
+    assert str(freshness["upgrade_command"]).endswith(
+        "loopx doctor --agent-type other-agent"
+    )
+
+
 def test_trusted_release_ref_matches_manifest_repository(tmp_path: Path) -> None:
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "loopx@example.invalid")

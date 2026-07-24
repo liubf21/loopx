@@ -59,8 +59,17 @@ fi
 {cli_bin_arg} doctor >/dev/null"""
 
 
-def render_codex_cli_no_clone_preflight(*, cli_bin: str = "loopx") -> str:
+def render_codex_cli_no_clone_preflight(
+    *,
+    cli_bin: str = "loopx",
+    doctor_agent_type: str | None = None,
+) -> str:
     cli_bin_arg = shell_arg(cli_bin)
+    doctor_agent_arg = (
+        f" --agent-type {shell_arg(doctor_agent_type)}"
+        if doctor_agent_type
+        else ""
+    )
     return f"""export PATH="$HOME/.local/bin:$PATH"
 if ! command -v {cli_bin_arg} >/dev/null 2>&1; then
   if command -v curl >/dev/null 2>&1; then
@@ -71,7 +80,7 @@ if ! command -v {cli_bin_arg} >/dev/null 2>&1; then
     exit 1
   fi
 fi
-{cli_bin_arg} doctor >/dev/null"""
+{cli_bin_arg} doctor{doctor_agent_arg} >/dev/null"""
 
 
 def render_quota_guard_command(

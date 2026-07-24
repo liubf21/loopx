@@ -61,9 +61,18 @@ class GitRevisionRelation(str, Enum):
     UNKNOWN = "unknown"
 
 
-def no_clone_upgrade_command(source_ref: Any = None) -> str:
+def no_clone_upgrade_command(
+    source_ref: Any = None,
+    *,
+    doctor_agent_type: str | None = None,
+) -> str:
     ref = str(source_ref or "").strip()
     installer = f"curl -fsSL {NO_CLONE_INSTALL_URL}"
+    doctor_agent_arg = (
+        f" --agent-type {shlex.quote(doctor_agent_type)}"
+        if doctor_agent_type
+        else ""
+    )
     if ref and ref != "stable":
         installer = f"{installer} | env LOOPX_REF={shlex.quote(ref)} bash"
     else:
@@ -71,7 +80,7 @@ def no_clone_upgrade_command(source_ref: Any = None) -> str:
     return (
         f"{installer}\n"
         'export PATH="$HOME/.local/bin:$PATH"\n'
-        "loopx doctor"
+        f"loopx doctor{doctor_agent_arg}"
     )
 
 
@@ -337,6 +346,8 @@ def build_install_freshness(
     release_manifest: dict[str, Any] | None = None,
     comparison_source: dict[str, Any] | None = None,
     freshness_source: dict[str, Any] | None = None,
+    require_installed_skills: bool = True,
+    doctor_agent_type: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -346,9 +357,8 @@ def build_install_freshness(
     if release_time:
         age_hours = round(max(0, (reference - release_time.astimezone(timezone.utc)).total_seconds()) / 3600, 2)
 
-    skill_problem = any(
-        not skill.get("exists") or not skill.get("required_phrases")
-        for skill in skills.values()
+    skill_problem = require_installed_skills and any(
+        not skill.get("exists") or not skill.get("required_phrases") for skill in skills.values()
     )
     if command_path is None:
         status = "missing"
@@ -395,8 +405,19 @@ def build_install_freshness(
     manifest_source = (
         manifest_body.get("source") if isinstance(manifest_body.get("source"), dict) else {}
     )
-    upgrade_command = no_clone_upgrade_command(manifest_source.get("ref"))
-    contributor_upgrade_command = f"{repo_root / 'scripts' / 'install-local.sh'}\nloopx doctor"
+    upgrade_command = no_clone_upgrade_command(
+        manifest_source.get("ref"),
+        doctor_agent_type=doctor_agent_type,
+    )
+    doctor_agent_arg = (
+        f" --agent-type {shlex.quote(doctor_agent_type)}"
+        if doctor_agent_type
+        else ""
+    )
+    contributor_upgrade_command = (
+        f"{repo_root / 'scripts' / 'install-local.sh'}\n"
+        f"loopx doctor{doctor_agent_arg}"
+    )
     manifest_source_git_commit = manifest_source.get("git_commit")
     manifest_source_revision = (
         manifest_source_git_commit
@@ -456,7 +477,8 @@ def build_install_freshness(
         "upgrade_command": upgrade_command,
         "no_clone_upgrade_command": upgrade_command,
         "contributor_upgrade_command": contributor_upgrade_command,
-        "doctor_after_upgrade": "loopx doctor",
+        "doctor_after_upgrade": f"loopx doctor{doctor_agent_arg}",
+        "installed_skills_required": require_installed_skills,
         "release_manifest_available": manifest.get("available"),
         "release_manifest_path": manifest.get("path"),
         "release_manifest_reason": manifest.get("reason"),
@@ -592,6 +614,26 @@ def installed_skill_summary(skills_root: Path) -> dict[str, dict[str, Any]]:
     return summaries
 
 
+def installed_skill_check(
+    check_id: str,
+    *,
+    actual_ok: bool,
+    detail: str,
+    applicable: bool,
+) -> dict[str, Any]:
+    return {
+        "id": check_id,
+        "required": False,
+        "ok": actual_ok if applicable else True,
+        "applicable": applicable,
+        "detail": (
+            detail
+            if applicable
+            else "not applicable: other-agent skill delivery is owned by the custom host"
+        ),
+    }
+
+
 def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = None) -> dict[str, Any]:
     goals_dir = runtime_root / "goals"
     if not goals_dir.exists():
@@ -654,11 +696,19 @@ def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = N
     return latest
 
 
-def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
+def collect_doctor(
+    *,
+    deep: bool = False,
+    agent_type: str | None = None,
+) -> dict[str, Any]:
     from .control_plane.runtime.runtime_projection_route import (
         collect_runtime_projection_route_diagnostics,
     )
 
+    from .host_loop_activation import normalize_agent_type
+
+    canonical_agent_type = normalize_agent_type(agent_type) if agent_type else None
+    installed_skills_required = canonical_agent_type != "other-agent"
     loopx_path = resolve_command_path("loopx")
     invocation_path = current_script_invocation_path()
     loopx_canary_path = resolve_command_path("loopx-canary")
@@ -743,7 +793,27 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
         release_manifest=release_manifest,
         comparison_source=comparison_source,
         freshness_source=freshness_source,
+        require_installed_skills=installed_skills_required,
+        doctor_agent_type=canonical_agent_type,
     )
+    skill_delivery = {
+        "agent_type": canonical_agent_type,
+        "owner": "loopx_surface_installer" if installed_skills_required else "custom_agent_host",
+        "mode": "surface_managed" if installed_skills_required else "host_managed",
+        "codex_skills_root_applicable": installed_skills_required,
+        "installed_skills_required_for_freshness": installed_skills_required,
+        "status": (
+            "ready"
+            if installed_skills_required
+            and all(
+                skill.get("exists") and skill.get("required_phrases")
+                for skill in skills.values()
+            )
+            else "repair_recommended"
+            if installed_skills_required
+            else "external_readback_required"
+        ),
+    }
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
     runtime_projection_routes = (
@@ -843,32 +913,33 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
             "ok": str(local_bin) in path_entries,
             "detail": str(local_bin),
         },
-        {
-            "id": "installed_skill_exists",
-            "required": False,
-            "ok": skill_path.exists(),
-            "detail": str(skill_path),
-        },
-        {
-            "id": "installed_skill_delivery_hints",
-            "required": False,
-            "ok": skill_has_delivery_hints(skill_path),
-            "detail": str(skill_path),
-        },
-        {
-            "id": "installed_required_skills",
-            "required": False,
-            "ok": all(skill.get("exists") for skill in skills.values()),
-            "detail": ",".join(sorted(skills)),
-        },
-        {
-            "id": "installed_required_skill_routes",
-            "required": False,
-            "ok": all(skill.get("required_phrases") for skill in skills.values()),
-            "detail": ",".join(
-                f"{name}={skill.get('required_phrases')}" for name, skill in sorted(skills.items())
+        installed_skill_check(
+            "installed_skill_exists",
+            actual_ok=skill_path.exists(),
+            detail=str(skill_path),
+            applicable=installed_skills_required,
+        ),
+        installed_skill_check(
+            "installed_skill_delivery_hints",
+            actual_ok=skill_has_delivery_hints(skill_path),
+            detail=str(skill_path),
+            applicable=installed_skills_required,
+        ),
+        installed_skill_check(
+            "installed_required_skills",
+            actual_ok=all(skill.get("exists") for skill in skills.values()),
+            detail=",".join(sorted(skills)),
+            applicable=installed_skills_required,
+        ),
+        installed_skill_check(
+            "installed_required_skill_routes",
+            actual_ok=all(skill.get("required_phrases") for skill in skills.values()),
+            detail=",".join(
+                f"{name}={skill.get('required_phrases')}"
+                for name, skill in sorted(skills.items())
             ),
-        },
+            applicable=installed_skills_required,
+        ),
         {
             "id": "global_registry_writable",
             "required": True,
@@ -893,6 +964,7 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
     payload = {
         "ok": all(check["ok"] for check in checks if check["required"]),
         "mode": "deep" if deep else "standard",
+        "agent_type": canonical_agent_type,
         "python": {
             "executable": sys.executable,
             "version": sys.version.split()[0],
@@ -927,12 +999,18 @@ def collect_doctor(*, deep: bool = False) -> dict[str, Any]:
             "exists": skill_path.exists(),
             "delivery_hints": skill_has_delivery_hints(skill_path),
         },
+        "skill_delivery": skill_delivery,
         "skills": skills,
         "checks": checks,
         "fix": (
-            f"Run `{repo_root / 'scripts' / 'install-local.sh'}` and start a new shell, "
-            f"or export PATH=\"{local_bin}:$PATH\". For no-clone repair, run "
-            f"`curl -fsSL {NO_CLONE_INSTALL_URL} | bash`."
+            "Do not infer custom-host skill delivery from `~/.codex/skills`; "
+            "verify the host-managed loaded-skill readback from `loopx agent-onboard`."
+            if canonical_agent_type == "other-agent"
+            else (
+                f"Run `{repo_root / 'scripts' / 'install-local.sh'}` and start a new shell, "
+                f"or export PATH=\"{local_bin}:$PATH\". For no-clone repair, run "
+                f"`curl -fsSL {NO_CLONE_INSTALL_URL} | bash`."
+            )
         ),
     }
     if deep_validation:
@@ -947,6 +1025,7 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         "# LoopX Doctor",
         "",
         f"- ok: `{payload.get('ok')}`",
+        f"- agent_type: `{payload.get('agent_type')}`",
         f"- loopx: `{(payload.get('path') or {}).get('loopx')}`",
         f"- loopx_realpath: `{(payload.get('path') or {}).get('loopx_realpath')}`",
         f"- loopx_canary: `{(payload.get('path') or {}).get('loopx_canary')}`",
@@ -957,6 +1036,8 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         f"- installed_skill: `{(payload.get('skill') or {}).get('path')}`",
         f"- installed_skill_delivery_hints: `{(payload.get('skill') or {}).get('delivery_hints')}`",
         f"- installed_required_skills: `{','.join(sorted((payload.get('skills') or {}).keys()))}`",
+        f"- skill_delivery_mode: `{(payload.get('skill_delivery') or {}).get('mode')}`",
+        f"- skill_delivery_status: `{(payload.get('skill_delivery') or {}).get('status')}`",
         f"- global_registry_writable: `{(payload.get('global_registry_writability') or {}).get('ok')}`",
         f"- runtime_projection_routes_healthy: `{(payload.get('runtime_projection_routes') or {}).get('healthy')}`",
         f"- user_local_bin_on_path: `{(payload.get('path') or {}).get('user_local_bin_on_path')}`",

@@ -29,13 +29,18 @@ from loopx.host_loop_activation import (  # noqa: E402
 )
 
 
-def run_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
         cwd=REPO_ROOT,
         check=check,
         text=True,
         capture_output=True,
+        env=env,
     )
 
 
@@ -300,6 +305,71 @@ def main() -> int:
         assert opencode_onboarding["host_loop_activation"]["host_mutation"]["host_tool"] == (
             "loopx_goal_activate"
         )
+
+        other_agent_onboarding = build_agent_onboarding_packet(
+            project=project,
+            agent_type="other-agent",
+            goal_id="multi-agent-goal",
+            agent_id="codex-product-capability",
+            cli_bin=cli_bin,
+        )
+        other_commands = other_agent_onboarding["commands"]
+        assert "install_command_facade" not in other_commands
+        assert "doctor --agent-type other-agent" in other_commands["doctor_or_install"]
+        delivery = other_agent_onboarding["skill_delivery"]
+        assert delivery["mode"] == "host_managed", delivery
+        assert delivery["owner"] == "custom_agent_host", delivery
+        assert delivery["status"] == "pending_host_readback", delivery
+        assert delivery["codex_skills_root_required"] is False, delivery
+        assert delivery["required_for_cli_health"] is False, delivery
+        assert delivery["required_for_loopx_workflow"] is True, delivery
+        assert set(delivery["required_skill_ids"]) == {
+            "loopx-project",
+            "loopx-pr-review",
+            "loopx-doc-registry",
+            "loopx-self-repair",
+        }, delivery
+        assert delivery["delivery_options"] == [
+            "host_skill_manifest",
+            "prompt_injection",
+        ], delivery
+        assert delivery["source_directories"] == [
+            f"skills/{skill_id}" for skill_id in delivery["required_skill_ids"]
+        ], delivery
+        assert delivery["host_readback_required"] is True, delivery
+        assert set(delivery["readback_fields"]) == {
+            "integration_mode",
+            "loaded_skill_ids",
+            "source_revision",
+        }, delivery
+        assert any(
+            "loaded-skill readback" in item
+            for item in other_agent_onboarding["slash_command_contract"][
+                "setup_complete_requires"
+            ]
+        ), other_agent_onboarding
+
+        doctor_home = root / "doctor-home"
+        doctor_home.mkdir()
+        doctor_env = {
+            **os.environ,
+            "HOME": str(doctor_home),
+            "PATH": f"{REPO_ROOT / 'scripts'}{os.pathsep}{os.environ.get('PATH', '')}",
+        }
+        other_agent_doctor = json.loads(
+            run_cli(
+                "doctor",
+                "--agent-type",
+                "other-agent",
+                env=doctor_env,
+            ).stdout
+        )
+        assert other_agent_doctor["install_freshness"]["requires_upgrade"] is False
+        assert other_agent_doctor["skill_delivery"]["mode"] == "host_managed"
+        for check in other_agent_doctor["checks"]:
+            if str(check.get("id", "")).startswith("installed_"):
+                assert check["ok"] is True, check
+                assert check["applicable"] is False, check
 
     return 0
 

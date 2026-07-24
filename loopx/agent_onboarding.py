@@ -20,6 +20,13 @@ from .project_prompt import (
 
 
 SCHEMA_VERSION = "loopx_agent_onboarding_v0"
+HOST_SKILL_DELIVERY_SCHEMA_VERSION = "loopx_host_skill_delivery_v0"
+REQUIRED_HOST_SKILL_IDS = [
+    "loopx-project",
+    "loopx-pr-review",
+    "loopx-doc-registry",
+    "loopx-self-repair",
+]
 
 
 def _surface_install_command(agent_type: str, cli_bin: str) -> str | None:
@@ -33,6 +40,52 @@ def _surface_install_command(agent_type: str, cli_bin: str) -> str | None:
             "--with-goal-bridge"
         )
     return None
+
+
+def _skill_delivery_contract(agent_type: str) -> dict[str, Any]:
+    if agent_type != "other-agent":
+        return {
+            "schema_version": HOST_SKILL_DELIVERY_SCHEMA_VERSION,
+            "mode": "surface_managed",
+            "owner": "loopx_surface_installer",
+            "codex_skills_root_required": agent_type.startswith("codex-"),
+            "host_readback_required": False,
+        }
+    return {
+        "schema_version": HOST_SKILL_DELIVERY_SCHEMA_VERSION,
+        "mode": "host_managed",
+        "owner": "custom_agent_host",
+        "status": "pending_host_readback",
+        "codex_skills_root_required": False,
+        "required_for_cli_health": False,
+        "required_for_loopx_workflow": True,
+        "required_skill_ids": REQUIRED_HOST_SKILL_IDS,
+        "delivery_options": [
+            "host_skill_manifest",
+            "prompt_injection",
+        ],
+        "source_repository": "https://github.com/huangruiteng/loopx",
+        "source_directories": [
+            f"skills/{skill_id}" for skill_id in REQUIRED_HOST_SKILL_IDS
+        ],
+        "source_contract": (
+            "Use the same LoopX release or repository revision as the CLI when "
+            "materializing skills or injecting equivalent SKILL.md instructions "
+            "through the custom host."
+        ),
+        "host_readback_required": True,
+        "readback_fields": [
+            "integration_mode",
+            "loaded_skill_ids",
+            "source_revision",
+        ],
+        "success_criteria": [
+            "the host reports which integration mode it selected",
+            "the host reports every required LoopX skill id as loaded",
+            "the host reports the source revision or digest used for delivery",
+            "no Codex-specific skill directory is assumed",
+        ],
+    }
 
 
 def _bootstrap_pack_command(
@@ -86,7 +139,11 @@ def _start_instruction(agent_type: str) -> str:
         return "Run `/loopx <task>`; after todo writeback, call `loopx_goal_activate` with the generated heartbeat task body."
     if agent_type == "manual":
         return "Use the CLI packet and wire an external scheduler, or run quota/status/todo commands manually."
-    return "Use the host's explicit LoopX command facade such as `@loopx <task>` or `$loopx <task>`, then wire its scheduler through this packet."
+    return (
+        "Deliver the required LoopX skills through the custom host and verify its "
+        "loaded-skill readback; then use the host's explicit LoopX command facade "
+        "and wire its scheduler through this packet."
+    )
 
 
 def build_agent_onboarding_packet(
@@ -132,7 +189,10 @@ def build_agent_onboarding_packet(
         available_capabilities=normalized_available_capabilities,
     )
     commands: dict[str, Any] = {
-        "doctor_or_install": render_codex_cli_no_clone_preflight(cli_bin=cli_bin),
+        "doctor_or_install": render_codex_cli_no_clone_preflight(
+            cli_bin=cli_bin,
+            doctor_agent_type=canonical_agent_type,
+        ),
         "bootstrap_command_pack": bootstrap_pack_command,
         "quota_guard": (
             render_quota_guard_command(
@@ -184,6 +244,7 @@ def build_agent_onboarding_packet(
         "task_text": task_text,
         "project_connection": inspection,
         "host_loop_activation": host_loop_activation,
+        "skill_delivery": _skill_delivery_contract(canonical_agent_type),
         "recommended_start": (
             "Select one registered agent lane from identity_selection_gate, then rerun onboarding."
             if not activation_allowed
@@ -207,6 +268,13 @@ def build_agent_onboarding_packet(
             "setup_complete_requires": [
                 "project-local LoopX state exists or was intentionally previewed",
                 "ordered todos are written when task text was supplied",
+                *(
+                    [
+                        "custom host loaded-skill readback satisfies skill_delivery.success_criteria"
+                    ]
+                    if canonical_agent_type == "other-agent"
+                    else []
+                ),
                 "host_loop_activation success criteria are satisfied or a concrete gate is reported",
             ],
         },
@@ -230,6 +298,11 @@ def render_agent_onboarding_markdown(payload: dict[str, Any]) -> str:
     )
     identity_gate = payload.get("identity_selection_gate")
     identity_gate = identity_gate if isinstance(identity_gate, dict) else {}
+    skill_delivery = (
+        payload.get("skill_delivery")
+        if isinstance(payload.get("skill_delivery"), dict)
+        else {}
+    )
     lines = [
         "# LoopX Agent Onboarding",
         "",
@@ -247,6 +320,24 @@ def render_agent_onboarding_markdown(payload: dict[str, Any]) -> str:
     ]
     if commands.get("install_command_facade"):
         lines.extend(["", "```bash", str(commands.get("install_command_facade")), "```"])
+    if skill_delivery.get("mode") == "host_managed":
+        lines.extend(
+            [
+                "",
+                "## Host-Managed Skill Delivery",
+                "",
+                f"- owner: `{skill_delivery.get('owner')}`",
+                f"- required_for_cli_health: `{skill_delivery.get('required_for_cli_health')}`",
+                f"- required_for_loopx_workflow: `{skill_delivery.get('required_for_loopx_workflow')}`",
+                f"- delivery_options: `{','.join(skill_delivery.get('delivery_options') or [])}`",
+                f"- required_skill_ids: `{','.join(skill_delivery.get('required_skill_ids') or [])}`",
+                f"- source_repository: `{skill_delivery.get('source_repository')}`",
+                f"- source_directories: `{','.join(skill_delivery.get('source_directories') or [])}`",
+                f"- host_readback_required: `{skill_delivery.get('host_readback_required')}`",
+                f"- readback_fields: `{','.join(skill_delivery.get('readback_fields') or [])}`",
+                f"- source_contract: {skill_delivery.get('source_contract')}",
+            ]
+        )
     lines.extend(["", "```bash", str(commands.get("bootstrap_command_pack") or ""), "```"])
     if commands.get("codex_cli_bootstrap_message"):
         lines.extend(["", "```bash", str(commands.get("codex_cli_bootstrap_message")), "```"])
