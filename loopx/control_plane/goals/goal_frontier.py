@@ -1436,6 +1436,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     delta_kind="watch_lane_continuation",
                 )
             ),
+            current_agent_blocker_count=safe_non_negative_int(
+                (agent_todo_summary or {}).get("current_agent_blocker_count")
+            ),
             monitor_no_change_streak_triggered=(
                 monitor_no_change_trigger is not None
             ),

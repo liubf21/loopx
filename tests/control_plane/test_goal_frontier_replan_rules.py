@@ -76,6 +76,16 @@ from loopx.control_plane.goals.goal_frontier_replan_rules import (
         ),
         (
             {
+                "current_agent_blocker_count": 1,
+                "monitor_no_change_streak_triggered": True,
+                "monitor_only_lane": True,
+                "monitor_count": 1,
+            },
+            GoalFrontierReplanRule.CURRENT_AGENT_BLOCKER,
+            False,
+        ),
+        (
+            {
                 "monitor_no_change_streak_triggered": True,
                 "monitor_only_lane": True,
                 "monitor_count": 1,

@@ -280,6 +280,29 @@ def test_current_agent_blocker_defers_open_vision_gap_without_hiding_reason() ->
     ) in markdown
 
 
+def test_current_agent_blocker_outranks_exact_blocked_successor() -> None:
+    blocker = quota_todo_item(
+        todo_id=PROJECTED_BLOCKER_ID,
+        index=3,
+        text="[P2 blocker] Wait for a qualifying advancement assignment.",
+        status="blocked",
+        task_class="blocker",
+        priority="P2",
+        claimed_by=AGENT_ID,
+        reason="Candidate promotion requires controller assignment.",
+    )
+
+    guard = _quota(_status_payload(extra_agent_items=[blocker]))
+
+    wait = guard["goal_frontier_projection"]["vision_wait_state"]
+    assert wait["reason_code"] == "current_agent_blocker"
+    assert wait["selected_todo_id"] == PROJECTED_BLOCKER_ID
+    assert wait["automatic_resume"] is False
+    assert guard["agent_scope_frontier"]["blocked_successor_wait_candidates"][0][
+        "todo_id"
+    ] == WAITING_ID
+
+
 @pytest.mark.parametrize(
     ("claimed_by", "reason"),
     [

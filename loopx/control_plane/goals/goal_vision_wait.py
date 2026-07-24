@@ -98,7 +98,7 @@ def build_goal_vision_wait_state(
     acceptance_gaps: list[dict[str, Any]] | None,
     selectable_advancement_count: int,
 ) -> dict[str, Any] | None:
-    """Project a temporary vision wait over an exact blocked successor.
+    """Project a temporary vision wait over an authoritative blocked frontier.
 
     This is deliberately a read model, not a new todo or vision lifecycle
     state. It may defer only ordinary open-vision acceptance gaps. Missing
@@ -110,9 +110,32 @@ def build_goal_vision_wait_state(
         return None
     if selectable_advancement_count > 0:
         return None
-    candidates = todo_summary_blocked_successor_items(
-        agent_todo_summary or {},
-        agent_id=agent_id,
+
+    blocker_items = (
+        agent_todo_summary.get("current_agent_blocker_items")
+        if isinstance(agent_todo_summary, dict)
+        and isinstance(agent_todo_summary.get("current_agent_blocker_items"), list)
+        else []
+    )
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
+    blocker_items = [
+        item
+        for item in blocker_items
+        if isinstance(item, dict)
+        and safe_agent_id is not None
+        and item.get("task_class") == TODO_TASK_CLASS_BLOCKER
+        and normalize_todo_status(item.get("status")) == "blocked"
+        and str(item.get("reason") or "").strip()
+        and normalize_todo_claimed_by(item.get("claimed_by"))
+        == safe_agent_id
+    ]
+    candidates = (
+        todo_summary_blocked_successor_items(
+            agent_todo_summary or {},
+            agent_id=agent_id,
+        )
+        if not blocker_items
+        else []
     )
     if candidates:
         selected = candidates[0]
@@ -148,27 +171,8 @@ def build_goal_vision_wait_state(
         }
         return {key: value for key, value in payload.items() if value is not None}
 
-    blocker_items = (
-        agent_todo_summary.get("current_agent_blocker_items")
-        if isinstance(agent_todo_summary, dict)
-        and isinstance(agent_todo_summary.get("current_agent_blocker_items"), list)
-        else []
-    )
-    safe_agent_id = normalize_todo_claimed_by(agent_id)
-    blocker_items = [
-        item
-        for item in blocker_items
-        if isinstance(item, dict)
-        and safe_agent_id is not None
-        and item.get("task_class") == TODO_TASK_CLASS_BLOCKER
-        and normalize_todo_status(item.get("status")) == "blocked"
-        and str(item.get("reason") or "").strip()
-        and normalize_todo_claimed_by(item.get("claimed_by"))
-        == safe_agent_id
-    ]
     if not blocker_items:
         return None
-
     selected = blocker_items[0]
     waiting_todo_ids = [
         todo_id
