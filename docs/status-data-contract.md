@@ -1366,7 +1366,7 @@ token is derived from scheduler action plus identity/profile inputs, while the
 hot path carries only action fields plus a short `identity_signature`; the
 profile signature, reset-condition summary, and full stateful-backoff policy are
 available from `scheduler_hint.cold_path_detail` when callers request
-`loopx quota should-run --include-scheduler-detail`. The reset moves Codex
+`loopx quota should-run --include-detail scheduler`. The reset moves Codex
 App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should use `automation_update` only when

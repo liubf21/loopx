@@ -652,7 +652,7 @@ JSON or Markdown decision:
       "schema_version": "scheduler_hint_detail_v0",
       "omitted_by_default": true,
       "execution_required": false,
-      "request": "loopx quota should-run --include-scheduler-detail",
+      "request": "loopx quota should-run --include-detail scheduler",
       "hot_path_runtime_fields": [
         "codex_app",
         "unchanged_poll",
@@ -865,7 +865,7 @@ unchanged polls and reset the unchanged streak whenever the token changes. The
 token is derived from scheduler action plus the current identity/profile inputs;
 the explanatory reset profile, profile signature, reset condition summary, and
 stateful-backoff policy live in `scheduler_hint.cold_path_detail` when callers
-request `loopx quota should-run --include-scheduler-detail`. Hosts should also
+request `loopx quota should-run --include-detail scheduler`. Hosts should also
 reset when an external event makes the goal actionable again, such as user
 feedback in the thread, a new or reassigned todo, a resolved gate, or material
 evidence transition. A reset applies `codex_app_initial_interval_minutes` (and
@@ -931,12 +931,12 @@ unchanged poll triggers the compact final quota/replan check named by
 still unchanged, the loop applies
 `scheduler_hint.unchanged_poll.after_limits.<runtime>`. Hosts that need the
 older per-runtime detail objects must opt in with
-`quota should-run --include-scheduler-detail` and read
+`quota should-run --include-detail scheduler` and read
 `scheduler_hint.cold_path_detail.local_scheduler`,
 `scheduler_hint.cold_path_detail.codex_cli_tui`, or
 `scheduler_hint.cold_path_detail.claude_code_loop`. That opt-in is diagnostic
 and migration support only: a host or agent that forgets
-`--include-scheduler-detail` must still retain the core scheduling abilities by
+`--include-detail scheduler` must still retain the core scheduling abilities by
 reading the default hot-path fields named in
 `scheduler_hint.detail_ref.hot_path_runtime_fields`.
 The response also includes `execution_obligation`, which is the compatibility

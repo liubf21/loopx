@@ -997,7 +997,7 @@ def build_scheduler_hint(
                 "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,
                 "omitted_by_default": True,
                 "execution_required": False,
-                "request": "loopx quota should-run --include-scheduler-detail",
+                "request": "loopx quota should-run --include-detail scheduler",
                 "hot_path_runtime_fields": [
                     "codex_app",
                     "unchanged_poll",

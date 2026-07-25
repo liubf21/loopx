@@ -127,9 +127,9 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         consumer_action="decide whether one agent may run",
         qualification_policy="absolute_hot_path",
         cold_path=(
-            "status, history, active state, --include-scheduler-detail, and "
-            "--include-todo-summary-detail, --include-user-todo-summary-detail, "
-            "or --include-goal-boundary-detail"
+            "status, history, active state, and repeatable --include-detail "
+            "selectors for scheduler, agent-todos, user-todos, goal-boundary, "
+            "or all"
         ),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
@@ -370,7 +370,7 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_scheduler_detail",
         parent_surface_id="quota_should_run",
-        command="quota should-run --include-scheduler-detail",
+        command="quota should-run --include-detail scheduler",
         output_formats=("json", "markdown"),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
@@ -380,7 +380,7 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_todo_summary_detail",
         parent_surface_id="quota_should_run",
-        command="quota should-run --include-todo-summary-detail",
+        command="quota should-run --include-detail agent-todos",
         output_formats=("json", "markdown"),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
@@ -390,7 +390,7 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_user_todo_summary_detail",
         parent_surface_id="quota_should_run",
-        command="quota should-run --include-user-todo-summary-detail",
+        command="quota should-run --include-detail user-todos",
         output_formats=("json", "markdown"),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
@@ -400,12 +400,22 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_goal_boundary_detail",
         parent_surface_id="quota_should_run",
-        command="quota should-run --include-goal-boundary-detail",
+        command="quota should-run --include-detail goal-boundary",
         output_formats=("json", "markdown"),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
         max_chars={"json": 35_000, "markdown": 7_800},
         max_lines={"json": 900, "markdown": 78},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="quota_should_run_all_detail",
+        parent_surface_id="quota_should_run",
+        command="quota should-run --include-detail all",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
+        markdown_anchor="# LoopX Quota Should Run",
+        max_chars={"json": 85_000, "markdown": 7_800},
+        max_lines={"json": 2_100, "markdown": 78},
     ),
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_turn_envelope",

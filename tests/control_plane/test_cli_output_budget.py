@@ -202,11 +202,45 @@ def _write_checkpointed_boundary_authority(registry_path: Path) -> None:
     )
 
 
+def _write_user_todo_fixture(state_file: Path) -> None:
+    state_text = state_file.read_text(encoding="utf-8")
+    user_section = "\n".join(
+        [
+            "## User Todo",
+            "",
+            "- [ ] [P0-user] Approve the scoped output release.",
+            (
+                "  <!-- loopx:todo todo_id=todo_user_gate_001 status=open "
+                "task_class=user_gate action_kind=approve_output_release "
+                "blocks_agent=codex-alpha "
+                "decision_scope=release:action:quota-output priority=P0-USER -->"
+            ),
+            "- [ ] [P1] Review the other agent output notes.",
+            (
+                "  <!-- loopx:todo todo_id=todo_user_action_001 status=open "
+                "task_class=user_action action_kind=review_output_notes "
+                "bound_agent=codex-beta priority=P1 -->"
+            ),
+            "",
+        ]
+    )
+    state_file.write_text(
+        state_text.replace("## Agent Todo", f"{user_section}\n## Agent Todo"),
+        encoding="utf-8",
+    )
+
+
 def _invoke_cli(args: list[str]) -> tuple[int, str]:
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
         exit_code = cli_main(args)
     return exit_code, output.getvalue()
+
+
+def _quota_payload_without_rollout_receipt(text: str) -> dict[str, object]:
+    payload = json.loads(text)
+    payload.pop("rollout_event", None)
+    return payload
 
 
 @contextlib.contextmanager
@@ -471,7 +505,8 @@ def _mode_variant_commands(
             AGENT_IDS[0],
             "--scan-root",
             str(project),
-            "--include-scheduler-detail",
+            "--include-detail",
+            "scheduler",
         ],
         "quota_should_run_todo_summary_detail": common
         + [
@@ -483,7 +518,8 @@ def _mode_variant_commands(
             AGENT_IDS[0],
             "--scan-root",
             str(project),
-            "--include-todo-summary-detail",
+            "--include-detail",
+            "agent-todos",
         ],
         "quota_should_run_user_todo_summary_detail": common
         + [
@@ -495,7 +531,8 @@ def _mode_variant_commands(
             AGENT_IDS[0],
             "--scan-root",
             str(project),
-            "--include-user-todo-summary-detail",
+            "--include-detail",
+            "user-todos",
         ],
         "quota_should_run_goal_boundary_detail": common
         + [
@@ -507,7 +544,21 @@ def _mode_variant_commands(
             AGENT_IDS[0],
             "--scan-root",
             str(project),
-            "--include-goal-boundary-detail",
+            "--include-detail",
+            "goal-boundary",
+        ],
+        "quota_should_run_all_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-detail",
+            "all",
         ],
         "quota_should_run_turn_envelope": common
         + [
@@ -624,6 +675,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "quota_should_run_todo_summary_detail",
         "quota_should_run_user_todo_summary_detail",
         "quota_should_run_goal_boundary_detail",
+        "quota_should_run_all_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
         "loopx_turn_run_once_preview",
@@ -737,7 +789,7 @@ def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
         "quota_cli_todo_summary_compaction_v0"
     )
     assert default_payload["todo_summary_projection"]["detail_ref"] == (
-        "quota should-run --include-todo-summary-detail"
+        "quota should-run --include-detail agent-todos"
     )
     assert "backlog_items" not in default_summary
     assert detail_summary["backlog_items"]
@@ -754,31 +806,7 @@ def test_quota_cli_keeps_full_user_todo_diagnostics_on_explicit_cold_path(
             stable_root,
             SCENARIOS[2],
         )
-        state_text = state_file.read_text(encoding="utf-8")
-        user_section = "\n".join(
-            [
-                "## User Todo",
-                "",
-                "- [ ] [P0-user] Approve the scoped output release.",
-                (
-                    "  <!-- loopx:todo todo_id=todo_user_gate_001 status=open "
-                    "task_class=user_gate action_kind=approve_output_release "
-                    "blocks_agent=codex-alpha "
-                    "decision_scope=release:action:quota-output priority=P0-USER -->"
-                ),
-                "- [ ] [P1] Review the other agent output notes.",
-                (
-                    "  <!-- loopx:todo todo_id=todo_user_action_001 status=open "
-                    "task_class=user_action action_kind=review_output_notes "
-                    "bound_agent=codex-beta priority=P1 -->"
-                ),
-                "",
-            ]
-        )
-        state_file.write_text(
-            state_text.replace("## Agent Todo", f"{user_section}\n## Agent Todo"),
-            encoding="utf-8",
-        )
+        _write_user_todo_fixture(state_file)
         default_command = _surface_commands(
             project=project,
             runtime=runtime,
@@ -807,7 +835,7 @@ def test_quota_cli_keeps_full_user_todo_diagnostics_on_explicit_cold_path(
         "quota_cli_user_todo_summary_compaction_v0"
     )
     assert default_summary["payload_compaction"]["full_detail_cold_path"] == (
-        "quota should-run --include-user-todo-summary-detail"
+        "quota should-run --include-detail user-todos"
     )
     assert default_summary["gate_open_items"][0]["todo_id"] == "todo_user_gate_001"
     assert default_summary["gate_open_items"][0]["blocks_agent"] == "codex-alpha"
@@ -863,7 +891,7 @@ def test_quota_cli_keeps_goal_boundary_authority_on_explicit_cold_path(
     assert default_authority["payload_compaction"] == {
         "schema_version": "quota_cli_goal_boundary_compaction_v0",
         "omitted_entry_count": 1,
-        "full_detail_cold_path": "quota should-run --include-goal-boundary-detail",
+        "full_detail_cold_path": "quota should-run --include-detail goal-boundary",
     }
     assert "entries" not in default_authority
     assert detail_authority["entries"]
@@ -879,6 +907,75 @@ def test_quota_cli_keeps_goal_boundary_authority_on_explicit_cold_path(
     assert default_boundary == expected_boundary
     for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
         assert default_payload[key] == detail_payload[key]
+
+
+def test_quota_cli_deprecated_scheduler_detail_flag_matches_canonical_selector(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(
+        tmp_path / "quota-detail-alias-scheduler"
+    ) as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[2],
+        )
+        _write_user_todo_fixture(state_file)
+        _write_checkpointed_boundary_authority(registry_path)
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        canonical_exit_code, canonical_text = _invoke_cli(
+            default_command + ["--include-detail", "scheduler"]
+        )
+        legacy_exit_code, legacy_text = _invoke_cli(
+            default_command + ["--include-scheduler-detail"]
+        )
+
+    assert canonical_exit_code == 0, canonical_text
+    assert legacy_exit_code == 0, legacy_text
+    assert _quota_payload_without_rollout_receipt(
+        canonical_text
+    ) == _quota_payload_without_rollout_receipt(legacy_text)
+
+
+def test_quota_cli_all_detail_matches_repeated_canonical_selectors(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "quota-detail-all") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[2],
+        )
+        _write_user_todo_fixture(state_file)
+        _write_checkpointed_boundary_authority(registry_path)
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        repeated_command = list(default_command)
+        for section in ("scheduler", "agent-todos", "user-todos", "goal-boundary"):
+            repeated_command.extend(["--include-detail", section])
+        repeated_exit_code, repeated_text = _invoke_cli(repeated_command)
+        all_exit_code, all_text = _invoke_cli(
+            default_command + ["--include-detail", "all"]
+        )
+
+    assert repeated_exit_code == 0, repeated_text
+    assert all_exit_code == 0, all_text
+    all_payload = json.loads(all_text)
+    assert _quota_payload_without_rollout_receipt(
+        all_text
+    ) == _quota_payload_without_rollout_receipt(repeated_text)
+    assert all_payload["agent_todo_summary"]["backlog_items"]
+    assert all_payload["user_todo_summary"]["other_agent_bound_user_action_items"]
+    assert all_payload["goal_boundary"]["checkpointed_boundary_authority"]["entries"]
 
 
 def test_agent_scoped_status_keeps_whole_goal_todo_index_on_cold_path(

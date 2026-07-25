@@ -144,7 +144,7 @@ def assert_policy_case(
     assert "codex_cli_tui" not in extracted, (name, extracted)
     assert "claude_code_loop" not in extracted, (name, extracted)
     assert "cold_path_detail" not in extracted, (name, extracted)
-    assert extracted["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", (name, extracted)
+    assert extracted["detail_ref"]["request"] == "loopx quota should-run --include-detail scheduler", (name, extracted)
     assert detailed["cold_path_detail"]["local_scheduler"]["recommended_interval_minutes"], (name, detailed)
     assert detailed["cold_path_detail"]["codex_cli_tui"]["final_quota_replan_check"], (name, detailed)
     assert detailed["cold_path_detail"]["claude_code_loop"]["after_limit"], (name, detailed)

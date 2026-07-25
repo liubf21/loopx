@@ -157,7 +157,8 @@ export async function probeLoopxQuota(binding, { directory, execFileImpl = execF
     binding.goalId,
     "--runtime-profile",
     "generic_cli",
-    "--include-scheduler-detail",
+    "--include-detail",
+    "scheduler",
   )
   if (binding.agentId) args.push("--agent-id", binding.agentId)
   for (const capability of binding.availableCapabilities || []) {

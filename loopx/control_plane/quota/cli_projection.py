@@ -7,19 +7,19 @@ QUOTA_CLI_TODO_SUMMARY_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_todo_summary_compaction_v0"
 )
 QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND = (
-    "quota should-run --include-todo-summary-detail"
+    "quota should-run --include-detail agent-todos"
 )
 QUOTA_CLI_USER_TODO_SUMMARY_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_user_todo_summary_compaction_v0"
 )
 QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND = (
-    "quota should-run --include-user-todo-summary-detail"
+    "quota should-run --include-detail user-todos"
 )
 QUOTA_CLI_GOAL_BOUNDARY_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_goal_boundary_compaction_v0"
 )
 QUOTA_CLI_GOAL_BOUNDARY_DETAIL_COMMAND = (
-    "quota should-run --include-goal-boundary-detail"
+    "quota should-run --include-detail goal-boundary"
 )
 _RETAINED_AGENT_ITEM_LANES = {
     "first_executable_items": 3,

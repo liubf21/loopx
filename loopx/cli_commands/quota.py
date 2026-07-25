@@ -55,6 +55,22 @@ PrintPayload = Callable[
 ]
 RolloutEventAppender = Callable[..., dict[str, object]]
 HEARTBEAT_RECEIPT_SCHEMA_VERSION = "heartbeat_quota_receipt_v0"
+QUOTA_DETAIL_SECTIONS = (
+    "scheduler",
+    "agent-todos",
+    "user-todos",
+    "goal-boundary",
+)
+
+
+def _quota_detail_sections_from_args(args: argparse.Namespace) -> frozenset[str]:
+    sections = set(getattr(args, "include_details", None) or ())
+    if bool(getattr(args, "include_scheduler_detail", False)):
+        sections.add("scheduler")
+    if "all" in sections:
+        sections.update(QUOTA_DETAIL_SECTIONS)
+        sections.discard("all")
+    return frozenset(sections)
 
 
 def _find_heartbeat_receipt(
@@ -206,36 +222,21 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-detail",
+        dest="include_details",
+        action="append",
+        choices=[*QUOTA_DETAIL_SECTIONS, "all"],
+        help=(
+            "Include one cold-path `quota should-run` detail section. Repeat for "
+            "multiple sections or use `all`. Canonical sections: scheduler, "
+            "agent-todos, user-todos, and goal-boundary."
+        ),
+    )
+    quota_parser.add_argument(
         "--include-scheduler-detail",
         action="store_true",
-        help=(
-            "Include cold-path scheduler detail for local scheduler, Codex CLI, "
-            "and Claude loop runtimes in `quota should-run` JSON."
-        ),
-    )
-    quota_parser.add_argument(
-        "--include-todo-summary-detail",
-        action="store_true",
-        help=(
-            "Include cold-path agent todo diagnostic lanes in `quota should-run`. "
-            "The default keeps counts and decision-relevant todo items only."
-        ),
-    )
-    quota_parser.add_argument(
-        "--include-user-todo-summary-detail",
-        action="store_true",
-        help=(
-            "Include cold-path user todo diagnostic lanes in `quota should-run`. "
-            "The default keeps counts and current-agent user actions or gates only."
-        ),
-    )
-    quota_parser.add_argument(
-        "--include-goal-boundary-detail",
-        action="store_true",
-        help=(
-            "Include checkpointed goal-boundary authority entries in "
-            "`quota should-run`. The default keeps effective scope and counts."
-        ),
+        # Deprecated compatibility alias. Remove in the next breaking release.
+        help=argparse.SUPPRESS,
     )
     quota_parser.add_argument(
         "--codex-app-current-rrule",
@@ -398,31 +399,21 @@ def handle_quota_command(
     heartbeat_receipt_existing: dict[str, object] | None = None
     heartbeat_receipt_ready = False
     heartbeat_stall_observation = "not_evaluated"
+    detail_sections: frozenset[str] = frozenset()
     try:
         if bool(getattr(args, "turn_envelope", False)) and args.quota_command != "should-run":
             raise ValueError("--turn-envelope is only valid with `quota should-run`")
         if (
-            bool(getattr(args, "include_todo_summary_detail", False))
+            bool(getattr(args, "include_details", None))
             and args.quota_command != "should-run"
         ):
-            raise ValueError(
-                "--include-todo-summary-detail is only valid with `quota should-run`"
-            )
+            raise ValueError("--include-detail is only valid with `quota should-run`")
         if (
-            bool(getattr(args, "include_user_todo_summary_detail", False))
+            bool(getattr(args, "include_scheduler_detail", False))
             and args.quota_command != "should-run"
         ):
             raise ValueError(
-                "--include-user-todo-summary-detail is only valid with "
-                "`quota should-run`"
-            )
-        if (
-            bool(getattr(args, "include_goal_boundary_detail", False))
-            and args.quota_command != "should-run"
-        ):
-            raise ValueError(
-                "--include-goal-boundary-detail is only valid with "
-                "`quota should-run`"
+                "--include-scheduler-detail is only valid with `quota should-run`"
             )
         raw_heartbeat_turn_id = getattr(args, "turn_instance_id", None)
         heartbeat_turn_id = normalize_turn_instance_id(raw_heartbeat_turn_id)
@@ -432,6 +423,7 @@ def handle_quota_command(
             raise ValueError("turn-scoped `quota should-run` requires --agent-id")
         if heartbeat_turn_id and bool(args.dry_run):
             raise ValueError("turn-scoped `quota should-run` cannot use --dry-run")
+        detail_sections = _quota_detail_sections_from_args(args)
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
@@ -499,7 +491,7 @@ def handle_quota_command(
                 goal_id=args.goal_id,
                 agent_id=args.agent_id,
                 available_capabilities=args.available_capabilities,
-                include_scheduler_detail=bool(args.include_scheduler_detail),
+                include_scheduler_detail="scheduler" in detail_sections,
                 codex_app_current_rrule=args.codex_app_current_rrule,
                 registry_path=registry_path,
                 runtime_root=runtime_root,
@@ -563,7 +555,7 @@ def handle_quota_command(
                             goal_id=args.goal_id,
                             agent_id=args.agent_id,
                             available_capabilities=args.available_capabilities,
-                            include_scheduler_detail=bool(args.include_scheduler_detail),
+                            include_scheduler_detail="scheduler" in detail_sections,
                             codex_app_current_rrule=args.codex_app_current_rrule,
                             registry_path=registry_path,
                             runtime_root=runtime_root,
@@ -921,15 +913,9 @@ def handle_quota_command(
     elif args.quota_command == "should-run":
         payload = compact_quota_should_run_cli_payload(
             payload,
-            include_todo_summary_detail=bool(
-                getattr(args, "include_todo_summary_detail", False)
-            ),
-            include_user_todo_summary_detail=bool(
-                getattr(args, "include_user_todo_summary_detail", False)
-            ),
-            include_goal_boundary_detail=bool(
-                getattr(args, "include_goal_boundary_detail", False)
-            ),
+            include_todo_summary_detail="agent-todos" in detail_sections,
+            include_user_todo_summary_detail="user-todos" in detail_sections,
+            include_goal_boundary_detail="goal-boundary" in detail_sections,
         )
     renderer = (
         render_turn_envelope_markdown

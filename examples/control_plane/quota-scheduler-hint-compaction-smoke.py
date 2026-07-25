@@ -250,7 +250,7 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert "cold_path_detail" not in compact, (name, compact)
     assert compact["detail_ref"]["omitted_by_default"] is True, (name, compact)
     assert compact["detail_ref"]["execution_required"] is False, (name, compact)
-    assert compact["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", (name, compact)
+    assert compact["detail_ref"]["request"] == "loopx quota should-run --include-detail scheduler", (name, compact)
     assert_compact_runtime_policy_complete(
         name,
         compact,
@@ -328,7 +328,7 @@ def run_should_run_cli(
         str(project),
     ]
     if include_detail:
-        args.append("--include-scheduler-detail")
+        args.extend(["--include-detail", "scheduler"])
     result = subprocess.run(
         args,
         cwd=REPO_ROOT,
@@ -371,7 +371,7 @@ def assert_cli_compact_and_detail_contract() -> None:
         assert key not in detailed, (key, detailed)
         assert detailed["cold_path_detail"][key], (key, detailed)
     assert "cold_path_detail" not in compact, compact
-    assert compact["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", compact
+    assert compact["detail_ref"]["request"] == "loopx quota should-run --include-detail scheduler", compact
     assert detailed["cold_path_detail"]["schema_version"] == "scheduler_hint_detail_v0", detailed
     assert detailed["cold_path_detail"]["codex_cli_tui"]["unchanged_poll_limit"] == (
         compact["unchanged_poll"]["limits"]["codex_cli_tui"]

@@ -23,7 +23,7 @@ separate boundary through the real CLI entry point.
 | --- | --- | --- | --- |
 | `start-goal --guided` | baseline and growth | small, crowded, and multi-agent goals; objective/command duplication | `packet_summary.detail_refs` and `bootstrap-command-pack` |
 | `bootstrap-command-pack` | baseline and growth | small, crowded, and multi-agent goals; objective/command duplication | `--message-only` and `packet_summary.detail_refs` |
-| `quota should-run` | absolute hot path | todo-count growth plus semantic anchors | `status`, `history`, active state, `--include-scheduler-detail` |
+| `quota should-run` | absolute hot path | todo-count growth plus semantic anchors | `status`, `history`, active state, repeatable `--include-detail <section>` |
 | `status --goal-id` | absolute hot path | todo-count growth; task graph excluded by default | `--include-task-graph`, `history`, run artifacts |
 | `diagnose --goal-id` | explicit-limit cold path | `--limit 5` fixture matrix | status plus goal-specific quota/todo reads |
 | `review-packet --handoff-only` | absolute hot path | todo-count growth plus handoff semantic anchors | full `review-packet`, run artifacts |
@@ -31,6 +31,13 @@ separate boundary through the real CLI entry point.
 | `todo list` | baseline and growth | todo-count growth and agent filtering semantics | role/status filters, direct todo-id lifecycle commands |
 | `history --limit 5` | explicit-limit cold path | returned-run bound | individual run JSON/Markdown artifacts |
 | `evidence-log --thin --limit 5` | explicit-limit cold path | returned-evidence bound | referenced run-history and rollout-event artifacts |
+
+`quota should-run` uses one repeatable cold-path selector:
+`--include-detail scheduler`, `agent-todos`, `user-todos`, or
+`goal-boundary`; `--include-detail all` expands every section. Public docs,
+emitted `detail_ref` commands, and internal callers use only this selector.
+Unknown sections and selectors attached to another quota command fail before
+status collection.
 
 The canonical emitted-output inventory and current characterization ceilings
 live in `loopx.control_plane.testing.cli_output_budget`. Those ceilings are
@@ -43,10 +50,11 @@ fallback.
 
 The same matrix characterizes explicit mode switches instead of assuming that
 the default command represents them. Covered variants are
-`bootstrap-command-pack --message-only`, quota scheduler detail and
-TurnEnvelope output, status task-graph detail, the full review packet, and the
-brief/compact/full heartbeat prompt modes. These remain opt-in cold paths, but
-their exact stdout size and semantic anchors are regression contracts too.
+`bootstrap-command-pack --message-only`, quota per-section and all-detail
+selectors, TurnEnvelope output, status task-graph detail, the full review
+packet, and the brief/compact/full heartbeat prompt modes. These remain opt-in
+cold paths, but their exact stdout size and semantic anchors are regression
+contracts too.
 
 The start and daily command groups in the public help surface, plus
 `heartbeat-prompt`, are fail-closed inventory inputs. Each command must map to
