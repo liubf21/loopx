@@ -42,6 +42,10 @@ matches the surface you already use:
 | OpenCode | Install the OpenCode surface, then `/loopx <task text>` | The bridge writes commands, plugin, runtime, and pinned dependencies. After todos are written, call `loopx_goal_activate` to bind the quota-gated goal loop. |
 | Other agent or shell | `loopx start-goal --guided --project . --goal-text "<task text>" --host-surface <exact-host>` | The guided packet previews the same transaction an agent should execute: inspect or connect state, plan todos, refresh status, activate a host loop, run quota, and ack scheduler hints when needed. If the surface has no runner hook, LoopX can track state but the user drives it manually. |
 
+If you already own the Agent runner or workflow supervisor, use
+[Embed LoopX In Your Agent Runner](custom-agent-runner-integration.md) instead
+of reconstructing the lifecycle from the full CLI catalog.
+
 ## One CLI Quickstart
 
 Use this when an agent asks for the manual shell path, or when you are setting

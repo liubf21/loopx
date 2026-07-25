@@ -365,6 +365,10 @@ your agents can orchestrate external tools, devices, domain-specific runners,
 or peer agents, while LoopX keeps goals, gates, todos, evidence, quota, and
 handoff state reviewable.
 
+Read [Embed LoopX In Your Agent Runner](docs/guides/custom-agent-runner-integration.md)
+for the minimal CLI + lightweight skill + self-driven runner model, including
+the tick lifecycle, decentralized Agent handoff, and validation checklist.
+
 Clone-based install is only for contributors who want the live canary wrapper:
 
 ```bash
