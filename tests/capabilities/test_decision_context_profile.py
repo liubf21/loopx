@@ -182,6 +182,61 @@ def test_scope_and_provider_routes_fail_closed_without_private_leaks(
         assert status["unavailable_adapter_count"] == 1
 
 
+def test_private_host_provider_can_satisfy_activation_without_adapter_registration(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "private-authority.md"
+    authority.write_text(PRIVATE_CONTENT, encoding="utf-8")
+    profile_path = write_profile(
+        tmp_path / "private-profile.json",
+        profile_payload(authority, adapter="private-host-adapter"),
+    )
+
+    status, _profile = resolve_decision_context_activation(
+        goal_id="example-decision-goal",
+        agent_id="example-agent",
+        profile_path=profile_path,
+        available_source_provider_ids={"local-authority"},
+    )
+    serialized = json.dumps(status, sort_keys=True)
+
+    assert status["status"] == "available"
+    assert status["available"] is True
+    assert status["runtime_bound_provider_count"] == 1
+    assert status["source_providers"] == [
+        {
+            "adapter": "runtime-bound",
+            "adapter_registered": False,
+            "runtime_bound": True,
+            "private_config_captured": False,
+        }
+    ]
+    assert "private-host-adapter" not in serialized
+    assert str(authority) not in serialized
+
+
+def test_runtime_provider_binding_must_be_declared_by_private_profile(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "private-authority.md"
+    authority.write_text(PRIVATE_CONTENT, encoding="utf-8")
+    profile_path = write_profile(
+        tmp_path / "private-profile.json",
+        profile_payload(authority),
+    )
+
+    status, _profile = resolve_decision_context_activation(
+        goal_id="example-decision-goal",
+        agent_id="example-agent",
+        profile_path=profile_path,
+        available_source_provider_ids={"another-provider"},
+    )
+
+    assert status["status"] == "profile_invalid"
+    assert status["reason_code"] == "runtime_provider_scope_mismatch"
+    assert status["available"] is False
+
+
 @pytest.mark.parametrize(
     ("field_name", "value", "expected_message"),
     [

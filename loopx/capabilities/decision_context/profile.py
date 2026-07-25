@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -137,11 +137,18 @@ class DecisionSourceProviderBinding:
     adapter: str
     config: Mapping[str, Any] = field(repr=False)
 
-    def public_record(self) -> dict[str, object]:
+    def public_record(self, *, runtime_bound: bool = False) -> dict[str, object]:
         adapter_registered = decision_source_provider_registered(self.adapter)
         return {
-            "adapter": self.adapter if adapter_registered else "unregistered",
+            "adapter": (
+                "runtime-bound"
+                if runtime_bound
+                else self.adapter
+                if adapter_registered
+                else "unregistered"
+            ),
             "adapter_registered": adapter_registered,
+            "runtime_bound": runtime_bound,
             "private_config_captured": False,
         }
 
@@ -357,9 +364,16 @@ def resolve_decision_context_activation(
     goal_id: str,
     agent_id: str,
     profile_path: Path | None,
+    available_source_provider_ids: Collection[str] | None = None,
 ) -> tuple[dict[str, Any], DecisionContextProfile | None]:
     normalized_goal = _token(goal_id, field_name="goal_id")
     normalized_agent = _token(agent_id, field_name="agent_id")
+    if isinstance(available_source_provider_ids, (str, bytes)):
+        raise TypeError("available_source_provider_ids must be a collection")
+    runtime_provider_ids = {
+        _token(provider_id, field_name="available_source_provider_ids[]")
+        for provider_id in (available_source_provider_ids or ())
+    }
     base: dict[str, Any] = {
         "ok": True,
         "schema_version": DECISION_CONTEXT_ACTIVATION_STATUS_SCHEMA_VERSION,
@@ -374,6 +388,7 @@ def resolve_decision_context_activation(
         "available": False,
         "source_count": 0,
         "source_provider_count": 0,
+        "runtime_bound_provider_count": 0,
         "context_provider_configured": False,
         "automatic_capture": False,
         "fail_open": True,
@@ -398,15 +413,30 @@ def resolve_decision_context_activation(
         }, None
 
     configured_for_agent = normalized_agent in config.enabled_agents
-    provider_records = [binding.public_record() for binding in config.provider_bindings]
+    declared_provider_ids = {
+        binding.provider_id for binding in config.provider_bindings
+    }
+    if not runtime_provider_ids <= declared_provider_ids:
+        return base | {
+            "status": "profile_invalid",
+            "reason_code": "runtime_provider_scope_mismatch",
+        }, config
+    provider_records = [
+        binding.public_record(
+            runtime_bound=binding.provider_id in runtime_provider_ids,
+        )
+        for binding in config.provider_bindings
+    ]
     unavailable_adapter_count = sum(
-        not bool(record["adapter_registered"]) for record in provider_records
+        not bool(record["adapter_registered"]) and not bool(record["runtime_bound"])
+        for record in provider_records
     )
     status = base | {
         "enabled": config.enabled,
         "configured_for_agent": configured_for_agent,
         "source_count": len(config.sources),
         "source_provider_count": len(config.provider_bindings),
+        "runtime_bound_provider_count": len(runtime_provider_ids),
         "source_providers": provider_records,
         "context_provider_configured": config.context_provider is not None,
     }

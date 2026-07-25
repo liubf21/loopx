@@ -8,6 +8,7 @@ import pytest
 
 from loopx.capabilities.decision_context import (
     DecisionEvidenceRecords,
+    LocalFileDecisionSourceProvider,
     assemble_profile_decision_evidence,
     build_decision_outcome_receipt,
     build_decision_proposal,
@@ -28,6 +29,7 @@ def write_profile(
     enabled: bool = True,
     max_bytes: int = 4096,
     scan_mode: str = "incremental",
+    adapter: str = "local-file",
 ) -> Path:
     payload = {
         "schema_version": "decision_context_profile_v0",
@@ -37,7 +39,7 @@ def write_profile(
         "source_provider_bindings": [
             {
                 "provider_id": "local-authority",
-                "adapter": "local-file",
+                "adapter": adapter,
                 "config": {"max_bytes": max_bytes},
             }
         ],
@@ -192,6 +194,80 @@ def test_profile_runtime_builds_providers_and_returns_private_cursor_proposal(
     )
     assert PRIVATE_CONTENT not in json.dumps(packet, sort_keys=True)
     assert str(authority) not in json.dumps(packet, sort_keys=True)
+
+
+def test_private_host_provider_drives_generic_scan_exact_read_and_checkpoint(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "authority.md"
+    authority.write_text(PRIVATE_CONTENT, encoding="utf-8")
+    profile = write_profile(
+        tmp_path / "profile.json",
+        authority,
+        adapter="private-host-adapter",
+    )
+    provider = LocalFileDecisionSourceProvider(
+        provider_id="local-authority",
+        max_bytes=4096,
+    )
+
+    activation, assembly = assemble_profile_decision_evidence(
+        goal_id="example-decision-goal",
+        agent_id="example-agent",
+        profile_path=profile,
+        decision_id="decision:adoption",
+        observed_at=OBSERVED_AT,
+        before=BEFORE,
+        rebase=semantic_rebase,
+        source_provider_overrides={"local-authority": provider},
+    )
+
+    assert activation["status"] == "available"
+    assert activation["runtime_bound_provider_count"] == 1
+    assert assembly is not None
+    packet = assembly.public_packet()
+    assert packet["source_scan_receipts"][0]["status"] == "completed"
+    assert packet["source_scan_receipts"][0]["exact_read_count"] == 1
+    assert packet["evidence_packet"]["provider_health"][0]["status"] == "healthy"
+    assert packet["cursor_checkpoint"]["sources"][0]["disposition"] == (
+        "ready_after_writeback"
+    )
+    assert PRIVATE_CONTENT not in json.dumps(packet, sort_keys=True)
+    assert str(authority) not in json.dumps(packet, sort_keys=True)
+
+
+def test_runtime_provider_identity_mismatch_fails_open(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "authority.md"
+    authority.write_text(PRIVATE_CONTENT, encoding="utf-8")
+    profile = write_profile(
+        tmp_path / "profile.json",
+        authority,
+        adapter="private-host-adapter",
+    )
+    provider = LocalFileDecisionSourceProvider(
+        provider_id="another-provider",
+        max_bytes=4096,
+    )
+
+    activation, assembly = assemble_profile_decision_evidence(
+        goal_id="example-decision-goal",
+        agent_id="example-agent",
+        profile_path=profile,
+        decision_id="decision:adoption",
+        observed_at=OBSERVED_AT,
+        before=BEFORE,
+        rebase=lambda _collection: DecisionEvidenceRecords(),
+        source_provider_overrides={"local-authority": provider},
+    )
+
+    assert activation["status"] == "available"
+    assert assembly is not None
+    receipt = assembly.public_packet()["source_scan_receipts"][0]
+    assert receipt["status"] == "unavailable"
+    assert receipt["reason_code"] == "runtime_provider_identity_mismatch"
+    assert assembly.proposed_cursors == {}
 
 
 def test_prepare_evidence_cli_preserves_private_cursor_until_semantic_rebase(

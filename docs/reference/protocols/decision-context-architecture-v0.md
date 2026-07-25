@@ -193,6 +193,16 @@ Scanning, evidence preparation, and proposal construction still perform no
 cursor write. A missing or generic boolean "writeback succeeded" assertion is
 not sufficient to commit.
 
+Private hosts may bind a provider instance at runtime through
+`source_provider_overrides`. The provider id must already be declared by the
+private goal profile, and the instance identity must match that declaration.
+This lets an MCP, inbox, document, or repository integration use the same
+health, bounded scan, exact-read, rebase, and cursor-checkpoint path without
+registering a private adapter in the public package. Activation projects only
+`runtime-bound`; the adapter name, config, locator, payload, and cursor remain
+private. Missing or mismatched runtime providers fail open without advancing a
+cursor.
+
 ### P1: first dogfood
 
 Use one private, redacted decision-assistant scenario. Write an outcome receipt

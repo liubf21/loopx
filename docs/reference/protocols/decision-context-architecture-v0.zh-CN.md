@@ -214,6 +214,13 @@ health、evidence 和 cursor checkpoint 记录。host API 通过领域 rebase ca
 source scan、evidence preparation 和 proposal 构建仍不会写 cursor；调用方只传
 一个“writeback 成功”的布尔值，不足以触发提交。
 
+私有宿主可以通过 `source_provider_overrides` 在运行时绑定 provider 实例。provider
+id 必须先由私有 goal profile 声明，实例身份也必须与声明一致。这样 MCP、收件箱、
+文档或仓库集成可以复用同一套 health、bounded scan、exact-read、rebase 与 cursor
+checkpoint 路径，而不必把私有 adapter 注册进公开包。activation 只投影
+`runtime-bound`；adapter 名称、配置、locator、payload 和 cursor 均留在私有边界。
+provider 缺失或身份不匹配时 fail open，且不会推进 cursor。
+
 ### P1：首个 dogfood
 
 - 在一个私有、脱敏的决策助手场景生成 evidence/proposal；

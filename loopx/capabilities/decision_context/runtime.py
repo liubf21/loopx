@@ -38,8 +38,14 @@ class _UnavailableContextProvider:
 class _UnavailableDecisionSourceProvider:
     """Report a configured-but-invalid binding without exposing its config."""
 
-    def __init__(self, provider_id: str) -> None:
+    def __init__(
+        self,
+        provider_id: str,
+        *,
+        reason_code: str = "provider_configuration_failed",
+    ) -> None:
         self.provider_id = provider_id
+        self.reason_code = reason_code
 
     def scan(
         self,
@@ -58,7 +64,7 @@ class _UnavailableDecisionSourceProvider:
             status="unavailable",
             observed_at=observed_at,
             requested_limit=source.max_changes,
-            reason_code="provider_configuration_failed",
+            reason_code=self.reason_code,
         )
 
     def exact_read(self, **_: Any) -> Any:
@@ -69,11 +75,22 @@ def _build_source_providers(
     profile: DecisionContextProfile,
     *,
     sources: Sequence[DecisionSourceSpec],
+    source_provider_overrides: Mapping[str, DecisionSourceProvider],
 ) -> dict[str, DecisionSourceProvider]:
     enabled_provider_ids = {source.provider_id for source in sources}
     providers: dict[str, DecisionSourceProvider] = {}
     for provider_id, binding in profile.provider_binding_map().items():
         if provider_id not in enabled_provider_ids:
+            continue
+        runtime_provider = source_provider_overrides.get(provider_id)
+        if runtime_provider is not None:
+            if str(getattr(runtime_provider, "provider_id", "") or "") != provider_id:
+                providers[provider_id] = _UnavailableDecisionSourceProvider(
+                    provider_id,
+                    reason_code="runtime_provider_identity_mismatch",
+                )
+            else:
+                providers[provider_id] = runtime_provider
             continue
         try:
             providers[provider_id] = build_decision_source_provider(binding)
@@ -138,6 +155,7 @@ def assemble_profile_decision_evidence(
     recall_query: str = "current decision evidence",
     recall_query_summary: str = "current decision evidence",
     timeout_seconds: float | None = None,
+    source_provider_overrides: Mapping[str, DecisionSourceProvider] | None = None,
 ) -> tuple[dict[str, Any], DecisionContextAssembly | None]:
     """Resolve one enabled profile and assemble evidence without applying cursors.
 
@@ -153,10 +171,17 @@ def assemble_profile_decision_evidence(
         )
     except ValueError:
         profile_digest_before = None
+    if source_provider_overrides is None:
+        provider_overrides: Mapping[str, DecisionSourceProvider] = {}
+    elif not isinstance(source_provider_overrides, Mapping):
+        raise TypeError("source_provider_overrides must be a mapping")
+    else:
+        provider_overrides = source_provider_overrides
     activation, profile = resolve_decision_context_activation(
         goal_id=goal_id,
         agent_id=agent_id,
         profile_path=profile_path,
+        available_source_provider_ids=provider_overrides,
     )
     if activation["available"] is not True or profile is None:
         return activation, None
@@ -176,7 +201,11 @@ def assemble_profile_decision_evidence(
         observed_at=observed_at,
         before=before,
         sources=sources,
-        source_providers=_build_source_providers(profile, sources=sources),
+        source_providers=_build_source_providers(
+            profile,
+            sources=sources,
+            source_provider_overrides=provider_overrides,
+        ),
         cursors=cursors,
         rebase=rebase,
         context_provider=_build_advisory_context_provider(profile),
