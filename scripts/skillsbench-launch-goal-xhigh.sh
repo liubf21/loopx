@@ -39,12 +39,18 @@ Optional env:
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_DOCKER_APT_SOURCE_MODE   Staged Dockerfile apt sources: mirror
-                                       (default) or primary
+                                       or primary. When unset, proxy egress
+                                       selects primary and an explicit
+                                       no-proxy run selects mirror.
   SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE
                                        Staged apt transport: default or
-                                       proxy-compatible
-  SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror
-                                       (default) or primary
+                                       proxy-compatible. When unset, proxy
+                                       egress selects proxy-compatible and an
+                                       explicit no-proxy run selects default.
+  SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror or
+                                       primary. When unset, proxy egress
+                                       selects primary and an explicit
+                                       no-proxy run selects mirror.
   SKILLSBENCH_DOCKER_PIP_BUILD_MODE    Staged Dockerfile pip build mode:
                                        isolated (default) or no-isolation
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
@@ -244,9 +250,30 @@ allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_R
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 benchmark_egress_no_proxy="${SKILLSBENCH_BENCHMARK_EGRESS_NO_PROXY:-}"
-docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-mirror}"
-docker_apt_transport_mode="${SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE:-default}"
-docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
+docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-}"
+docker_apt_transport_mode="${SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE:-}"
+docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-}"
+if [[ -z "$docker_apt_source_mode" ]]; then
+  if [[ "$benchmark_egress_proxy_mode" == "off" ]]; then
+    docker_apt_source_mode="mirror"
+  else
+    docker_apt_source_mode="primary"
+  fi
+fi
+if [[ -z "$docker_apt_transport_mode" ]]; then
+  if [[ "$benchmark_egress_proxy_mode" == "off" ]]; then
+    docker_apt_transport_mode="default"
+  else
+    docker_apt_transport_mode="proxy-compatible"
+  fi
+fi
+if [[ -z "$docker_pip_index_mode" ]]; then
+  if [[ "$benchmark_egress_proxy_mode" == "off" ]]; then
+    docker_pip_index_mode="mirror"
+  else
+    docker_pip_index_mode="primary"
+  fi
+fi
 docker_pip_build_mode="${SKILLSBENCH_DOCKER_PIP_BUILD_MODE:-isolated}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"

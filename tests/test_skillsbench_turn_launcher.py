@@ -470,6 +470,82 @@ def test_launcher_wires_bounded_proxy_compatible_apt_transport(
     assert "--docker-apt-transport-mode proxy-compatible" in proc.stdout
 
 
+def test_launcher_defaults_to_proxy_compatible_primary_sources_with_required_proxy(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "default-proxy-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "benchmark_egress_proxy_mode=require" in proc.stdout
+    assert "docker_apt_source_mode=primary" in proc.stdout
+    assert "docker_apt_transport_mode=proxy-compatible" in proc.stdout
+    assert "docker_pip_index_mode=primary" in proc.stdout
+    assert "--docker-apt-source-mode primary" in proc.stdout
+    assert "--docker-apt-transport-mode proxy-compatible" in proc.stdout
+    assert "--docker-pip-index-mode primary" in proc.stdout
+
+
+def test_launcher_defaults_to_mirror_sources_and_standard_apt_when_proxy_is_off(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE"] = "off"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "no-proxy-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "benchmark_egress_proxy_mode=off" in proc.stdout
+    assert "docker_apt_source_mode=mirror" in proc.stdout
+    assert "docker_apt_transport_mode=default" in proc.stdout
+    assert "docker_pip_index_mode=mirror" in proc.stdout
+    assert "--docker-apt-source-mode mirror" in proc.stdout
+    assert "--docker-apt-transport-mode default" in proc.stdout
+    assert "--docker-pip-index-mode mirror" in proc.stdout
+
+
+def test_launcher_preserves_explicit_package_source_overrides_with_required_proxy(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_SOURCE_MODE"] = "mirror"
+    env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "default"
+    env["SKILLSBENCH_DOCKER_PIP_INDEX_MODE"] = "mirror"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "explicit-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "benchmark_egress_proxy_mode=require" in proc.stdout
+    assert "docker_apt_source_mode=mirror" in proc.stdout
+    assert "docker_apt_transport_mode=default" in proc.stdout
+    assert "docker_pip_index_mode=mirror" in proc.stdout
+    assert "--docker-apt-source-mode mirror" in proc.stdout
+    assert "--docker-apt-transport-mode default" in proc.stdout
+    assert "--docker-pip-index-mode mirror" in proc.stdout
+
+
 def test_launcher_rejects_unbounded_apt_transport_mode(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "private-mode"
