@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import registered_agent_ids_for_goal
+from .control_plane.goals.contract_health import (
+    contract_error_diagnostic,
+    contract_error_views,
+    project_contract_health_for_goal,
+)
 from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     index_identity,
@@ -272,11 +277,27 @@ def _index_duplicate_warning(
     return f"{safe_goal_id}: duplicate index rows raw={raw} unique={unique}{detail}; {action}"
 
 
-def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list[str], int]:
-    errors: list[str] = []
+def _active_state_todo_contract_diagnostics(
+    registry: dict[str, Any],
+    *,
+    goal_id_filter: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    diagnostics: list[dict[str, Any]] = []
     checked = 0
     for goal in registry_goals(registry):
         goal_id = str(goal.get("id") or "")
+        if goal_id_filter and goal_id != goal_id_filter:
+            continue
+
+        def add_error(code: str, message: str) -> None:
+            diagnostics.append(
+                contract_error_diagnostic(
+                    code=code,
+                    message=message,
+                    goal_id=goal_id,
+                )
+            )
+
         registered_agents = registered_agent_ids_for_goal(goal)
         repo_text = str(goal.get("repo") or "").strip()
         if not repo_text:
@@ -287,7 +308,10 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
         try:
             lines = state_file.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
-            errors.append(f"{goal_id}: cannot read active state for user-gate scope check: {exc}")
+            add_error(
+                "active_state_read_failed",
+                f"{goal_id}: cannot read active state for todo contract check: {exc}",
+            )
             continue
 
         role: str | None = None
@@ -351,39 +375,44 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
             task_class = str(metadata.get("task_class") or "")
             todo_id = metadata.get("todo_id") or f"line:{index + 1}"
             if malformed_excluded_agents:
-                errors.append(
+                add_error(
+                    "todo_excluded_agents_invalid",
                     f"{goal_id}: todo {todo_id} has malformed excluded_agents metadata; "
                     "replace it with --excluded-agent <registered-agent> or remove it "
-                    "with --clear-excluded-agents"
+                    "with --clear-excluded-agents",
                 )
             if malformed_status:
-                errors.append(
+                add_error(
+                    "todo_status_invalid",
                     f"{goal_id}: todo {todo_id} has malformed status metadata; "
                     "replace it with status=open, status=done, status=blocked, or "
-                    "status=deferred"
+                    "status=deferred",
                 )
             if role == "agent" and removed_continuation_policy:
-                errors.append(
+                add_error(
+                    "agent_todo_removed_continuation_policy",
                     f"{goal_id}: agent todo {todo_id} uses removed continuation_policy="
                     f"{removed_continuation_policy}; use continuation_policy=independent_handoff "
                     "with an explicit review action_kind and excluded_agents=<author> only when "
-                    "executor separation is required"
+                    "executor separation is required",
                 )
             blocks_agent = metadata.get("blocks_agent")
             if role == "agent" and blocks_agent:
-                errors.append(
+                add_error(
+                    "agent_todo_blocks_agent_invalid",
                     f"{goal_id}: agent todo {todo_id} uses removed blocks_agent routing; "
                     "blocks_agent is reserved for user gates, while agent executor "
-                    "constraints use excluded_agents"
+                    "constraints use excluded_agents",
                 )
             excluded_agents = normalize_todo_excluded_agents(
                 metadata.get("excluded_agents")
             )
             claimed_by = normalize_todo_claimed_by(metadata.get("claimed_by"))
             if claimed_by and claimed_by in excluded_agents:
-                errors.append(
+                add_error(
+                    "todo_claimed_by_excluded_agent",
                     f"{goal_id}: agent todo {todo_id} has claimed_by={claimed_by!r} "
-                    "also listed in excluded_agents"
+                    "also listed in excluded_agents",
                 )
             archived_terminal_todo = (
                 in_completed_work_archive
@@ -391,9 +420,10 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                 and status in TERMINAL_TODO_STATUSES
             )
             if role != "agent" and excluded_agents and not archived_terminal_todo:
-                errors.append(
+                add_error(
+                    "todo_executor_exclusion_scope_invalid",
                     f"{goal_id}: {role or 'unscoped'} todo {todo_id} uses excluded_agents; "
-                    "executor exclusions are only valid for agent todos"
+                    "executor exclusions are only valid for agent todos",
                 )
             unknown_excluded_agents = [
                 agent_id
@@ -401,9 +431,10 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                 if registered_agents and agent_id not in registered_agents
             ]
             if role == "agent" and unknown_excluded_agents:
-                errors.append(
+                add_error(
+                    "todo_excludes_unregistered_agent",
                     f"{goal_id}: agent todo {todo_id} excludes unregistered agents: "
-                    + ", ".join(unknown_excluded_agents)
+                    + ", ".join(unknown_excluded_agents),
                 )
             if role == "user" and status not in TERMINAL_TODO_STATUSES:
                 checked += 1
@@ -427,48 +458,54 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     )
                 )
                 if task_class not in {TODO_TASK_CLASS_USER_ACTION, TODO_TASK_CLASS_USER_GATE}:
-                    errors.append(
+                    add_error(
+                        "user_todo_task_class_missing",
                         f"{goal_id}: open user todo {todo_id} requires task_class=user_gate "
                         "or task_class=user_action "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif task_class == TODO_TASK_CLASS_USER_ACTION and (blocks_agent or global_gate):
-                    errors.append(
+                    add_error(
+                        "user_action_blocking_scope_invalid",
                         f"{goal_id}: open user_action todo {todo_id} is non-blocking and "
                         "cannot set blocks_agent or global_gate=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif task_class == TODO_TASK_CLASS_USER_GATE and blocks_agent and global_gate:
-                    errors.append(
+                    add_error(
+                        "user_gate_scope_conflict",
                         f"{goal_id}: open user_gate todo {todo_id} in multi-agent goal "
                         "cannot set both blocks_agent and global_gate=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif bound_agent and goal_bound:
-                    errors.append(
+                    add_error(
+                        "user_todo_response_scope_conflict",
                         f"{goal_id}: open user todo {todo_id} cannot set both "
                         "bound_agent and goal_bound=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     task_class == TODO_TASK_CLASS_USER_GATE
                     and global_gate
                     and bound_agent
                 ):
-                    errors.append(
+                    add_error(
+                        "goal_user_gate_agent_binding_invalid",
                         f"{goal_id}: goal-wide user_gate todo {todo_id} cannot set "
                         "bound_agent; its response binding is goal_bound=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     task_class == TODO_TASK_CLASS_USER_GATE
                     and blocks_agent
                     and goal_bound
                 ):
-                    errors.append(
+                    add_error(
+                        "agent_user_gate_goal_binding_invalid",
                         f"{goal_id}: agent-scoped user_gate todo {todo_id} cannot set "
                         "goal_bound=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     task_class == TODO_TASK_CLASS_USER_GATE
@@ -476,28 +513,31 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     and bound_agent
                     and bound_agent != blocks_agent
                 ):
-                    errors.append(
+                    add_error(
+                        "agent_user_gate_response_binding_mismatch",
                         f"{goal_id}: agent-scoped user_gate todo {todo_id} must bind "
                         f"to blocks_agent={blocks_agent!r}, not bound_agent="
                         f"{bound_agent!r} (state_file={state_file}, line={index + 1}, "
-                        f"text={text})"
+                        f"text={text})",
                     )
                 elif bound_agent and registered_agents and bound_agent not in registered_agents:
-                    errors.append(
+                    add_error(
+                        "user_todo_bound_agent_unregistered",
                         f"{goal_id}: open user todo {todo_id} has bound_agent="
                         f"{bound_agent!r}, which is not registered for this goal "
                         f"(registered_agents={', '.join(registered_agents)}, "
-                        f"state_file={state_file}, line={index + 1}, text={text})"
+                        f"state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     len(registered_agents) > 1
                     and not effective_bound_agent
                     and not effective_goal_bound
                 ):
-                    errors.append(
+                    add_error(
+                        "multi_agent_user_todo_missing_response_scope",
                         f"{goal_id}: open user todo {todo_id} in multi-agent goal "
                         "requires bound_agent=<registered-agent> or goal_bound=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     task_class == TODO_TASK_CLASS_USER_GATE
@@ -505,11 +545,12 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     and registered_agents
                     and blocks_agent not in registered_agents
                 ):
-                    errors.append(
+                    add_error(
+                        "user_gate_blocks_unregistered_agent",
                         f"{goal_id}: open user_gate todo {todo_id} has blocks_agent="
                         f"{blocks_agent!r}, which is not registered for this goal "
                         f"(registered_agents={', '.join(registered_agents)}, "
-                        f"state_file={state_file}, line={index + 1}, text={text})"
+                        f"state_file={state_file}, line={index + 1}, text={text})",
                     )
                 elif (
                     task_class == TODO_TASK_CLASS_USER_GATE
@@ -517,19 +558,26 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     and not blocks_agent
                     and not global_gate
                 ):
-                    errors.append(
+                    add_error(
+                        "multi_agent_user_gate_missing_scope",
                         f"{goal_id}: open user_gate todo {todo_id} in multi-agent goal "
                         "requires blocks_agent=<registered-agent> or global_gate=true "
-                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                        f"(state_file={state_file}, line={index + 1}, text={text})",
                     )
             index = next_index
-    return errors, checked
+    return diagnostics, checked
 
 
-def _active_state_projection_gap_warnings(registry: dict[str, Any]) -> list[str]:
+def _active_state_projection_gap_warnings(
+    registry: dict[str, Any],
+    *,
+    goal_id_filter: str | None = None,
+) -> list[str]:
     warnings: list[str] = []
     for goal in registry_goals(registry):
         goal_id = str(goal.get("id") or "")
+        if goal_id_filter and goal_id != goal_id_filter:
+            continue
         repo_text = str(goal.get("repo") or "").strip()
         if not repo_text:
             continue
@@ -683,10 +731,16 @@ def check_contract(
     scan_roots: list[Path],
     limit: int,
     allow_missing_registry: bool = False,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
-    errors: list[str] = []
+    error_diagnostics: list[dict[str, Any]] = []
     warnings: list[str] = []
     checks: list[str] = []
+
+    def add_global_error(code: str, message: str) -> None:
+        error_diagnostics.append(
+            contract_error_diagnostic(code=code, message=message)
+        )
 
     registry_payload = inspect_registry(registry_path)
     if registry_payload.get("ok"):
@@ -697,8 +751,15 @@ def check_contract(
             if allow_missing_registry and error == "registry file does not exist":
                 warnings.append(f"{error}: {registry_path}")
             else:
-                errors.append(error)
-        errors.extend(str(item) for item in registry_payload.get("problems") or [])
+                add_global_error("registry_unavailable", error)
+        problem_diagnostics = registry_payload.get("problem_diagnostics")
+        if isinstance(problem_diagnostics, list):
+            error_diagnostics.extend(
+                item for item in problem_diagnostics if isinstance(item, dict)
+            )
+        else:
+            for problem in registry_payload.get("problems") or []:
+                add_global_error("registry_problem", str(problem))
 
     boundary_payload = inspect_registry_boundary(registry_path)
     if boundary_payload.get("ok"):
@@ -716,14 +777,24 @@ def check_contract(
         if boundary_payload.get("error"):
             warnings.append(f"registry boundary unavailable: {boundary_payload.get('error')}")
         for risk in boundary_payload.get("risks") or []:
-            errors.append(f"registry boundary risk: {risk}")
+            add_global_error("registry_boundary_risk", f"registry boundary risk: {risk}")
 
     registry = load_registry(registry_path)
-    user_gate_scope_errors, checked_user_gates = _active_state_user_gate_scope_errors(registry)
+    todo_contract_diagnostics, checked_user_gates = (
+        _active_state_todo_contract_diagnostics(
+            registry,
+            goal_id_filter=goal_id_filter,
+        )
+    )
     if checked_user_gates:
         checks.append(f"user-gate scopes checked: {checked_user_gates} open multi-agent gates")
-    errors.extend(user_gate_scope_errors)
-    warnings.extend(_active_state_projection_gap_warnings(registry))
+    error_diagnostics.extend(todo_contract_diagnostics)
+    warnings.extend(
+        _active_state_projection_gap_warnings(
+            registry,
+            goal_id_filter=goal_id_filter,
+        )
+    )
 
     runtime_root = resolve_runtime_root(
         registry,
@@ -738,7 +809,7 @@ def check_contract(
     history = collect_history(
         registry_path=registry_path,
         runtime_root=runtime_root,
-        goal_id=None,
+        goal_id=goal_id_filter,
         limit=limit,
     )
     checks.append(f"run-history goals={history.get('goal_count')} runs={history.get('run_count')}")
@@ -773,7 +844,8 @@ def check_contract(
     if boundary.get("ok"):
         checks.append(f"public boundary scan clean: {boundary.get('scanned_files')} files")
     else:
-        errors.extend(str(item) for item in boundary.get("hits") or [])
+        for hit in boundary.get("hits") or []:
+            add_global_error("public_boundary_violation", str(hit))
     if boundary.get("skipped_private_state_files"):
         checks.append(
             "private state scan skipped: "
@@ -785,8 +857,10 @@ def check_contract(
             f"{len(boundary.get('allowed_hits') or [])} private_doc_url hits"
         )
     warnings.extend(str(item) for item in boundary.get("private_state_git_warnings") or [])
+    error_views = contract_error_views(error_diagnostics)
+    errors = error_views["errors"]
 
-    return {
+    payload = {
         "ok": not errors,
         "registry": str(registry_path),
         "runtime_root": str(runtime_root),
@@ -796,10 +870,11 @@ def check_contract(
             "warnings": len(warnings),
             "checks": len(checks),
         },
-        "errors": errors,
+        **error_views,
         "warnings": warnings,
         "checks": checks,
     }
+    return project_contract_health_for_goal(payload, goal_id=goal_id_filter)
 
 
 def render_contract_markdown(payload: dict[str, Any]) -> str:

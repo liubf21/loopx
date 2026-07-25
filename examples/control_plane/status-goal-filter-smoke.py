@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test `loopx status --goal-id` as a goal-focused status view."""
+"""Smoke-test goal-focused status consumers against unrelated goal failures."""
 
 from __future__ import annotations
 
@@ -23,6 +23,13 @@ def write_state(project: Path, goal_id: str, todo_text: str) -> str:
     state_file = f".codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
     path = project / state_file
     path.parent.mkdir(parents=True, exist_ok=True)
+    unrelated_malformed_user_todo = ""
+    if goal_id == GOAL_B:
+        unrelated_malformed_user_todo = (
+            "\n## User Todo\n\n"
+            "- [ ] This malformed todo belongs only to goal B.\n"
+            "  <!-- loopx:todo todo_id=todo_bad_goal_b status=open -->\n"
+        )
     path.write_text(
         "---\n"
         "status: active\n"
@@ -31,7 +38,8 @@ def write_state(project: Path, goal_id: str, todo_text: str) -> str:
         f"# {goal_id}\n\n"
         "## Agent Todo\n\n"
         f"- [ ] {todo_text}\n"
-        f"  <!-- loopx:todo todo_id=todo_{goal_id} status=open task_class=advancement_task -->\n",
+        f"  <!-- loopx:todo todo_id=todo_{goal_id} status=open task_class=advancement_task -->\n"
+        f"{unrelated_malformed_user_todo}",
         encoding="utf-8",
     )
     return state_file
@@ -90,7 +98,14 @@ def write_run_history(runtime: Path) -> None:
         )
 
 
-def run_status(registry_path: Path, runtime: Path, project: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+def run_goal_command(
+    registry_path: Path,
+    runtime: Path,
+    project: Path,
+    command_name: str,
+    *extra: str,
+    goal_id: str | None = GOAL_A,
+) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
         "-m",
@@ -99,15 +114,19 @@ def run_status(registry_path: Path, runtime: Path, project: Path, *extra: str) -
         str(registry_path),
         "--runtime-root",
         str(runtime),
-        "status",
-        "--goal-id",
-        GOAL_A,
-        "--scan-path",
-        str(project / "PUBLIC.md"),
-        "--limit",
-        "10",
-        *extra,
+        command_name,
     ]
+    if goal_id:
+        command.extend(["--goal-id", goal_id])
+    command.extend(
+        [
+            "--scan-path",
+            str(project / "PUBLIC.md"),
+            "--limit",
+            "10",
+            *extra,
+        ]
+    )
     return subprocess.run(
         command,
         cwd=REPO_ROOT,
@@ -150,14 +169,55 @@ def main() -> int:
         registry_path = write_registry(project, runtime)
         write_run_history(runtime)
 
-        json_result = run_status(registry_path, runtime, project, "--format", "json")
+        json_result = run_goal_command(
+            registry_path,
+            runtime,
+            project,
+            "status",
+            "--format",
+            "json",
+        )
         assert json_result.returncode == 0, (json_result.stdout, json_result.stderr)
         assert_goal_scoped(json.loads(json_result.stdout))
 
-        markdown_result = run_status(registry_path, runtime, project)
+        markdown_result = run_goal_command(
+            registry_path,
+            runtime,
+            project,
+            "status",
+        )
         assert markdown_result.returncode == 0, (markdown_result.stdout, markdown_result.stderr)
         assert f"- goal_filter: `{GOAL_A}`" in markdown_result.stdout, markdown_result.stdout
         assert GOAL_B not in markdown_result.stdout, markdown_result.stdout
+
+        for command_name in ("diagnose", "review-packet"):
+            result = run_goal_command(
+                registry_path,
+                runtime,
+                project,
+                command_name,
+                "--format",
+                "json",
+            )
+            assert result.returncode == 0, (result.stdout, result.stderr)
+            assert GOAL_B not in result.stdout, result.stdout
+
+        ready_score = run_goal_command(
+            registry_path,
+            runtime,
+            project,
+            "ready-score",
+            "--format",
+            "json",
+            goal_id=None,
+        )
+        assert ready_score.returncode == 0, (
+            ready_score.stdout,
+            ready_score.stderr,
+        )
+        ready_payload = json.loads(ready_score.stdout)
+        assert ready_payload["goal_id"] == GOAL_A, ready_payload
+        assert GOAL_B not in ready_score.stdout, ready_score.stdout
 
     print("status-goal-filter-smoke ok")
     return 0

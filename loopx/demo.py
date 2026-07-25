@@ -105,6 +105,7 @@ def run_demo(
         runtime_root_override=str(runtime_root),
         scan_roots=[project],
         limit=5,
+        goal_id=goal_id,
     )
     quota = build_quota_should_run(status_payload, goal_id=goal_id)
     queue_item = _first_queue_item(status_payload, goal_id)

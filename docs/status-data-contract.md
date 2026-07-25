@@ -462,10 +462,12 @@ goals must stay out of the eligible lane even when they have a high
 
 By default `loopx status` is the multi-goal dashboard/control-plane view.
 `loopx status --goal-id <goal-id>` keeps global health fields such as
-`contract` and `global_registry`, but focuses goal-scoped sections such as
-`attention_queue`, `run_history`, `event_ledger_summary`, `usage_summary`, and
-`todo_index` on the requested goal. Use `loopx diagnose --goal-id <goal-id>`
-when an agent needs the richer reasoning packet for one goal.
+`global_registry`, while its `contract` projection contains only global errors
+plus errors owned by the selected goal. It also focuses goal-scoped sections
+such as `attention_queue`, `run_history`, `event_ledger_summary`,
+`usage_summary`, and `todo_index` on the requested goal. Use
+`loopx diagnose --goal-id <goal-id>` when an agent needs the richer reasoning
+packet for one goal.
 
 Consumers should treat unknown fields as additive. Required fields for a
 first-screen UI are `ok`, `contract`, and `attention_queue`.
@@ -645,10 +647,20 @@ The summary counters are intentionally small:
 - `warnings`: non-blocking issues worth showing in a secondary health panel.
 - `checks`: successful observations, useful for audit trails.
 
-`errors`, `warnings`, and `checks` are short strings. Checks should be concrete
-enough to support an operator decision without exposing local paths or private
-evidence. They must be public-safe before a project exposes this export outside
-the local machine.
+`error_diagnostics` is the source of truth for error ownership. Each row has a
+stable `code`, a human-readable `message`, and either `scope=global` or
+`scope=goal` with a `goal_id`; a finding shared by a known subset may use
+`scope=goals` with `goal_ids`. Registry parse failures, ambiguous goal identity,
+registry boundary violations, and public-boundary violations are global.
+Goal-entry, active-state, and todo contract failures are owned by the goal or
+known goal set that produced them.
+
+`errors`, `global_errors`, and `goal_errors` are compatibility projections
+derived from those structured diagnostics; consumers must not infer ownership
+from message prefixes. `warnings` and `checks` remain short strings. Checks
+should be concrete enough to support an operator decision without exposing
+local paths or private evidence. They must be public-safe before a project
+exposes this export outside the local machine.
 
 ## Attention Queue
 

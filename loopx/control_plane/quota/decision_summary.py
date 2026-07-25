@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..goals.contract_health import project_contract_health_for_goal
 from ..todos.contract import normalize_todo_claimed_by
 
 
@@ -34,3 +35,25 @@ def quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
         else {}
     )
     return normalize_todo_claimed_by(agent_identity.get("agent_id"))
+
+
+def goal_status_health_ok(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    fallback: bool,
+) -> bool:
+    """Keep global guards fail-closed without importing unrelated goal errors."""
+
+    contract = (
+        status_payload.get("contract")
+        if isinstance(status_payload.get("contract"), dict)
+        else {}
+    )
+    if "error_diagnostics" not in contract:
+        return fallback
+    global_registry = status_payload.get("global_registry")
+    if isinstance(global_registry, dict) and global_registry.get("ok") is False:
+        return False
+    scoped = project_contract_health_for_goal(contract, goal_id=goal_id)
+    return scoped.get("ok") is True

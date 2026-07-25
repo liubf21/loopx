@@ -945,6 +945,7 @@ def handle_review_packet_command(
             scan_roots=_scan_roots(args),
             limit=max(0, args.limit),
             include_task_graph=not args.handoff_only,
+            goal_id=args.goal_id,
         )
         if args.agent_id:
             attach_agent_lane_next_actions(status_payload, agent_id=args.agent_id)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .goals.contract_health import project_contract_health_for_goal
 from .runtime.runtime_projection_route import (
     collect_runtime_projection_route_diagnostics,
 )
@@ -66,7 +67,9 @@ def collect_status(
         runtime_root_override=str(runtime_root),
         scan_roots=scan_roots,
         limit=limit,
+        goal_id_filter=goal_filter,
     )
+    contract = project_contract_health_for_goal(contract, goal_id=goal_filter)
     queue = context.build_attention_queue(
         contract=contract,
         history=history,
@@ -99,6 +102,16 @@ def collect_status(
             else None
         )
     }
+    contract_projection = {
+        "ok": contract.get("ok"),
+        "summary": contract.get("summary"),
+        "errors": contract.get("errors") or [],
+        "warnings": contract.get("warnings") or [],
+        "checks": contract.get("checks") or [],
+    }
+    for key in ("error_diagnostics", "global_errors", "goal_errors"):
+        if contract.get(key):
+            contract_projection[key] = contract[key]
     payload = {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
         "registry": str(registry_path),
@@ -108,13 +121,7 @@ def collect_status(
         "status_contract": context.build_status_contract(),
         "goal_filter": goal_filter,
         **context.build_contract_health_projection(contract),
-        "contract": {
-            "ok": contract.get("ok"),
-            "summary": contract.get("summary"),
-            "errors": contract.get("errors") or [],
-            "warnings": contract.get("warnings") or [],
-            "checks": contract.get("checks") or [],
-        },
+        "contract": contract_projection,
         "global_registry": global_registry,
         "attention_queue": queue,
         **runtime_summaries,

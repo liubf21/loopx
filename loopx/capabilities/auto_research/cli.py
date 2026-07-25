@@ -1045,6 +1045,7 @@ def handle_auto_research_command(
                     runtime_root_override=runtime_root_arg,
                     scan_roots=[Path.cwd()],
                     limit=5,
+                    goal_id=args.goal_id,
                 )
                 quota_payload = build_quota_should_run(
                     status_payload,

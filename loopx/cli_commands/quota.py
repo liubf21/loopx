@@ -450,6 +450,11 @@ def handle_quota_command(
         )
         status_payload = None
         cache_metadata = None
+        status_goal_id = (
+            args.goal_id
+            if args.quota_command not in {"status", "plan"}
+            else None
+        )
         use_projection_cache = bool(getattr(args, "use_projection_cache", False))
         write_projection_cache_enabled = bool(getattr(args, "write_projection_cache", False))
         projection_cache_ttl_seconds = int(getattr(args, "projection_cache_ttl_seconds", 120))
@@ -460,7 +465,7 @@ def handle_quota_command(
                 scan_roots=scan_roots,
                 limit=status_limit,
                 include_task_graph=False,
-                goal_id=None,
+                goal_id=status_goal_id,
                 max_age_seconds=projection_cache_ttl_seconds,
             )
         if status_payload is None:
@@ -469,6 +474,7 @@ def handle_quota_command(
                 runtime_root_override=runtime_root_arg,
                 scan_roots=scan_roots,
                 limit=status_limit,
+                goal_id=status_goal_id,
             )
             if write_projection_cache_enabled:
                 cache_metadata = write_status_projection_cache(
@@ -477,7 +483,7 @@ def handle_quota_command(
                     scan_roots=scan_roots,
                     limit=status_limit,
                     include_task_graph=False,
-                    goal_id=None,
+                    goal_id=status_goal_id,
                     payload=status_payload,
                     max_age_seconds=projection_cache_ttl_seconds,
                 )
@@ -558,6 +564,7 @@ def handle_quota_command(
                             runtime_root_override=runtime_root_arg,
                             scan_roots=scan_roots,
                             limit=status_limit,
+                            goal_id=status_goal_id,
                         )
                         payload = build_live_quota_should_run_decision(
                             status_payload,
@@ -615,6 +622,7 @@ def handle_quota_command(
                     runtime_root_override=runtime_root_arg,
                     scan_roots=scan_roots,
                     limit=status_limit,
+                    goal_id=status_goal_id,
                 ),
             )
         elif args.quota_command in {"scheduler-ack", "scheduler-ack-current"}:

@@ -9,6 +9,7 @@ from typing import Any
 
 from .authority import authority_registry_summary
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
+from .control_plane.goals.contract_health import contract_error_diagnostic
 from .execution_profile import compact_execution_profile, execution_profile_summary
 from .explore_graph import compact_explore_graph_policy
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
@@ -284,9 +285,27 @@ def inspect_registry(path: Path) -> dict[str, Any]:
     inspected_goals: list[dict[str, Any]] = []
     status_counts: dict[str, int] = {}
     problems: list[str] = []
+    problem_diagnostics: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     repo_goal_ids: dict[str, list[str]] = {}
     state_goal_ids: dict[str, list[str]] = {}
+
+    def add_problem(
+        code: str,
+        message: str,
+        *,
+        goal_id: str | None = None,
+        goal_ids: list[str] | None = None,
+    ) -> None:
+        problems.append(message)
+        problem_diagnostics.append(
+            contract_error_diagnostic(
+                code=code,
+                message=message,
+                goal_id=goal_id,
+                goal_ids=goal_ids,
+            )
+        )
 
     for raw_goal in goals:
         if not isinstance(raw_goal, dict):
@@ -304,7 +323,7 @@ def inspect_registry(path: Path) -> dict[str, Any]:
 
     for raw_goal in goals:
         if not isinstance(raw_goal, dict):
-            problems.append("non-object goal entry")
+            add_problem("registry_goal_not_object", "non-object goal entry")
             continue
 
         goal_id = str(raw_goal.get("id") or "")
@@ -326,19 +345,38 @@ def inspect_registry(path: Path) -> dict[str, Any]:
 
         status_counts[status] = status_counts.get(status, 0) + 1
         if not goal_id:
-            problems.append("goal entry missing id")
+            add_problem("registry_goal_missing_id", "goal entry missing id")
         elif goal_id in seen_ids:
-            problems.append(f"duplicate goal id: {goal_id}")
+            add_problem(
+                "registry_duplicate_goal_id",
+                f"duplicate goal id: {goal_id}",
+            )
         seen_ids.add(goal_id)
 
         if not repo:
-            problems.append(f"{goal_id or '<missing>'}: missing repo")
+            add_problem(
+                "registry_goal_missing_repo",
+                f"{goal_id or '<missing>'}: missing repo",
+                goal_id=goal_id or None,
+            )
         if not raw_goal.get("domain"):
-            problems.append(f"{goal_id or '<missing>'}: missing domain")
+            add_problem(
+                "registry_goal_missing_domain",
+                f"{goal_id or '<missing>'}: missing domain",
+                goal_id=goal_id or None,
+            )
         if not raw_goal.get("state_file"):
-            problems.append(f"{goal_id or '<missing>'}: missing state_file")
+            add_problem(
+                "registry_goal_missing_state_file",
+                f"{goal_id or '<missing>'}: missing state_file",
+                goal_id=goal_id or None,
+            )
         if not adapter.get("kind"):
-            problems.append(f"{goal_id or '<missing>'}: missing adapter.kind")
+            add_problem(
+                "registry_goal_missing_adapter_kind",
+                f"{goal_id or '<missing>'}: missing adapter.kind",
+                goal_id=goal_id or None,
+            )
 
         inspected_goals.append(
             {
@@ -384,9 +422,11 @@ def inspect_registry(path: Path) -> dict[str, Any]:
     for state_file, goal_ids in sorted(state_goal_ids.items()):
         unique_goal_ids = sorted(set(goal_ids))
         if len(unique_goal_ids) > 1:
-            problems.append(
+            add_problem(
+                "registry_state_file_shared",
                 "state_file shared by multiple goals: "
-                f"{', '.join(unique_goal_ids)} -> {state_file}"
+                f"{', '.join(unique_goal_ids)} -> {state_file}",
+                goal_ids=unique_goal_ids,
             )
 
     return {
@@ -398,6 +438,7 @@ def inspect_registry(path: Path) -> dict[str, Any]:
         "goal_count": len(inspected_goals),
         "status_counts": status_counts,
         "problems": problems,
+        "problem_diagnostics": problem_diagnostics,
         "goals": inspected_goals,
     }
 

@@ -74,14 +74,24 @@ def handle_ready_score_command(
     if args.command != "ready-score":
         return None
     doctor_payload = collect_doctor()
+    scan_roots = _scan_roots(args)
+    limit = max(0, args.limit)
     status_payload = collect_status(
         registry_path=registry_path,
         runtime_root_override=runtime_root_arg,
-        scan_roots=_scan_roots(args),
-        limit=max(0, args.limit),
+        scan_roots=scan_roots,
+        limit=limit,
         goal_id=args.goal_id,
     )
     selected_goal_id = select_ready_score_goal_id(status_payload, args.goal_id)
+    if selected_goal_id and not args.goal_id:
+        status_payload = collect_status(
+            registry_path=registry_path,
+            runtime_root_override=runtime_root_arg,
+            scan_roots=scan_roots,
+            limit=limit,
+            goal_id=selected_goal_id,
+        )
     quota_payload = None
     if selected_goal_id:
         quota_payload = build_quota_should_run(

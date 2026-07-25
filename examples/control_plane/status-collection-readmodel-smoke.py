@@ -143,6 +143,7 @@ def assert_context_orchestration() -> None:
 
     def check_contract(**kwargs: Any) -> dict[str, Any]:
         assert kwargs["limit"] == 2, kwargs
+        assert kwargs["goal_id_filter"] == GOAL_ID, kwargs
         return record("check_contract", {"ok": True, "summary": "ok", "warnings": [], "errors": [], "checks": []})
 
     def build_attention_queue(**kwargs: Any) -> dict[str, Any]:

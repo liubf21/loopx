@@ -35,9 +35,29 @@ def _first_attention_item(status_payload: dict[str, Any], *, goal_id: str | None
 def select_ready_score_goal_id(status_payload: dict[str, Any], requested_goal_id: str | None = None) -> str | None:
     if requested_goal_id:
         return requested_goal_id
-    item = _first_attention_item(status_payload, goal_id=None)
-    if item.get("goal_id"):
-        return str(item.get("goal_id"))
+    history = _as_dict(status_payload.get("run_history"))
+    goal_ids = [
+        str(goal.get("id"))
+        for goal in _as_list(history.get("goals"))
+        if isinstance(goal, dict) and goal.get("id")
+    ]
+    known_goal_ids = set(goal_ids)
+    queue = _as_dict(status_payload.get("attention_queue"))
+    items = [
+        item
+        for item in _as_list(queue.get("items"))
+        if isinstance(item, dict)
+    ]
+    for item in items:
+        item_goal_id = str(item.get("goal_id") or "")
+        if item_goal_id in known_goal_ids and isinstance(item.get("project_asset"), dict):
+            return item_goal_id
+    for item in items:
+        item_goal_id = str(item.get("goal_id") or "")
+        if item_goal_id in known_goal_ids:
+            return item_goal_id
+    if goal_ids:
+        return goal_ids[0]
     goal_filter = status_payload.get("goal_filter")
     return str(goal_filter) if goal_filter else None
 

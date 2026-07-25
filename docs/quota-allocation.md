@@ -611,6 +611,12 @@ the displayed gate, evidence, or health reason.
 `quota should-run` is the per-goal guard for heartbeat jobs. It returns a small
 JSON or Markdown decision:
 
+Its health gate is also per-goal: global contract errors and errors owned by
+the selected goal fail closed, while errors owned by other goals remain visible
+in broad status inventory without blocking this decision. Error ownership comes
+from structured contract diagnostics, never from parsing a goal-id prefix out
+of an error string.
+
 ```json
 {
   "goal_id": "project-main-control",
