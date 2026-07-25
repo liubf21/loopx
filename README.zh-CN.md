@@ -101,6 +101,11 @@ Cursor、其他终端 agent 或手动 shell 都走同一个 no-clone installer�
 或 heartbeat、或者自身有 loop/scheduler。否则 LoopX 仍可记录项目状态，但用户需要把
 下面的 shell 命令手动跑完。
 
+如果你已经有远端 Agent runner、custom CLI 或 workflow supervisor，直接阅读
+[把 LoopX 嵌入你的 Agent Runner](docs/guides/custom-agent-runner-integration.zh-CN.md)。
+它用一页讲清 CLI、轻量 skill/re-entry instruction、自驱动 tick、去中心化 Agent
+接力和验证边界。
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
