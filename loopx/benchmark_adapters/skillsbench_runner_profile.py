@@ -353,6 +353,7 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--if-present", action="store_true")
         if name == "probe-ssh":
             command.add_argument("--timeout-seconds", type=int, default=15)
+            command.add_argument("--current-environment", action="store_true")
     capture = commands.add_parser("capture")
     capture.add_argument("--profile", type=Path)
     capture.add_argument("--force", action="store_true")
@@ -362,6 +363,25 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "probe-ssh" and args.current_environment:
+            if args.profile:
+                raise SkillsBenchRunnerProfileError("probe_source_conflict")
+            if args.timeout_seconds < 1:
+                raise SkillsBenchRunnerProfileError("probe_timeout_invalid")
+            profile = {
+                key: os.environ[key]
+                for key in (
+                    "SKILLSBENCH_SSH_DESTINATION",
+                    "SKILLSBENCH_SSH_OPTIONS",
+                )
+                if os.environ.get(key)
+            }
+            summary = probe_skillsbench_runner_connectivity(
+                profile,
+                timeout_seconds=args.timeout_seconds,
+            )
+            print(json.dumps(summary, sort_keys=True))
+            return 0 if summary["reachable"] else 3
         profile_path = args.profile or default_skillsbench_runner_profile_path()
         if args.command == "capture":
             summary = capture_skillsbench_runner_profile(

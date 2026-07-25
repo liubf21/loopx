@@ -350,6 +350,19 @@ remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
 fi
+runner_connectivity_preflight="required"
+if [[ "$dry_run" == "false" ]]; then
+  if ! runner_connectivity_receipt="$(
+    PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
+      python3 -m loopx.benchmark_adapters.skillsbench_runner_profile \
+      probe-ssh --current-environment --timeout-seconds 10
+  )"; then
+    printf '%s\n' "$runner_connectivity_receipt" >&2
+    exit 3
+  fi
+  unset runner_connectivity_receipt
+  runner_connectivity_preflight="passed"
+fi
 exact_host_codex_sandbox_preflight="not_required"
 if [[ "$local_codex_split_control" == "1" ]]; then
   remote_codex_bin_mode="split_control_client"
@@ -841,6 +854,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'runner_profile_loaded=%s\n' "$runner_profile_loaded"
   printf 'runner_profile_path_recorded=false\n'
   printf 'runner_profile_values_recorded=false\n'
+  printf 'runner_connectivity_preflight=%s\n' \
+    "$runner_connectivity_preflight"
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'local_codex_exec_timeout_sec=%s\n' \
     "${local_codex_exec_timeout:-runner-default}"
@@ -972,6 +987,7 @@ docker_api_version=${docker_api_version}
 remote_codex_bin_mode=${remote_codex_bin_mode}
 local_codex_split_control=${local_codex_split_control}
 local_codex_provider=$([[ "$local_codex_split_control" == "1" ]] && echo reverse_channel || echo exact_host)
+runner_connectivity_preflight=${runner_connectivity_preflight}
 local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
