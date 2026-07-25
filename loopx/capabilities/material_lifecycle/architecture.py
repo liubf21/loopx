@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .decision_planning import MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION
 from .inventory import (
     MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
     MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
@@ -34,6 +35,7 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION,
             MATERIAL_RERANK_PROPOSAL_SCHEMA_VERSION,
             MATERIAL_RERANK_APPLY_RECEIPT_SCHEMA_VERSION,
+            MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION,
         ],
         "sibling_capabilities": {
             "decision_context": (
@@ -51,6 +53,7 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "raw_material_store": "private_external_authority",
             "inventory_provider": "read_only_snapshot_and_parse_metadata",
             "migration_adapter": "owner_gated_dual_read_apply_and_rollback",
+            "decision_policy": "replaceable_public_safe_evidence_evaluator",
             "exploration_provider": "deferred_provider_neutral_candidate_intake",
         },
         "lifecycle": [
@@ -60,6 +63,7 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "active",
             "archive_or_carryover",
             "bounded_rerank",
+            "bounded_explore_intent",
             "audited_apply",
         ],
         "invariants": [
@@ -69,11 +73,11 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "legacy_and_new_stores_dual_read_before_owner_gated_cutover",
             "stable_material_refs_survive_archive_and_reactivation",
             "rerank_is_a_bounded_delta_with_protected_items_and_no_change",
+            "decision_evidence_is_revision_bound_and_public_safe",
+            "explore_intent_is_budgeted_analysis_only_and_has_a_stop_condition",
+            "invalid_or_unavailable_policy_fails_open_to_no_change",
             "proposal_and_apply_receipt_remain_separate",
             "automation_prompts_do_not_own_source_lists_or_ranking_rules",
         ],
-        "next_stage": (
-            "private_legacy_provider_dogfood_and_dual_read_reconciliation_"
-            "then_decision_driven_rerank"
-        ),
+        "next_stage": ("private_decision_driven_rerank_dogfood_then_owner_gated_apply"),
     }

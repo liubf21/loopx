@@ -104,10 +104,17 @@ LoopX 才会准备迁移。
 
 ## 决策驱动的排序与探索
 
-Stage 0 接收 Decision Context 产生的不透明 `decision_evidence_ref`。后续
-provider-neutral 阶段可以据此生成小范围重排或探索意图。搜索引擎、联网
-客户端、消息和仓库 scanner 都是可替换 provider；其 raw output 不进入
-公开 packet。
+provider-neutral 的决策规划路径接收 Decision Context 产出的、经过验证且
+公开安全的 `decision_evidence_packet_v0`。可替换 policy 可以据此生成既有的
+`material_rerank_proposal_v0`，以及可选的 `material_explore_intent_v0`。
+
+explore intent 只携带不透明 topic/evidence 引用，并限定 topic 数、
+provider 调用数、新增候选数与显式 stop condition。它仅用于分析：创建 intent
+不会调用 provider，也不会推进 source cursor。policy 不可用或输出非法时，
+规划会 fail open 为可审计的 no-change proposal，并丢弃不完整的探索输出。
+
+搜索引擎、联网客户端、消息和仓库 scanner 仍是可替换 provider；其 raw query、
+输出、凭据和私有位置都不能进入公开 packet。
 
 因此 recurring automation 最终只负责唤醒 goal 和调用 capability。
 来源清单、增量 cursor、排序规则与探索预算应位于 ignored 的 goal-scoped
@@ -115,13 +122,14 @@ provider-neutral 阶段可以据此生成小范围重排或探索意图。搜索
 
 ## 本阶段不做什么
 
-当前 capability 交付确定性契约、provider-neutral 的只读准备路径、catalog、
-架构 CLI、聚焦测试和公开 smoke，不交付：
+当前 capability 交付确定性契约、provider-neutral 的只读准备路径、受限决策
+规划、catalog、架构 CLI、聚焦测试和公开 smoke，不交付：
 
 - 内置 legacy 素材 parser 或迁移 apply；
 - 原始素材持久化；
+- 内置决策 policy；
 - 联网探索 provider；
 - 群聊/关键联系人 source profile；
-- 自动重排、自动归档或自动推进 cursor。
+- 自动重排、provider 调用、自动归档或自动推进 cursor。
 
 这些能力必须经过私有只读 adapter、精确双读对账和显式 owner gate。

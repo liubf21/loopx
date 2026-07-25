@@ -112,11 +112,21 @@ prepare migration.
 
 ## Decision-Driven Ranking and Exploration
 
-Stage 0 accepts an opaque `decision_evidence_ref` from Decision Context. A
-later provider-neutral stage may derive a bounded rerank or exploration intent
-from that evidence. Search engines, web clients, messaging providers, and
-repository scanners remain replaceable providers; their raw output cannot enter
-public packets.
+The provider-neutral decision-planning path accepts a validated, public-safe
+`decision_evidence_packet_v0` from Decision Context. A replaceable policy can
+derive the existing bounded `material_rerank_proposal_v0` plus an optional
+`material_explore_intent_v0`.
+
+The explore intent carries only opaque topic and evidence references. It fixes
+maximum topic, provider-call, and new-candidate budgets plus an explicit stop
+condition. It is analysis-only: creating it neither calls a provider nor
+advances a source cursor. If the policy is unavailable or emits invalid output,
+planning fails open to an audited no-change proposal and discards partial
+exploration output.
+
+Search engines, web clients, messaging providers, and repository scanners
+remain replaceable providers. Their raw queries, output, credentials, and
+private locations cannot enter public packets.
 
 This keeps recurring automation thin. A scheduler should wake the goal and
 invoke the configured capability. Source lists, incremental cursors, ranking
@@ -126,14 +136,15 @@ validated receipts, not in an automation prompt.
 ## Stage Boundary
 
 The capability now ships deterministic contracts, a provider-neutral read-only
-preparation path, catalog visibility, an architecture CLI, focused tests, and
-a public smoke. It does not ship:
+preparation path, bounded decision planning, catalog visibility, an
+architecture CLI, focused tests, and a public smoke. It does not ship:
 
 - a built-in legacy material parser or migration apply path;
 - raw-material persistence;
+- a built-in decision policy;
 - an exploration provider;
 - a messaging or contact source profile;
-- automatic reranking, archive moves, or cursor advancement.
+- automatic reranking, provider calls, archive moves, or cursor advancement.
 
 Those require a private read-only adapter, exact dual-read reconciliation, and
 an explicit owner gate.
