@@ -36,10 +36,14 @@ from loopx.benchmark_core.remote_closeout import (  # noqa: E402
     build_remote_benchmark_closeout_contract,
     closeout_remote_benchmark_batch,
 )
+from loopx.benchmark_core.lifecycle import (  # noqa: E402
+    compact_benchmark_live_worker_phase,
+)
 
 
 SCHEMA_VERSION = "skillsbench_reverse_tunnel_supervisor_v0"
 PUBLIC_LIVENESS_SCHEMA_VERSION = "skillsbench_supervisor_public_liveness_v0"
+ACTIVE_PHASE_SCHEMA_VERSION = "skillsbench_supervisor_active_phase_v0"
 PUBLIC_LIVENESS_INTERVAL_SEC = 30.0
 DEFAULT_REMOTE_FORWARD = "127.0.0.1:18180:127.0.0.1:18180"
 DEFAULT_TEST_HOST = "chatgpt.com"
@@ -1041,6 +1045,65 @@ def _incremental_public_artifact_sync_contract(
     }
 
 
+def _active_phase_public_contract(args: argparse.Namespace) -> dict[str, Any]:
+    contract: dict[str, Any] = {
+        "schema_version": ACTIVE_PHASE_SCHEMA_VERSION,
+        "state": "not_observed",
+        "receipt_count": 0,
+        "public_artifact_read": False,
+        "raw_artifacts_read": False,
+        "raw_task_text_read": False,
+        "raw_logs_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+        "local_paths_recorded": False,
+    }
+    if not args.local_public_artifact_dir:
+        return contract
+
+    root = Path(args.local_public_artifact_dir).expanduser()
+    if not root.is_dir() or root.is_symlink():
+        return contract
+
+    selected_phase: dict[str, Any] = {}
+    selected_sequence = -1
+    receipt_count = 0
+    for path in sorted(root.rglob("runner_prerequisites.public.json")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            if path.stat().st_size > int(args.public_artifact_max_bytes):
+                continue
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        phase = compact_benchmark_live_worker_phase(
+            payload.get("benchmark_live_worker_phase")
+        )
+        if not phase:
+            continue
+        receipt_count += 1
+        sequence = payload.get("benchflow_lifecycle_receipt_sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+            sequence = 0
+        if sequence >= selected_sequence:
+            selected_phase = phase
+            selected_sequence = sequence
+
+    contract["receipt_count"] = receipt_count
+    if not selected_phase:
+        return contract
+    contract.update(
+        state="observed",
+        receipt_sequence=selected_sequence,
+        benchmark_live_worker_phase=selected_phase,
+        public_artifact_read=True,
+    )
+    return contract
+
+
 def _record_incremental_public_artifact_sync(
     contract: dict[str, Any],
     result: Mapping[str, Any],
@@ -1358,6 +1421,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     def checkpoint(state: str, *, terminal: bool = False) -> None:
         nonlocal public_heartbeat_count
         public_heartbeat_count += 1
+        payload["active_phase"] = _active_phase_public_contract(args)
         _write_public_checkpoint(
             args.public_output_path,
             payload,

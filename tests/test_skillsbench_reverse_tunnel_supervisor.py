@@ -114,6 +114,81 @@ def test_supervisor_writes_starting_periodic_and_terminal_public_liveness(
     assert persisted["public_liveness"]["raw_trajectory_recorded"] is False
     assert persisted["public_liveness"]["raw_verifier_output_recorded"] is False
     assert persisted["public_liveness"]["local_paths_recorded"] is False
+    assert persisted["active_phase"] == {
+        "schema_version": "skillsbench_supervisor_active_phase_v0",
+        "state": "not_observed",
+        "receipt_count": 0,
+        "public_artifact_read": False,
+        "raw_artifacts_read": False,
+        "raw_task_text_read": False,
+        "raw_logs_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+        "local_paths_recorded": False,
+    }
+
+
+def test_supervisor_projects_existing_public_live_worker_phase(
+    tmp_path: Path,
+) -> None:
+    supervisor = _load_supervisor_module()
+    public_dir = tmp_path / "public"
+    receipt_dir = public_dir / "opaque-job"
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "runner_prerequisites.public.json").write_text(
+        json.dumps(
+            {
+                "benchflow_lifecycle_receipt_sequence": 7,
+                "benchmark_live_worker_phase": {
+                    "schema_version": "benchmark_live_worker_phase_v0",
+                    "current_phase": "worker_running",
+                    "next_required_phase": "agent_active",
+                    "phase_ready": {
+                        "runtime_preparing": True,
+                        "worker_prepared": True,
+                        "worker_running": True,
+                        "agent_active": False,
+                    },
+                    "worker_live": True,
+                    "agent_active_observed": False,
+                    "terminal": False,
+                    "terminal_disposition": "open",
+                    "public_evidence_only": True,
+                    "private_detail": "PRIVATE_DETAIL_MUST_NOT_PROJECT",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = supervisor.parse_args(
+        [
+            "--ssh-destination",
+            "runner.example",
+            "--remote-public-artifact-root",
+            "/opaque/public-jobs",
+            "--remote-public-artifact-glob",
+            "*/runner_prerequisites.public.json",
+            "--local-public-artifact-dir",
+            str(public_dir),
+        ]
+    )
+
+    projected = supervisor._active_phase_public_contract(args)
+
+    assert projected["state"] == "observed"
+    assert projected["receipt_count"] == 1
+    assert projected["receipt_sequence"] == 7
+    assert projected["public_artifact_read"] is True
+    assert projected["benchmark_live_worker_phase"]["current_phase"] == (
+        "worker_running"
+    )
+    assert projected["benchmark_live_worker_phase"]["worker_live"] is True
+    assert projected["raw_artifacts_read"] is False
+    assert projected["local_paths_recorded"] is False
+    serialized = json.dumps(projected, sort_keys=True)
+    assert "PRIVATE_DETAIL_MUST_NOT_PROJECT" not in serialized
+    assert str(tmp_path) not in serialized
 
 
 def test_supervisor_finalizes_public_liveness_on_early_launch_failure(
