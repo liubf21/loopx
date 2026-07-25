@@ -158,7 +158,15 @@ def output_format(args: argparse.Namespace, *local_dests: str) -> str:
         value = getattr(args, dest, None)
         if value:
             return str(value)
-    return str(args.format)
+    return str(getattr(args, "format", None) or "markdown")
+
+
+def resolve_global_output_format(args: argparse.Namespace) -> str:
+    if getattr(args, "format", None):
+        return str(args.format)
+    if args.command == "quota" and getattr(args, "quota_command", None) == "should-run":
+        return "json"
+    return "markdown"
 
 
 def user_supplied_registry(argv: list[str] | None) -> bool:
@@ -171,7 +179,7 @@ def build_parser() -> LoopXArgumentParser:
     parser.add_argument("--version", action="version", version=f"loopx {__version__}")
     parser.add_argument("--registry", default=str(default_registry_path()), help="Path to a project-local registry.")
     parser.add_argument("--runtime-root", help="Override registry common_runtime_root.")
-    parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    parser.add_argument("--format", choices=["markdown", "json"])
     sub = parser.add_subparsers(dest="command", required=True)
 
     register_version_command(sub, add_subcommand_format)
@@ -260,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(raw_argv)
+    args.format = resolve_global_output_format(args)
     registry_path = Path(args.registry).expanduser()
     if (
         args.command

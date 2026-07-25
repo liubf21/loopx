@@ -665,6 +665,42 @@ def test_real_cli_output_stays_inside_the_characterized_baseline(
             assert formats["markdown"]["json_parseable"] is False
 
 
+def test_quota_should_run_no_format_uses_machine_contract_json(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "quota-default-json") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[0],
+        )
+        explicit_json_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        no_format_command = list(explicit_json_command)
+        format_index = no_format_command.index("--format")
+        del no_format_command[format_index : format_index + 2]
+        explicit_markdown_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="markdown",
+        )["quota_should_run"]
+
+        no_format_exit_code, no_format_text = _invoke_cli(no_format_command)
+        markdown_exit_code, markdown_text = _invoke_cli(explicit_markdown_command)
+
+    assert no_format_exit_code == 0, no_format_text
+    assert json.loads(no_format_text)["goal_id"] == GOAL_ID
+    assert markdown_exit_code == 0, markdown_text
+    assert markdown_text.startswith("# LoopX Quota Should Run")
+    assert not markdown_text.lstrip().startswith("{")
+
+
 def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
     tmp_path: Path,
 ) -> None:
