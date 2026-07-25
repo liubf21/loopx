@@ -68,6 +68,8 @@ Optional env:
                                        Optional positive per-prompt timeout for
                                        host-local Codex; unset preserves the
                                        runner default
+  SKILLSBENCH_OUTER_TIMEOUT_SEC         Optional positive runner-wide timeout;
+                                       unset preserves the runner default
   SKILLSBENCH_CLI_GOAL_THREAD_PREWARM  Set to 1 to prewarm the persisted Codex
                                        TUI thread before submitting /goal
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN
@@ -234,6 +236,7 @@ local_codex_split_control="${SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL:-0}"
 local_codex_bin="${SKILLSBENCH_LOCAL_CODEX_BIN:-codex}"
 local_codex_sandbox="${SKILLSBENCH_LOCAL_CODEX_SANDBOX:-workspace-write}"
 local_codex_exec_timeout="${SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC:-}"
+outer_timeout="${SKILLSBENCH_OUTER_TIMEOUT_SEC:-}"
 codex_cli_goal_thread_prewarm="${SKILLSBENCH_CLI_GOAL_THREAD_PREWARM:-0}"
 if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm" != "1" ]]; then
   echo "SKILLSBENCH_CLI_GOAL_THREAD_PREWARM must be 0 or 1" >&2
@@ -242,6 +245,11 @@ fi
 if [[ -n "$local_codex_exec_timeout" ]] &&
   [[ ! "$local_codex_exec_timeout" =~ ^[1-9][0-9]*$ ]]; then
   echo "SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC must be a positive integer" >&2
+  exit 2
+fi
+if [[ -n "$outer_timeout" ]] &&
+  [[ ! "$outer_timeout" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SKILLSBENCH_OUTER_TIMEOUT_SEC must be a positive integer" >&2
   exit 2
 fi
 skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
@@ -610,6 +618,11 @@ if [[ -n "$local_codex_exec_timeout" ]]; then
     --local-codex-exec-timeout-sec "$local_codex_exec_timeout"
   )
 fi
+if [[ -n "$outer_timeout" ]]; then
+  extra_runner_args+=(
+    --outer-timeout-sec "$outer_timeout"
+  )
+fi
 if [[ "$codex_cli_goal_thread_prewarm" == "1" ]]; then
   extra_runner_args+=(--codex-cli-goal-thread-prewarm)
 fi
@@ -859,6 +872,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'local_codex_exec_timeout_sec=%s\n' \
     "${local_codex_exec_timeout:-runner-default}"
+  printf 'outer_timeout_sec=%s\n' "${outer_timeout:-runner-default}"
   printf 'exact_host_codex_sandbox_preflight=%s\n' \
     "$exact_host_codex_sandbox_preflight"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
@@ -919,6 +933,8 @@ if [[ "$dry_run" == "true" ]]; then
       printf '%s ' --host-local-acp-codex-exec-preflight-attempts
     [[ -n "$local_codex_exec_timeout" ]] &&
       printf '%s ' --local-codex-exec-timeout-sec
+    [[ -n "$outer_timeout" ]] &&
+      printf '%s ' --outer-timeout-sec
     [[ -n "$remote_command_file_bridge_probe_command" ]] &&
       printf '%s ' --remote-command-file-bridge-probe-command
     [[ -n "$remote_command_file_bridge_solver_command" ]] &&
