@@ -83,6 +83,33 @@ def _packet_ref(prefix: str, packet: dict[str, object]) -> str:
     return _opaque_ref(prefix, payload)
 
 
+def build_decision_source_item_refs(
+    *,
+    provider_id: str,
+    source_id: str,
+    item: DecisionSourceItem,
+) -> dict[str, str]:
+    """Build stable public-safe refs for one transient authority item."""
+
+    provider_id = _token(provider_id, field_name="provider_id")
+    source_id = _token(source_id, field_name="source_id")
+    return {
+        "source_ref": _opaque_ref(
+            "source-change",
+            provider_id,
+            source_id,
+            item.resource_ref,
+        ),
+        "source_revision": _opaque_ref(
+            "source-revision",
+            provider_id,
+            source_id,
+            item.resource_ref,
+            item.revision,
+        ),
+    }
+
+
 @dataclass(frozen=True)
 class DecisionSourceSpec:
     """Private provider configuration with a public-safe manifest projection."""
@@ -263,21 +290,15 @@ class DecisionSourceScan:
             item_observed_at = _timestamp(
                 item.observed_at, field_name="item.observed_at"
             )
+            refs = build_decision_source_item_refs(
+                provider_id=provider_id,
+                source_id=source_id,
+                item=item,
+            )
             changes.append(
                 {
-                    "change_ref": _opaque_ref(
-                        "source-change",
-                        provider_id,
-                        source_id,
-                        item.resource_ref,
-                    ),
-                    "revision_ref": _opaque_ref(
-                        "source-revision",
-                        provider_id,
-                        source_id,
-                        item.resource_ref,
-                        item.revision,
-                    ),
+                    "change_ref": refs["source_ref"],
+                    "revision_ref": refs["source_revision"],
                     "observed_at": item_observed_at,
                     "exact_read_verified": (
                         item.resource_ref,

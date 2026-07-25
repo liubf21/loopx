@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from .assembler import (
+    DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION,
+    DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION,
+)
 from .packets import (
     DECISION_EVIDENCE_PACKET_SCHEMA_VERSION,
     DECISION_OUTCOME_RECEIPT_SCHEMA_VERSION,
@@ -37,6 +41,10 @@ def build_decision_context_architecture_packet() -> dict[str, object]:
             DECISION_SOURCE_MANIFEST_SCHEMA_VERSION,
             DECISION_SOURCE_SCAN_RECEIPT_SCHEMA_VERSION,
         ],
+        "assembly_schemas": [
+            DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION,
+            DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION,
+        ],
         "provider_boundaries": {
             "decision_source_provider": (
                 "bounded_authority_change_detection_and_exact_read"
@@ -54,11 +62,11 @@ def build_decision_context_architecture_packet() -> dict[str, object]:
         "invariants": [
             "evidence_and_proposal_remain_separate",
             "accepted_recalled_claims_require_exact_read_and_revision",
+            "changed_facts_require_exact_read_authority_revisions",
+            "incremental_cursors_advance_only_after_rebase_and_writeback",
             "raw_provider_content_never_enters_public_packets",
             "proposals_require_existing_authority_confirmation",
             "verified_outcomes_precede_reward_memory_candidates",
         ],
-        "next_stage": (
-            "evidence_assembler_then_default_off_provider_adapter_and_dogfood"
-        ),
+        "next_stage": "default_off_provider_adapter_then_private_dogfood",
     }
