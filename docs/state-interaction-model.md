@@ -188,6 +188,13 @@ Capabilities describe observed execution support; they do not grant authority
 or replace user, repository-policy, or production gates. Owner-held authority
 labels such as credentials and production access are excluded from this CLI
 projection.
+The adjacent `task_scope=goal_all_read_claimed_run_global_read_v0`
+contract defines task discovery without turning visibility into authority. A
+peer reads the current goal's ordinary todo backlog, selects only its own
+claimed or an eligible unclaimed candidate, and claims before execution.
+Other-agent claims remain diagnostic. Cross-goal inventory is available only
+through an explicit read-only global-manager command and cannot enter the
+goal-local execution queue.
 Legacy Markdown parsing is even lower authority: it is a deterministic lint for
 unprojected prose in `Next Action`, not a source of gate truth. The hot path
 should not call an LLM to decide whether the user is gated, because that adds

@@ -993,6 +993,17 @@ Item fields:
   what it may execute. A current-agent claimed todo may be selected even when
   the active state's global `Next Action` names another peer's lane; that is not
   a state projection mismatch.
+- Agent-scoped quota payloads also expose the versioned `task_scope` enum
+  `goal_all_read_claimed_run_global_read_v0`. It means the peer may
+  read all ordinary todos in the current goal, may consider its own claimed or
+  an eligible unclaimed candidate, must claim before execution, and may execute
+  only its claimed eligible todo. Other-agent claims are diagnostic only.
+  Cross-goal reads stay outside goal-local routing and require an explicit
+  read-only global-manager inventory such as `loopx global-summary`; they never
+  grant cross-goal execution. Existing goal, agent, and cold-path command
+  fields supply the binding parameters without duplicating them. TurnEnvelope
+  retains this compact enum so the model sees the same boundary as the full
+  quota decision.
 - `dependency_blockers`: optional compact summary of unfinished user todos from
   other current attention-queue goals. This lets dashboards and heartbeat
   dispatchers show sibling/project dependency gates separately from the current

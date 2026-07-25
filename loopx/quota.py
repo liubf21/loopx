@@ -14,6 +14,7 @@ from .control_plane.agents.agent_scope import (
     _agent_scope_frontier_action,
     _agent_scope_no_candidate_frontier,
     _agent_scoped_user_todo_override,
+    _attach_agent_identity_contracts,
     _scoped_user_gate_fallback,
 )
 from .control_plane.agents.agent_lane_recommendation import (
@@ -2175,8 +2176,10 @@ def build_quota_should_run(
                 payload[key] = value
         if replan_scope.get("required"):
             payload["autonomous_replan_scope"] = replan_scope
-        if agent_identity:
-            payload["agent_identity"] = agent_identity
+        payload = _attach_agent_identity_contracts(
+            payload=payload,
+            agent_identity=agent_identity,
+        )
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
         selected_todo_projection = _selected_todo_projection(

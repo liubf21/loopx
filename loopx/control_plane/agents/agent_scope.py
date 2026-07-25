@@ -86,12 +86,26 @@ _ACTION_SCOPE_STOPWORDS = {
     "with",
 }
 
+AGENT_TASK_SCOPE = "goal_all_read_claimed_run_global_read_v0"
+
 
 def _agent_identity_has_scoped_lane(agent_identity: dict[str, Any] | None) -> bool:
     return bool(
         isinstance(agent_identity, dict)
         and normalize_todo_claimed_by(agent_identity.get("agent_id"))
     )
+
+
+def _attach_agent_identity_contracts(
+    *,
+    payload: dict[str, Any],
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not agent_identity:
+        return payload
+    payload["agent_identity"] = agent_identity
+    payload["task_scope"] = AGENT_TASK_SCOPE
+    return payload
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:

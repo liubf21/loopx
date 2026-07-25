@@ -532,6 +532,9 @@ def _contract_capsule(
         )
         if compact:
             capsule[source_key] = compact
+    task_scope = _text(payload.get("task_scope"), limit=80)
+    if task_scope:
+        capsule["task_scope"] = task_scope
 
     work_lane = _mapping(payload.get("work_lane_contract"))
     work_lane_compact = _mapping(capsule.get("work_lane_contract"))
