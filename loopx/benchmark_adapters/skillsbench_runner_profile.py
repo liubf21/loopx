@@ -180,6 +180,80 @@ def skillsbench_runner_profile_summary(
     }
 
 
+def _gssapi_configured(ssh_options: Sequence[str]) -> bool:
+    for option in ssh_options:
+        key, separator, value = option.partition("=")
+        if not separator:
+            continue
+        normalized_key = key.strip().lower()
+        normalized_value = value.strip().lower()
+        if normalized_key == "gssapiauthentication":
+            if normalized_value in {"yes", "true"}:
+                return True
+        if normalized_key == "preferredauthentications":
+            if any(
+                method.strip().startswith("gssapi")
+                for method in normalized_value.split(",")
+            ):
+                return True
+    return False
+
+
+def _effective_gssapi_configured(
+    *,
+    ssh_options: Sequence[str],
+    destination: str,
+    timeout_seconds: int,
+) -> bool:
+    if _gssapi_configured(ssh_options):
+        return True
+    flattened_options = [
+        argument
+        for option in ssh_options
+        for argument in ("-o", option)
+    ]
+    try:
+        completed = subprocess.run(
+            ["ssh", "-G", *flattened_options, destination],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=min(timeout_seconds, 5),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if completed.returncode != 0:
+        return False
+    effective_options = [
+        "gssapiauthentication="
+        + line.partition(" ")[2]
+        if line.lower().startswith("gssapiauthentication ")
+        else "preferredauthentications="
+        + line.partition(" ")[2]
+        if line.lower().startswith("preferredauthentications ")
+        else ""
+        for line in completed.stdout.splitlines()
+    ]
+    return _gssapi_configured([option for option in effective_options if option])
+
+
+def _local_gssapi_ticket_state(*, gssapi_configured: bool) -> str:
+    if not gssapi_configured:
+        return "not_checked"
+    try:
+        completed = subprocess.run(
+            ["klist", "-s"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "probe_unavailable"
+    return "present" if completed.returncode == 0 else "missing"
+
+
 def probe_skillsbench_runner_connectivity(
     profile: Mapping[str, str],
     *,
@@ -195,6 +269,14 @@ def probe_skillsbench_runner_connectivity(
     destination = str(profile.get("SKILLSBENCH_SSH_DESTINATION") or "")
     if not destination:
         raise SkillsBenchRunnerProfileError("required_runner_environment_missing")
+    gssapi_configured = _effective_gssapi_configured(
+        ssh_options=options,
+        destination=destination,
+        timeout_seconds=timeout_seconds,
+    )
+    local_gssapi_ticket_state = _local_gssapi_ticket_state(
+        gssapi_configured=gssapi_configured
+    )
     try:
         completed = subprocess.run(
             [
@@ -218,18 +300,37 @@ def probe_skillsbench_runner_connectivity(
             "schema_version": SKILLSBENCH_RUNNER_CONNECTIVITY_PROBE_SCHEMA_VERSION,
             "reachable": False,
             "result": "transport_unavailable",
+            "readiness_state": "transport_unavailable",
+            "gssapi_configured": gssapi_configured,
+            "local_gssapi_ticket_state": local_gssapi_ticket_state,
+            "remote_task_free_acceptance": False,
+            "task_free_connection_attempt_completed": False,
             "task_material_read": False,
             "benchmark_job_launched": False,
             "raw_output_recorded": False,
             "profile_values_recorded": False,
         }
+    reachable = completed.returncode == 0
+    if reachable:
+        readiness_state = "ready"
+    elif not gssapi_configured:
+        readiness_state = "transport_unavailable"
+    elif local_gssapi_ticket_state == "missing":
+        readiness_state = "local_gssapi_ticket_missing"
+    elif local_gssapi_ticket_state == "present":
+        readiness_state = "remote_task_free_acceptance_failed"
+    else:
+        readiness_state = "remote_task_free_acceptance_unverified"
     return {
         "ok": True,
         "schema_version": SKILLSBENCH_RUNNER_CONNECTIVITY_PROBE_SCHEMA_VERSION,
-        "reachable": completed.returncode == 0,
-        "result": (
-            "reachable" if completed.returncode == 0 else "transport_unavailable"
-        ),
+        "reachable": reachable,
+        "result": "reachable" if reachable else "transport_unavailable",
+        "readiness_state": readiness_state,
+        "gssapi_configured": gssapi_configured,
+        "local_gssapi_ticket_state": local_gssapi_ticket_state,
+        "remote_task_free_acceptance": reachable,
+        "task_free_connection_attempt_completed": True,
         "task_material_read": False,
         "benchmark_job_launched": False,
         "raw_output_recorded": False,

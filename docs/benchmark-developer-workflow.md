@@ -1085,6 +1085,13 @@ session. Keep one SSH multiplexed master warm for the benchmark slice and run
 remote commands through that connection. This is an operator workflow
 convention, not a LoopX protocol requirement.
 
+Use `python3 -m loopx.benchmark_adapters.skillsbench_runner_profile probe-ssh`
+as the task-free readiness receipt. Its typed fields distinguish local GSSAPI
+ticket presence from remote task-free SSH acceptance without recording command
+output or profile values. A present local ticket is not sufficient evidence to
+launch: `readiness_state` must be `ready`. Keep the benchmark blocked on
+`remote_task_free_acceptance_failed` while unrelated runnable work continues.
+
 For repeated benchmark work, prefer a host-local SSH config stanza instead of
 spelling the multiplexing flags on every command:
 
