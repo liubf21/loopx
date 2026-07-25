@@ -119,6 +119,11 @@ class DecisionContextAssembly:
 
     packet: Mapping[str, Any]
     proposed_cursors: Mapping[str, str] = field(repr=False)
+    expected_cursors: Mapping[str, str | None] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    profile_digest: str | None = field(default=None, repr=False)
 
     def public_packet(self) -> dict[str, Any]:
         return dict(self.packet)
@@ -729,4 +734,8 @@ def assemble_decision_evidence(
     return DecisionContextAssembly(
         packet=packet,
         proposed_cursors=proposed_cursors,
+        expected_cursors={
+            source.source_id: cursors.get(source.source_id)
+            for source in enabled_sources
+        },
     )

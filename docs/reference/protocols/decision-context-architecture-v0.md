@@ -176,9 +176,22 @@ semantic rebase: changed-source cursors remain at `preserve`, so merely scanning
 or reading a source can never mark it absorbed. Sources marked `on_demand` are
 excluded from automatic collection and require explicit source selection.
 
-Private cursor commit remains a separate acceptance boundary. It may occur only
-after the evidence/proposal and existing LoopX lifecycle writeback have been
-validated.
+Private cursor commit remains a separate acceptance boundary. The host API
+`commit_profile_decision_cursors(...)` now performs that boundary explicitly:
+
+- it verifies the assembly, evidence, proposal, outcome, and cursor-checkpoint
+  packet chain;
+- it exact-reads an existing LoopX rollout event whose `decision_id` and
+  artifact refs bind the same packet chain;
+- it rejects a changed private profile or a cursor value that no longer matches
+  the assembly snapshot;
+- it writes the private cursor file with a file lock, atomic replace, fsync, and
+  readback verification;
+- it returns only opaque cursor refs in a public-safe commit receipt.
+
+Scanning, evidence preparation, and proposal construction still perform no
+cursor write. A missing or generic boolean "writeback succeeded" assertion is
+not sufficient to commit.
 
 ### P1: first dogfood
 

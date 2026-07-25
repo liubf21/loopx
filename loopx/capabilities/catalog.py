@@ -380,6 +380,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.decision_context.profile",
                 "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
             },
+            {
+                "schema_version": "decision_cursor_commit_receipt_v0",
+                "module": "loopx.capabilities.decision_context.cursor_commit",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
         ],
         "smokes": ["python3 examples/decision-context-contract-smoke.py"],
         "docs": [
@@ -390,11 +395,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The capability is default-off and cannot create action authority or mutate Core state.",
             "Private source locators, cursors, raw content, provider payloads, tool output, and credentials stay outside public packets.",
             "DecisionSourceProvider rebases current authority; ContextProvider supplies advisory recall only.",
-            "The built-in local-file adapter and prepare-evidence route are read-only; domain adapters and validated cursor commit remain deferred.",
+            "The built-in local-file adapter and prepare-evidence route are read-only; cursor commit requires packet-chain validation, exact lifecycle-event readback, private-state CAS, and atomic verified write.",
         ],
         "next_real_step": (
-            "Validate explicit cursor commit after lifecycle writeback, then "
-            "produce the first outcome receipt in private dogfood."
+            "Exercise the first private incremental source profile and produce "
+            "an outcome receipt that changes or stops a real decision."
         ),
     },
     {

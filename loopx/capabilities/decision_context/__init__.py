@@ -49,9 +49,13 @@ from .providers import (
     decision_source_provider_registered,
     register_decision_source_provider,
 )
+from .cursor_commit import (
+    DECISION_CURSOR_COMMIT_RECEIPT_SCHEMA_VERSION,
+    commit_profile_decision_cursors,
+)
+from .private_state import load_private_decision_cursors
 from .runtime import (
     assemble_profile_decision_evidence,
-    load_private_decision_cursors,
 )
 
 __all__ = [
@@ -59,6 +63,7 @@ __all__ = [
     "DECISION_CONTEXT_ARCHITECTURE_SCHEMA_VERSION",
     "DECISION_CONTEXT_ACTIVATION_STATUS_SCHEMA_VERSION",
     "DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION",
+    "DECISION_CURSOR_COMMIT_RECEIPT_SCHEMA_VERSION",
     "DECISION_EVIDENCE_PACKET_SCHEMA_VERSION",
     "DECISION_OUTCOME_RECEIPT_SCHEMA_VERSION",
     "DECISION_PROPOSAL_SCHEMA_VERSION",
@@ -81,6 +86,7 @@ __all__ = [
     "LocalFileDecisionSourceProvider",
     "assemble_decision_evidence",
     "assemble_profile_decision_evidence",
+    "commit_profile_decision_cursors",
     "build_decision_context_architecture_packet",
     "build_decision_evidence_packet",
     "build_decision_outcome_receipt",

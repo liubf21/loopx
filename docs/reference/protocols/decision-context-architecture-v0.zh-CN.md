@@ -201,8 +201,18 @@ health、evidence 和 cursor checkpoint 记录。host API 通过领域 rebase ca
 `preserve`，避免把“扫描/读过”误记成“已吸收”。`on_demand` source 不进入自动
 扫描，只有显式选择后才会读取。
 
-私有 cursor commit 仍是独立验收边界：只有 evidence/proposal 与既有 LoopX
-lifecycle writeback 验证通过后，才允许显式提交。
+私有 cursor commit 仍是独立验收边界。host API
+`commit_profile_decision_cursors(...)` 现在显式执行这条边界：
+
+- 验证 assembly、evidence、proposal、outcome 与 cursor checkpoint 的完整引用链；
+- 精确回读既有 LoopX rollout event，并校验其 `decision_id` 与 artifact refs
+  绑定同一组 packet；
+- profile 已变化或当前 cursor 不再等于 assembly 快照时拒绝提交；
+- 通过文件锁、原子替换、fsync 与回读校验写入私有 cursor 文件；
+- public receipt 只包含不透明 cursor ref，不包含原始 cursor 或私有路径。
+
+source scan、evidence preparation 和 proposal 构建仍不会写 cursor；调用方只传
+一个“writeback 成功”的布尔值，不足以触发提交。
 
 ### P1：首个 dogfood
 

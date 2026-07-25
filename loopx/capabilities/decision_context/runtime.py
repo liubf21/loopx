@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,7 @@ from .assembler import (
     DecisionEvidenceRebaser,
     assemble_decision_evidence,
 )
+from .private_state import load_private_decision_cursors, private_file_digest
 from .profile import (
     DecisionContextProfile,
     resolve_decision_context_activation,
@@ -62,42 +63,6 @@ class _UnavailableDecisionSourceProvider:
 
     def exact_read(self, **_: Any) -> Any:
         raise RuntimeError("decision source provider is unavailable")
-
-
-def load_private_decision_cursors(
-    path: Path | None,
-    *,
-    profile: DecisionContextProfile,
-) -> dict[str, str]:
-    """Load private cursors without projecting their values into public output."""
-
-    if path is None:
-        return {}
-    try:
-        with path.expanduser().open(encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError("decision-context cursor state is unavailable") from exc
-    if not isinstance(payload, Mapping):
-        raise ValueError("decision-context cursor state must be an object")
-
-    source_ids = {source.source_id for source in profile.sources}
-    unexpected = sorted(str(key) for key in payload if str(key) not in source_ids)
-    if unexpected:
-        raise ValueError(
-            "decision-context cursor state contains unknown source ids: "
-            + ", ".join(unexpected)
-        )
-
-    cursors: dict[str, str] = {}
-    for source_id, value in payload.items():
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(
-                "decision-context cursor values must be non-empty strings"
-            )
-        cursor = value.strip()
-        cursors[str(source_id)] = cursor
-    return cursors
 
 
 def _build_source_providers(
@@ -182,6 +147,12 @@ def assemble_profile_decision_evidence(
     and must not be persisted until the caller validates lifecycle writeback.
     """
 
+    try:
+        profile_digest_before = (
+            private_file_digest(profile_path) if profile_path is not None else None
+        )
+    except ValueError:
+        profile_digest_before = None
     activation, profile = resolve_decision_context_activation(
         goal_id=goal_id,
         agent_id=agent_id,
@@ -209,13 +180,16 @@ def assemble_profile_decision_evidence(
         cursors=cursors,
         rebase=rebase,
         context_provider=_build_advisory_context_provider(profile),
-        context_namespace=str(
-            context_config.get("namespace") or "decision-context"
-        ),
+        context_namespace=str(context_config.get("namespace") or "decision-context"),
         context_scope_ref=str(context_config.get("scope_ref") or "goal"),
         recall_query=recall_query,
         recall_query_summary=recall_query_summary,
         recall_limit=int(context_config.get("max_results", 5)),
         timeout_seconds=effective_timeout,
     )
-    return activation, assembly
+    if profile_path is None or profile_digest_before is None:
+        raise ValueError("decision-context profile became unavailable")
+    profile_digest_after = private_file_digest(profile_path)
+    if profile_digest_before != profile_digest_after:
+        raise ValueError("decision-context profile changed during evidence assembly")
+    return activation, replace(assembly, profile_digest=profile_digest_after)

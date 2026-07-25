@@ -446,9 +446,10 @@ def test_architecture_projects_assembler_and_checkpoint_stage() -> None:
     assert packet["assembly_schemas"] == [
         "decision_context_assembly_v0",
         "decision_cursor_checkpoint_v0",
+        "decision_cursor_commit_receipt_v0",
     ]
     assert (
         "incremental_cursors_advance_only_after_rebase_and_writeback"
         in packet["invariants"]
     )
-    assert packet["next_stage"] == ("validated_cursor_commit_then_private_dogfood")
+    assert packet["next_stage"] == "private_incremental_source_profile_then_dogfood"
