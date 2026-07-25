@@ -129,11 +129,18 @@ LoopX Turn:              决策 -> 执行 -> 验证 -> 提交
 | 路径 | 适用情况 | 边界 |
 | --- | --- | --- |
 | **直接编排 CLI** | 你的 runner 已经会调用 Agent，并能独立验证结果 | runner 消费 `quota should-run`、todo lifecycle、refresh、spend 和 scheduler ACK 合同 |
-| **LoopX Turn adapter** | 希望由一条 typed command 完成 plan、调用一次 bounded host、验证和 commit | 使用 `turn run-once` 的内置 `codex-cli` adapter，或薄 `generic-cli` adapter |
+| **LoopX Turn adapter（experimental）** | 希望由一条 typed command 完成 plan、调用一次 bounded host、验证和 commit | 使用 `turn run-once` 的内置 `codex-cli` adapter，或薄 `generic-cli` adapter |
 
-直接编排 CLI 是兼容基线；LoopX Turn 是 runner 内部可选的 transaction boundary，
-不是常驻 scheduler 或多 Agent 调度中枢。每个 tick 只能有一个 decide、validate、
-writeback 和 spend owner；同一逻辑动作不能同时跑手工闭环与 `turn run-once`。
+直接编排 CLI 是当前兼容基线；LoopX Turn 是 runner 内部 experimental 的
+transaction boundary，不是常驻 scheduler 或多 Agent 调度中枢。每个 tick 只能有一个
+decide、validate、writeback 和 spend owner；同一逻辑动作不能同时跑手工闭环与
+`turn run-once`。
+
+新的 Turn 接入应被视为开发与 qualification 工作。依赖它之前，需要证明 host adapter
+能返回 typed result contract、validator 与执行器独立、retry/resume/replay 不会重复产生
+effect，并且外层 runner 能正确应用和 ACK scheduler state。这些正是继续提升 Turn
+成熟度的 extension / contribution surface；Agent 进程退出码或从 transcript 猜结果不能
+替代这些证明。
 
 ## 验收清单
 
