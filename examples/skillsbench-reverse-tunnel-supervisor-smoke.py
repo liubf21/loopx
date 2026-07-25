@@ -572,6 +572,11 @@ def test_supervisor_preserves_live_tunnel_until_remote_completion() -> None:
         assert liveness["last_probe_status"] == (
             "new_connect_admission_inconclusive_tunnel_preserved"
         ), liveness
+        public_liveness = payload["public_liveness"]
+        assert public_liveness["state"] == "succeeded", public_liveness
+        assert public_liveness["terminal"] is True, public_liveness
+        assert public_liveness["process_alive"] is False, public_liveness
+        assert "first_blocker" not in payload, payload
         ssh_log_text = ssh_log.read_text(encoding="utf-8")
         assert ssh_log_text.count("'-R'") == 1, ssh_log_text
         assert "benchmark_remote_public_artifact_collection_v0" not in ssh_log_text
