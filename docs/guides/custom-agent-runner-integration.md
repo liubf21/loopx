@@ -141,13 +141,20 @@ LoopX Turn:             decide -> execute -> validate -> commit
 | Path | Use it when | Boundary |
 | --- | --- | --- |
 | **Direct CLI orchestration** | Your runner already invokes Agents and validates their work | The runner consumes `quota should-run`, todo lifecycle, refresh, spend, and scheduler ACK contracts |
-| **LoopX Turn adapter** | You want one typed command to plan, invoke one bounded host segment, validate, and commit | Use `turn run-once` with the built-in `codex-cli` adapter or a thin `generic-cli` adapter |
+| **LoopX Turn adapter (experimental)** | You want one typed command to plan, invoke one bounded host segment, validate, and commit | Use `turn run-once` with the built-in `codex-cli` adapter or a thin `generic-cli` adapter |
 
-Direct CLI orchestration is the compatibility baseline. LoopX Turn is an
-optional transaction boundary inside the runner, not a permanent scheduler or
-multi-Agent coordinator. Choose one owner for decide, validate, writeback, and
-spend in each tick: do not run the direct sequence and `turn run-once` for the
-same logical action.
+Direct CLI orchestration is the current compatibility baseline. LoopX Turn is
+an experimental transaction boundary inside the runner, not a permanent
+scheduler or multi-Agent coordinator. Choose one owner for decide, validate,
+writeback, and spend in each tick: do not run the direct sequence and
+`turn run-once` for the same logical action.
+
+Treat a new Turn integration as development and qualification work. Before
+depending on it, prove the host adapter emits the typed result contract, the
+validator is independent, retry/resume/replay cannot duplicate effects, and
+the outer runner applies and acknowledges scheduler state correctly. Those are
+useful extension and contribution surfaces for making Turn more mature; an
+Agent process exit code or scraped transcript is not a substitute for them.
 
 ## Acceptance Checklist
 
