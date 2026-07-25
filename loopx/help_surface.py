@@ -216,6 +216,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "codex-cli-visible-session-proof",
         "configure-goal",
         "content-ops",
+        "decision-context",
         "demo",
         "dreaming",
         "global-summary",

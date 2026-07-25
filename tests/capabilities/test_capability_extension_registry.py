@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -22,9 +22,9 @@ from loopx.extensions.runtime import (
     install_extension,
 )
 
-
 BUILTIN_IDS = [
     "issue-fix",
+    "decision-context",
     "semantic-preference",
     "reward-memory",
     "periodic-report",

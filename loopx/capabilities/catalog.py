@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from .registry import CapabilityRegistry
-from ..extensions.runtime import extension_catalog_entries
 
+from ..extensions.runtime import extension_catalog_entries
 
 CAPABILITY_CATALOG_SCHEMA_VERSION = "loopx_capability_catalog_v0"
 CAPABILITY_DETAIL_SCHEMA_VERSION = "loopx_capability_detail_v0"
@@ -261,6 +261,77 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "next_real_step": (
             "Exercise route selection and continuation on a public issue-fix pilot, "
             "while keeping external PR/comment actions explicit."
+        ),
+    },
+    {
+        "id": "decision-context",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Goal-scoped decision evidence and outcome contract",
+        "status": "experimental",
+        "default_enabled": False,
+        "real_world_anchor": (
+            "incremental authority rebase before long-running agent decisions"
+        ),
+        "user_value": (
+            "Separate current evidence, advisory proposals, and verified outcomes "
+            "while keeping source providers replaceable and Core authority unchanged."
+        ),
+        "entry_command": "loopx decision-context architecture --format json",
+        "commands": [
+            {
+                "command": "loopx decision-context architecture --format json",
+                "purpose": "Render the default-off Stage-0 packet, source, provider, and lifecycle boundaries.",
+                "write_boundary": "stateless contract output only; no provider, source, goal state, or external write",
+            }
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "decision_context_architecture_v0",
+                "module": "loopx.capabilities.decision_context.architecture",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_evidence_packet_v0",
+                "module": "loopx.capabilities.decision_context.packets",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_proposal_v0",
+                "module": "loopx.capabilities.decision_context.packets",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_outcome_receipt_v0",
+                "module": "loopx.capabilities.decision_context.packets",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_source_manifest_v0",
+                "module": "loopx.capabilities.decision_context.sources",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_source_scan_receipt_v0",
+                "module": "loopx.capabilities.decision_context.sources",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+        ],
+        "smokes": ["python3 examples/decision-context-contract-smoke.py"],
+        "docs": [
+            "docs/reference/protocols/decision-context-architecture-v0.md",
+            "docs/reference/protocols/decision-context-architecture-v0.zh-CN.md",
+        ],
+        "boundaries": [
+            "The capability is default-off and cannot create action authority or mutate Core state.",
+            "Private source locators, cursors, raw content, provider payloads, tool output, and credentials stay outside public packets.",
+            "DecisionSourceProvider rebases current authority; ContextProvider supplies advisory recall only.",
+            "Concrete provider adapters and goal writeback remain deferred until the evidence assembler and private dogfood are validated.",
+        ],
+        "next_real_step": (
+            "Build the deterministic evidence assembler, then validate one "
+            "default-off provider adapter and outcome receipt in private dogfood."
         ),
     },
     {

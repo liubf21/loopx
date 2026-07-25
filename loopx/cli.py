@@ -10,6 +10,10 @@ from .capabilities.content_ops.cli import (
     handle_content_ops_command,
     register_content_ops_commands,
 )
+from .capabilities.decision_context.cli import (
+    handle_decision_context_command,
+    register_decision_context_commands,
+)
 from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
@@ -191,6 +195,8 @@ def build_parser() -> LoopXArgumentParser:
     register_extension_commands(sub, add_subcommand_format)
 
     register_content_ops_commands(sub, add_subcommand_format)
+
+    register_decision_context_commands(sub, add_subcommand_format)
 
     register_issue_fix_commands(sub, add_subcommand_format)
 
@@ -456,6 +462,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if reward_memory_result is not None:
         return reward_memory_result
+
+    decision_context_result = handle_decision_context_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if decision_context_result is not None:
+        return decision_context_result
 
     review_batch_result = handle_review_batch_command(
         args,

@@ -22,6 +22,10 @@ propose a typed transition through the existing Kernel contract.
 
 Current capability paths:
 
+- [decision-context](../reference/protocols/decision-context-architecture-v0.md)
+  ([中文](../reference/protocols/decision-context-architecture-v0.zh-CN.md)):
+  separate current evidence, advisory proposals, and verified outcomes through
+  default-off provider-neutral packet and incremental source contracts.
 - [periodic-report](periodic-report/README.md): evaluate cadence and material
   progress triggers, then compose deterministic provider-neutral report runs
   with source, artifact, archive, and delivery receipts.
