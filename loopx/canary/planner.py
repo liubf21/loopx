@@ -1021,6 +1021,8 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "docs/runtime-connector-catalog.md",
             "codex app heartbeat",
             "codex_app_heartbeat",
+            "codex app ssh",
+            "codex_app_ssh_goal",
             "codex cli tui",
             "codex_cli_tui",
             "claude code loop",

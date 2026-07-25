@@ -13,6 +13,17 @@ from .project_prompt import (
     render_refresh_state_command,
     render_scheduler_execution_args,
 )
+from .control_plane.scheduler.execution_context import (
+    ExecutionMode,
+    HostSurface,
+    SchedulerOwner,
+    SchedulerRuntimeProfile,
+    resolve_scheduler_execution_context,
+)
+from .control_plane.quota.spend_sources import (
+    DEFAULT_SLOT_SPEND_SOURCE,
+    VISIBLE_GOAL_SLOT_SPEND_SOURCE,
+)
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
     normalize_todo_claimed_by,
@@ -52,7 +63,36 @@ INTERFACE_BUDGET_CHARS = {
     "compact": 6_200,
     "brief": 3_500,
     "thin": 1_570,
+    "visible_goal": 4_000,
 }
+CODEX_VISIBLE_GOAL_MAX_CHARS = INTERFACE_BUDGET_CHARS["visible_goal"]
+
+
+def uses_visible_goal_host_loop(
+    *,
+    runtime_profile: str | None,
+    scheduler_execution_context: dict[str, Any] | None,
+) -> bool:
+    if runtime_profile:
+        try:
+            profile = SchedulerRuntimeProfile(runtime_profile)
+        except ValueError:
+            return False
+        return profile in {
+            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        }
+    if scheduler_execution_context is None:
+        return False
+    resolution = resolve_scheduler_execution_context(scheduler_execution_context)
+    if not resolution.ok or resolution.context is None:
+        return False
+    context = resolution.context
+    return (
+        context.host_surface in {HostSurface.CODEX_APP_SSH, HostSurface.CODEX_CLI}
+        and context.scheduler_owner is SchedulerOwner.AGENT_CLI_LOOP
+        and context.execution_mode is ExecutionMode.INTERACTIVE
+    )
 
 
 def heartbeat_prompt_mode(
@@ -250,8 +290,13 @@ def build_interface_budget(
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
+    visible_goal: bool = False,
 ) -> dict[str, Any]:
-    mode = heartbeat_prompt_mode(full=full, compact=compact, brief=brief, thin=thin)
+    mode = (
+        "visible_goal"
+        if visible_goal
+        else heartbeat_prompt_mode(full=full, compact=compact, brief=brief, thin=thin)
+    )
     budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
     budget_chars = len(budget_text)
     max_chars = INTERFACE_BUDGET_CHARS[mode]
@@ -288,6 +333,10 @@ def build_heartbeat_prompt(
 ) -> dict[str, Any]:
     if not (full or compact or brief or thin):
         thin = True
+    visible_goal = uses_visible_goal_host_loop(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
+    )
     effective_resolved_active_state = resolved_active_state or active_state
     active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
     if active_state:
@@ -355,11 +404,15 @@ def build_heartbeat_prompt(
         available_capabilities=normalized_available_capabilities,
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
-        heartbeat_turn_receipt=True,
+        heartbeat_turn_receipt=not visible_goal,
     )
     quota_spend_command = render_quota_spend_command(
         goal_id,
-        source="heartbeat",
+        source=(
+            VISIBLE_GOAL_SLOT_SPEND_SOURCE
+            if visible_goal
+            else DEFAULT_SLOT_SPEND_SOURCE
+        ),
         cli_bin=cli_bin,
         agent_id=normalized_agent_id,
         available_capabilities=normalized_available_capabilities,
@@ -393,7 +446,9 @@ def build_heartbeat_prompt(
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
     brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
-    if thin:
+    if visible_goal:
+        task_body_renderer = render_visible_goal_task_body
+    elif thin:
         task_body_renderer = render_thin_heartbeat_task_body
     elif brief:
         task_body_renderer = render_brief_heartbeat_task_body
@@ -419,6 +474,11 @@ def build_heartbeat_prompt(
         brief_prompt_command=brief_prompt_command,
         thin_prompt_command=thin_prompt_command,
     )
+    if visible_goal and len(task_body) > CODEX_VISIBLE_GOAL_MAX_CHARS:
+        raise ValueError(
+            "generated visible /goal task body exceeds the Codex 4000-character "
+            "limit; shorten agent scopes or project-specific prompt rules"
+        )
     payload = {
         "ok": True,
         "goal_id": goal_id,
@@ -459,6 +519,7 @@ def build_heartbeat_prompt(
             compact=compact,
             brief=brief,
             thin=thin,
+            visible_goal=visible_goal,
         ),
         "task_body": task_body,
     }
@@ -932,6 +993,69 @@ self-cancel turns, or duplicate accounting.
 
 Return compactly. Use heartbeat `NOTIFY` only for committed artifact, user gate,
 real blocker, or self-stop; otherwise use `DONT_NOTIFY`.
+
+{material_queue_rule}
+{permission_rule}"""
+
+
+def render_visible_goal_task_body(
+    *,
+    goal_id: str,
+    active_state: str,
+    cli_preflight: str,
+    pr_review_pre_quota_command: str,
+    quota_guard_command: str,
+    quota_spend_command: str,
+    refresh_state_command: str,
+    progress_refresh_state_command: str,
+    material_queue_rule: str,
+    permission_rule: str,
+    cli_bin: str,
+    agent_scope_instruction: str,
+    expanded_prompt_command: str,
+    compact_prompt_command: str,
+    brief_prompt_command: str,
+    thin_prompt_command: str,
+) -> str:
+    del (
+        cli_preflight,
+        expanded_prompt_command,
+        compact_prompt_command,
+        brief_prompt_command,
+        thin_prompt_command,
+    )
+    scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
+    prequota_block = (
+        f"Run `{pr_review_pre_quota_command}` first.\n"
+        if pr_review_pre_quota_command
+        else ""
+    )
+    return f"""Advance LoopX goal `{goal_id}` from `{active_state}` in this visible
+Codex `/goal` task. This is an interactive goal loop, not a heartbeat automation:
+do not create/update an automation, apply RRULE cadence, or invent `LOOPX_TURN`.
+{scope_block}
+
+At every continuation, inspect LoopX state/status and the repository. {prequota_block}Run
+`{quota_guard_command}` and follow its `interaction_contract`.
+
+If `should_run=false`, do no delivery work and do not spend quota. Surface only a
+concrete user action/gate in Chinese when the contract requires `NOTIFY`; otherwise
+wait quietly. Scheduler hints are diagnostic here and must not mutate host
+automation.
+
+If `should_run=true`, choose the highest-priority in-scope unblocked agent todo.
+Honor claims/leases, blocker-push and recovery obligations. Complete one bounded,
+coherent delivery segment; validate it; write public-safe evidence, critic, and
+next action back to LoopX. A non-trivial completion needs a successor todo or an
+explicit no-follow-up rationale. Spend exactly once after validated writeback:
+`{quota_spend_command}`. Then refresh progress with
+`{progress_refresh_state_command}`.
+
+Do not spend for gates, waits, dry runs, failed preflight, no-op inspection, or
+duplicate accounting. Stop for private/company material, credentials, destructive
+git, unauthorized production, or repository review rules. Complete this visible
+Goal only when LoopX reports terminal success with no follow-up; otherwise keep the
+current gate or next safe action explicit.
 
 {material_queue_rule}
 {permission_rule}"""

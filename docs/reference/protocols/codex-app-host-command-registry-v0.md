@@ -165,9 +165,12 @@ fields can rerun the advertised command or pass
 `--include-command-pack-detail`. Both modes must produce the same host-action
 projection before a compact default is promoted.
 
-`start-goal` does not guess among Codex App, the Codex IDE plugin, Codex CLI
-TUI, or OpenCode. Callers should pass `--host-surface codex-app`,
-`codex-ide-plugin`, `codex-cli-tui`, or `opencode` for the exact current host.
+`start-goal` does not guess among Codex App automation, Codex App over SSH, the
+Codex IDE plugin, Codex CLI TUI, or OpenCode. Callers should pass
+`--host-surface codex-app`, `codex-app-ssh`, `codex-ide-plugin`,
+`codex-cli-tui`, or `opencode` for the exact current host.
+`codex-app-ssh` means the desktop app is attached to a remote workspace and
+cannot expose its automation tools, so the visible `/goal` owns continuation.
 `codex-ide-plugin` means the installed IDE plugin host, not any Codex session
 used alongside an editor. The legacy `codex-ide` value remains accepted as a
 compatibility alias but is not offered by the selection gate. If the option is
@@ -187,9 +190,9 @@ visible user intent into the existing CLI lifecycle:
   when missing/stale, run `quota should-run`, and execute only when the guard
   allows.
 - Host loop activation is runtime-specific: Codex App uses heartbeat
-  automation, Codex CLI uses visible `/goal <task_body>`, Claude Code uses
-  native `/loop`, and custom agents must declare their loop driver through
-  `loopx agent-onboard`.
+  automation, Codex App over SSH and Codex CLI use visible
+  `/goal <task_body>`, Claude Code uses native `/loop`, and custom agents must
+  declare their loop driver through `loopx agent-onboard`.
 - `/loopx-global-*` commands are read-only and must not approve gates, add
   todos, spend quota, merge PRs, publish externally, or pause/resume loops.
 - `/loopx-pr-review` must run the PR review CLI first and then review PRs under
@@ -208,6 +211,7 @@ loopx slash-commands
 loopx slash-commands --install
 loopx agent-onboard --list-agent-types
 loopx agent-onboard --agent-type codex-cli --project .
+loopx agent-onboard --agent-type codex-app-ssh --project .
 loopx bootstrap-command-pack --project .
 loopx start-goal --guided --project . --goal-text "<goal text>" --host-surface codex-cli-tui
 loopx --format json start-goal --guided --project . --goal-text "<goal text>" --host-surface codex-ide-plugin --include-command-pack-detail

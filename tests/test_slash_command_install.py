@@ -42,7 +42,10 @@ def test_codex_install_upgrades_managed_loopx_facade(tmp_path: Path) -> None:
     assert "Treat this as the LoopX `/loopx` explicit LoopX command skill." in skill_text
     assert "--host-surface <exact-current-host>" in skill_text
     assert "`codex-ide-plugin` only for the IDE plugin" in skill_text
-    assert "Codex IDE plugin or CLI visible `/goal <task_body>`" in skill_text
+    assert (
+        "Codex App over SSH, the Codex IDE plugin, or CLI visible "
+        "`/goal <task_body>`"
+    ) in skill_text
     assert "use `codex-ide` for the IDE" not in skill_text
     assert "do not return merely after setup, planning, or claim" in skill_text
     metadata_text = metadata.read_text(encoding="utf-8")

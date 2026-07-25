@@ -129,10 +129,13 @@ integrations that need the lower-level handoff packet can use
 manager or PR review commands, use `loopx slash-commands` to print the current
 canonical command list and fallback CLI shapes.
 
-Use `codex-app`, `codex-ide-plugin`, `codex-cli-tui`, or `opencode` for the
-corresponding host. Select `codex-ide-plugin` only when LoopX is running through the
-installed IDE plugin; using Codex beside an editor does not make the host an IDE
-plugin. If the exact host is not known, omit `--host-surface` once: LoopX
+Use `codex-app`, `codex-app-ssh`, `codex-ide-plugin`, `codex-cli-tui`, or
+`opencode` for the corresponding host. Use `codex-app-ssh` when the desktop app
+is attached to a remote workspace over SSH and its automation tools are
+unavailable; LoopX will generate a visible `/goal` task instead. Select
+`codex-ide-plugin` only when LoopX is running through the installed IDE plugin;
+using Codex beside an editor does not make the host an IDE plugin. If the exact
+host is not known, omit `--host-surface` once: LoopX
 returns a read-only selection gate with exact rerun commands and does not write
 project state. The legacy `codex-ide` value remains an accepted compatibility
 alias but is no longer advertised. This prevents an upgrade from silently

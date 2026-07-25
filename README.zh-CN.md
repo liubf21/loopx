@@ -66,6 +66,16 @@ LoopX 会生成并刷新 heartbeat body；起始 3 分钟之后，cadence 由
 `quota should-run.scheduler_hint` 负责退避和重置，用户不需要手动配置这些细节。
 高级迁移和故障恢复见 [Getting Started](docs/guides/getting-started.md)。
 
+如果 Codex App 通过 SSH 连接远程项目，且该 host 不提供 automation tool，请使用
+精确 host 类型：
+
+```bash
+loopx agent-onboard --agent-type codex-app-ssh --project .
+```
+
+返回的 activation packet 会把当前可见任务接成 `/goal <task_body>`，不会创建
+heartbeat automation 或 RRULE 调度。
+
 ### Codex CLI
 
 适合希望保留可见 TUI、随时观察和接管的用户。从项目 repo 打开 Codex CLI：

@@ -22,6 +22,10 @@ from loopx.bootstrap_command_pack import (  # noqa: E402
     build_start_goal_guided_packet,
 )
 from loopx.cli import build_parser  # noqa: E402
+from loopx.control_plane.quota.usage_summary import is_automation_run  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.host_loop_activation import (  # noqa: E402
     agent_type_for_host_surface,
     build_agent_type_catalog,
@@ -49,6 +53,7 @@ def main() -> int:
     agent_types = {item["agent_type"] for item in catalog["canonical_agent_types"]}
     assert {
         "codex-app",
+        "codex-app-ssh",
         "codex-ide-plugin",
         "codex-cli",
         "claude-code",
@@ -57,20 +62,43 @@ def main() -> int:
         "other-agent",
     } <= agent_types
     ambiguous = {item["input"]: item["use_one_of"] for item in catalog["ambiguous_inputs"]}
-    assert ambiguous["codex"] == ["codex-app", "codex-ide-plugin", "codex-cli"], ambiguous
+    assert ambiguous["codex"] == [
+        "codex-app",
+        "codex-app-ssh",
+        "codex-ide-plugin",
+        "codex-cli",
+    ], ambiguous
 
     assert agent_type_for_host_surface("chat-box") == "codex-app"
+    assert agent_type_for_host_surface("codex-app-ssh") == "codex-app-ssh"
     assert agent_type_for_host_surface("codex-ide-plugin") == "codex-ide-plugin"
     assert agent_type_for_host_surface("codex-ide") == "codex-ide-plugin"
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
     assert agent_type_for_host_surface("opencode") == "opencode"
 
     codex_app = build_host_loop_activation_packet(agent_type="codex-app", goal_id="demo")
+    codex_app_ssh = build_host_loop_activation_packet(
+        agent_type="codex-app-ssh",
+        goal_id="demo",
+    )
     codex_ide = build_host_loop_activation_packet(agent_type="codex-ide-plugin", goal_id="demo")
     codex_cli = build_host_loop_activation_packet(agent_type="codex-cli", goal_id="demo")
     claude_code = build_host_loop_activation_packet(agent_type="claude-code", goal_id="demo")
     opencode = build_host_loop_activation_packet(agent_type="opencode", goal_id="demo")
     assert codex_app["activation_method"] == "create_or_update_codex_app_automation", codex_app
+    assert codex_app_ssh["activation_method"] == "set_visible_goal", codex_app_ssh
+    assert codex_app_ssh["host_surface"] == "codex_app_ssh_visible_goal_mode", codex_app_ssh
+    assert "--runtime-profile codex_app_ssh_goal" in (
+        codex_app_ssh["commands"]["heartbeat_prompt"]
+    ), codex_app_ssh
+    app_ssh_scheduler = scheduler_execution_context_for_runtime_profile(
+        "codex_app_ssh_goal"
+    )
+    assert app_ssh_scheduler.ok, app_ssh_scheduler
+    assert app_ssh_scheduler.projection()["host_surface"] == "codex_app_ssh"
+    assert app_ssh_scheduler.projection()["scheduler_owner"] == "agent_cli_loop"
+    assert app_ssh_scheduler.projection()["execution_mode"] == "interactive"
+    assert app_ssh_scheduler.projection()["codex_app_applicability"] == "not_applicable"
     assert codex_ide["activation_method"] == "set_visible_goal", codex_ide
     assert codex_ide["host_mutation"]["host_command"] == "/goal <task_body>", codex_ide
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
@@ -125,6 +153,7 @@ def main() -> int:
     assert ambiguous_payload["ok"] is False, ambiguous_payload
     assert ambiguous_payload["suggestions"] == [
         "codex-app",
+        "codex-app-ssh",
         "codex-ide-plugin",
         "codex-cli",
     ], ambiguous_payload
@@ -290,6 +319,77 @@ def main() -> int:
         assert "--host-surface codex-ide-plugin" in ide_bootstrap, ide_onboarding
         assert "worker-bridge" not in ide_bootstrap, ide_onboarding
         assert "visible IDE plugin" in ide_onboarding["recommended_start"], ide_onboarding
+
+        app_ssh_onboarding = build_agent_onboarding_packet(
+            project=project,
+            agent_type="codex-app-ssh",
+            goal_id="multi-agent-goal",
+            agent_id="codex-product-capability",
+            cli_bin=cli_bin,
+        )
+        app_ssh_activation = app_ssh_onboarding["host_loop_activation"]
+        assert app_ssh_activation["activation_method"] == "set_visible_goal"
+        assert app_ssh_activation["host_surface"] == "codex_app_ssh_visible_goal_mode"
+        assert "--host-surface codex-app-ssh" in (
+            app_ssh_onboarding["commands"]["bootstrap_command_pack"]
+        )
+        assert "/goal <task_body>" in app_ssh_activation["host_mutation"]["host_command"]
+
+        app_ssh_prompt_run = subprocess.run(
+            shlex.split(app_ssh_activation["activation_input_command"]),
+            cwd=REPO_ROOT,
+            env={**os.environ, "HOME": str(home)},
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        app_ssh_prompt = json.loads(app_ssh_prompt_run.stdout)
+        assert app_ssh_prompt["ok"] is True, app_ssh_prompt
+        assert app_ssh_prompt["interface_budget"]["mode"] == "visible_goal", app_ssh_prompt
+        assert app_ssh_prompt["interface_budget"]["max_chars"] == 4_000, app_ssh_prompt
+        assert app_ssh_prompt["interface_budget"]["within_budget"] is True, app_ssh_prompt
+        assert "--runtime-profile codex_app_ssh_goal" in (
+            app_ssh_prompt["quota_guard_command"]
+        ), app_ssh_prompt
+        assert "--turn-instance-id" not in app_ssh_prompt["quota_guard_command"], app_ssh_prompt
+        assert "--source visible-goal" in app_ssh_prompt["quota_spend_command"], app_ssh_prompt
+        spend_args = build_parser().parse_args(
+            shlex.split(app_ssh_prompt["quota_spend_command"])[1:]
+        )
+        assert spend_args.command == "quota", spend_args
+        assert spend_args.quota_command == "spend-slot", spend_args
+        assert spend_args.source == "visible-goal", spend_args
+        assert is_automation_run(
+            {
+                "classification": "quota_slot_spent",
+                "quota_event": {"source": spend_args.source},
+            }
+        ) is False
+        assert "not a heartbeat automation" in app_ssh_prompt["task_body"], app_ssh_prompt
+        assert "host_action=" not in app_ssh_prompt["task_body"], app_ssh_prompt
+        assert "automation_update stop" not in app_ssh_prompt["task_body"], app_ssh_prompt
+
+        cli_onboarding = build_agent_onboarding_packet(
+            project=project,
+            agent_type="codex-cli",
+            goal_id="multi-agent-goal",
+            agent_id="codex-product-capability",
+            cli_bin=cli_bin,
+        )
+        cli_prompt_run = subprocess.run(
+            shlex.split(
+                cli_onboarding["host_loop_activation"]["activation_input_command"]
+            ),
+            cwd=REPO_ROOT,
+            env={**os.environ, "HOME": str(home)},
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        cli_prompt = json.loads(cli_prompt_run.stdout)
+        assert cli_prompt["interface_budget"]["mode"] == "visible_goal", cli_prompt
+        assert "--turn-instance-id" not in cli_prompt["quota_guard_command"], cli_prompt
+        assert "--source visible-goal" in cli_prompt["quota_spend_command"], cli_prompt
 
         opencode_onboarding = build_agent_onboarding_packet(
             project=project,

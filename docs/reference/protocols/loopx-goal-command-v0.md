@@ -23,6 +23,9 @@ When the user provides text after `/loopx`, the host should:
 6. Activate the host loop if it is missing, unknown, or stale:
    - `codex-app`: create or update the Codex App heartbeat automation from the
      generated `heartbeat-prompt` task body.
+   - `codex-app-ssh`: when Codex App is attached to a remote workspace over SSH
+     and host automation tools are unavailable, set the current visible task to
+     `/goal <task_body>` using the generated `codex_app_ssh_goal` profile.
    - `codex-cli`: set the visible Codex CLI TUI to `/goal <task_body>`.
    - `claude-code`: arm LoopX with `/loopx <task>`, then run native `/loop`.
    - `opencode`: call `loopx_goal_activate` from the installed LoopX OpenCode
@@ -41,8 +44,14 @@ New hosts should discover exact agent types with:
 loopx agent-onboard --list-agent-types
 ```
 
-Ambiguous values such as `codex` must fail closed because Codex App and Codex
-CLI use different host-loop activation paths.
+Ambiguous values such as `codex` must fail closed because Codex App automation,
+Codex App over SSH, the IDE plugin, and Codex CLI use different host-loop
+activation paths.
+
+The `codex-app-ssh` task body is an interactive Goal contract, not a scheduled
+heartbeat. It must fit the Codex `/goal` text limit, call `quota should-run`
+without a heartbeat turn receipt, and must not instruct the host to invoke
+`automation_update`, apply an RRULE, or synthesize `LOOPX_TURN`.
 
 Agent identity follows the same fail-closed rule. A goal with one registered
 agent may select that identity automatically. A goal with multiple registered

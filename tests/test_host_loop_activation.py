@@ -48,6 +48,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
     ("agent_type", "runtime_profile"),
     (
         ("codex-app", "codex_app_heartbeat"),
+        ("codex-app-ssh", "codex_app_ssh_goal"),
         ("codex-cli", "codex_cli"),
         ("codex-ide-plugin", "codex_cli"),
         ("claude-code", "claude_code"),
@@ -116,4 +117,9 @@ def test_ambiguous_codex_requires_app_ide_or_cli_selection() -> None:
     with pytest.raises(AgentTypeError) as caught:
         normalize_agent_type("codex")
 
-    assert caught.value.suggestions == ["codex-app", "codex-ide-plugin", "codex-cli"]
+    assert caught.value.suggestions == [
+        "codex-app",
+        "codex-app-ssh",
+        "codex-ide-plugin",
+        "codex-cli",
+    ]

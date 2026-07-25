@@ -25,6 +25,7 @@ def scheduler_command_binding_for_agent_type(
     canonical = normalize_agent_type(agent_type)
     runtime_profile = {
         "codex-app": SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        "codex-app-ssh": SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
         "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "codex-ide-plugin": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
@@ -37,6 +38,7 @@ def scheduler_command_binding_for_agent_type(
 
 SUPPORTED_AGENT_TYPES = [
     "codex-app",
+    "codex-app-ssh",
     "codex-ide-plugin",
     "codex-cli",
     "claude-code",
@@ -51,6 +53,20 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
         "host_loop": "Codex App heartbeat automation",
         "entry": "$loopx <task> or the explicit LoopX skill from /skills",
         "accepted_inputs": ["codex-app", "codex_app", "codex app", "codex-desktop", "codex desktop"],
+    },
+    "codex-app-ssh": {
+        "display_name": "Codex App over SSH",
+        "host_loop": "visible Codex App /goal when host automation is unavailable over SSH",
+        "entry": "$loopx <task> or the explicit LoopX skill from /skills",
+        "accepted_inputs": [
+            "codex-app-ssh",
+            "codex_app_ssh",
+            "codex app ssh",
+            "codex-ssh",
+            "codex ssh",
+            "codex-app-remote",
+            "codex app remote",
+        ],
     },
     "codex-cli": {
         "display_name": "Codex CLI TUI",
@@ -111,9 +127,9 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 AMBIGUOUS_AGENT_TYPE_INPUTS: dict[str, list[str]] = {
-    "codex": ["codex-app", "codex-ide-plugin", "codex-cli"],
-    "openai-codex": ["codex-app", "codex-ide-plugin", "codex-cli"],
-    "openai codex": ["codex-app", "codex-ide-plugin", "codex-cli"],
+    "codex": ["codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-cli"],
+    "openai-codex": ["codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-cli"],
+    "openai codex": ["codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-cli"],
     "cli": ["codex-cli", "manual", "other-agent"],
 }
 
@@ -150,6 +166,7 @@ class AgentTypeError(ValueError):
 
 HOST_SURFACE_TO_AGENT_TYPE = {
     "codex-app": "codex-app",
+    "codex-app-ssh": "codex-app-ssh",
     "chat-box": "codex-app",
     "codex-ide-plugin": "codex-ide-plugin",
     "codex-ide": "codex-ide-plugin",
@@ -182,8 +199,8 @@ def build_agent_type_catalog() -> dict[str, Any]:
         ],
         "selection_rule": (
             "Agents should pass a canonical agent_type. Ambiguous values such as "
-            "`codex` are rejected because Codex App, the Codex IDE plugin, and Codex CLI "
-            "have different "
+            "`codex` are rejected because Codex App automation, Codex App over SSH, "
+            "the Codex IDE plugin, and Codex CLI have different "
             "host-loop activation paths."
         ),
     }
@@ -275,6 +292,7 @@ def _heartbeat_commands(
 ) -> dict[str, str]:
     scope_by_type = {
         "codex-app": "Codex App heartbeat automation",
+        "codex-app-ssh": "Codex App SSH /goal visible task loop",
         "codex-ide-plugin": "Codex IDE plugin /goal visible task loop",
         "codex-cli": "Codex CLI /goal visible TUI loop",
         "claude-code": "Claude Code native /loop gated by LoopX",
@@ -437,6 +455,14 @@ def _codex_cli_activation(commands: dict[str, str]) -> dict[str, Any]:
     )
 
 
+def _codex_app_ssh_activation(commands: dict[str, str]) -> dict[str, Any]:
+    return _codex_goal_activation(
+        commands,
+        host_label="Codex App SSH task",
+        host_surface="codex_app_ssh_visible_goal_mode",
+    )
+
+
 def _codex_ide_activation(commands: dict[str, str]) -> dict[str, Any]:
     return _codex_goal_activation(
         commands,
@@ -570,6 +596,8 @@ def build_host_loop_activation_packet(
     )
     if canonical == "codex-app":
         surface = _codex_app_activation(commands)
+    elif canonical == "codex-app-ssh":
+        surface = _codex_app_ssh_activation(commands)
     elif canonical == "codex-ide-plugin":
         surface = _codex_ide_activation(commands)
     elif canonical == "codex-cli":

@@ -16,6 +16,10 @@ from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..rollout_event_log import load_rollout_events, rollout_event_log_path
 from ..upgrade import resolve_codex_app_automation_rrule
 from ..control_plane.quota.monitor_poll import find_quota_monitor_poll_turn
+from ..control_plane.quota.spend_sources import (
+    DEFAULT_SLOT_SPEND_SOURCE,
+    VALID_SLOT_SPEND_SOURCES,
+)
 from ..control_plane.quota.cli_projection import (
     compact_quota_should_run_cli_payload,
 )
@@ -268,7 +272,7 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument(
         "-H",
         "--host-surface",
-        choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
+        choices=["codex_app", "codex_app_ssh", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
         help="Host surface that will consume this scheduler projection.",
     )
     quota_parser.add_argument(
@@ -300,7 +304,12 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
-    quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
+    quota_parser.add_argument(
+        "--source",
+        choices=sorted(VALID_SLOT_SPEND_SOURCES),
+        default=DEFAULT_SLOT_SPEND_SOURCE,
+        help="Source label for `quota spend-slot`.",
+    )
     quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
     quota_parser.add_argument("--reason-summary", help="Public-safe reason for `quota void-slot`.")
     quota_parser.add_argument("--todo-id", help="Monitor todo id for `quota monitor-poll` metadata writeback.")

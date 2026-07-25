@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Callable
 
+from .spend_sources import VISIBLE_GOAL_SLOT_SPEND_SOURCE
 from ..runtime.time import now_utc
 
 USAGE_PROXY_NOTE = "run-history proxy; excludes token counts and raw thread logs"
@@ -28,6 +29,8 @@ def quota_spend_slots(run: dict[str, Any]) -> int:
 def is_automation_run(run: dict[str, Any]) -> bool:
     quota_event = run.get("quota_event") if isinstance(run.get("quota_event"), dict) else {}
     source = str(quota_event.get("source") or run.get("source") or "").lower()
+    if source == VISIBLE_GOAL_SLOT_SPEND_SOURCE:
+        return False
     if source in {"heartbeat", "automation", "cron"}:
         return True
     if "heartbeat" in source or "automation" in source:

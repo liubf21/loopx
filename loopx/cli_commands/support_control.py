@@ -130,7 +130,7 @@ def register_support_control_commands(
 
     heartbeat_prompt_parser = subparsers.add_parser(
         "heartbeat-prompt",
-        help="Generate a guarded Codex App heartbeat automation task body.",
+        help="Generate a guarded heartbeat or visible-goal host-loop task body.",
     )
     add_subcommand_format(heartbeat_prompt_parser)
     heartbeat_prompt_parser.add_argument("--goal-id", required=True, help="Stable LoopX goal id.")
@@ -190,7 +190,7 @@ def register_support_control_commands(
     heartbeat_prompt_parser.add_argument(
         "-H",
         "--host-surface",
-        choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
+        choices=["codex_app", "codex_app_ssh", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
         help="Host surface embedded in the generated quota guard.",
     )
     heartbeat_prompt_parser.add_argument(

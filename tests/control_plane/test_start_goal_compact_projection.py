@@ -303,6 +303,7 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
     choices = payload["host_surface_selection_gate"]["choices"]
     assert [choice["host_surface"] for choice in choices] == [
         "codex-app",
+        "codex-app-ssh",
         "codex-ide-plugin",
         "codex-cli-tui",
         "claude-code",

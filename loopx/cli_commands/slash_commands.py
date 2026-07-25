@@ -50,7 +50,7 @@ def register_slash_commands_command(
     parser.add_argument(
         "--surface",
         action="append",
-        choices=["all", "codex", "codex-cli", "codex-app", "codex-ide-plugin", "codex-ide", "claude-code", "opencode"],
+        choices=["all", "codex", "codex-cli", "codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-ide", "claude-code", "opencode"],
         help=(
             "Host surface to install. Repeatable. Defaults to static command facades "
             "for Codex, Claude Code, and OpenCode."

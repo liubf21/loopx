@@ -23,6 +23,7 @@ from loopx.control_plane.work_items.interaction_contract import (
 
 VALID_COMBINATIONS = {
     ("codex_app", "host_automation", "hosted_automation"),
+    ("codex_app_ssh", "agent_cli_loop", "interactive"),
     ("local_scheduler", "host_automation", "hosted_automation"),
     *{
         (surface, owner, mode)
@@ -41,6 +42,11 @@ FIRST_CLASS_RUNTIME_PROFILES = (
         SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
         ("codex_app", "host_automation", "hosted_automation"),
         " --codex-app",
+    ),
+    (
+        SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+        ("codex_app_ssh", "agent_cli_loop", "interactive"),
+        " --runtime-profile codex_app_ssh_goal",
     ),
     (
         SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,

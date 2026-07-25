@@ -176,15 +176,19 @@ Start agent-first: paste one setup message for the surface you already use,
 then start real work through the LoopX command entry for that host.
 Agents and host integrations can make this deterministic with
 `loopx agent-onboard --list-agent-types`, then pass an exact runtime such as
-`codex-app`, `codex-cli`, or `claude-code`. Ambiguous values such as `codex`
-are intentionally rejected because Codex App automation and Codex CLI `/goal`
-use different host-loop activation paths.
+`codex-app`, `codex-app-ssh`, `codex-cli`, or `claude-code`. Ambiguous values
+such as `codex` are intentionally rejected because Codex App automation,
+Codex App over SSH, and Codex CLI `/goal` use different host-loop activation
+paths.
 
 Choose your surface:
 
 - **Codex App**: best for a long-running agent that can wake up, re-check gates,
   and keep moving. Paste the setup message below, then invoke `$loopx
   <complex task>` or choose `loopx` from `/skills`.
+- **Codex App over SSH**: use `codex-app-ssh` when the app cannot expose
+  automation tools for a remote workspace. LoopX generates a bounded visible
+  `/goal <task_body>` instead of a heartbeat automation.
 - **Codex CLI**: best when the visible TUI should stay in the foreground while
   LoopX keeps the state. Run `codex`, paste the setup message, then invoke `$loopx
   <complex task>` or choose `loopx` from `/skills`; after todos are written,
@@ -234,6 +238,16 @@ Automatically refresh it from the LoopX generated task body; do not ask me to
 manually run `heartbeat-prompt`. Then stop and report the project connection
 status, current user gate, top agent todo, and next safe action.
 ```
+
+When Codex App is attached to the project over SSH and automation tools are
+unavailable, onboard the exact host with:
+
+```bash
+loopx agent-onboard --agent-type codex-app-ssh --project .
+```
+
+The returned activation packet uses the current visible `/goal`, not a hidden
+heartbeat or RRULE scheduler.
 
 Then start a real E2E exploration in normal language:
 
