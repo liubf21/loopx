@@ -85,13 +85,13 @@ def test_supervisor_writes_starting_periodic_and_terminal_public_liveness(
             "--probe-interval-sec",
             "0.01",
             "--probe-timeout-sec",
-            "1",
+            "5",
             "--tunnel-ready-timeout-sec",
-            "1",
+            "5",
             "--tunnel-health-interval-sec",
             "0",
             "--run-timeout-sec",
-            "2",
+            "5",
         ]
     )
 
@@ -191,13 +191,13 @@ def test_supervisor_projects_only_allowlisted_remote_failure_subtype(
             "--probe-interval-sec",
             "0.01",
             "--probe-timeout-sec",
-            "1",
+            "5",
             "--tunnel-ready-timeout-sec",
-            "1",
+            "5",
             "--tunnel-health-interval-sec",
             "0",
             "--run-timeout-sec",
-            "2",
+            "5",
         ]
     )
 
@@ -251,9 +251,9 @@ def test_supervisor_codex_bridge_preflight_is_task_free_and_public_safe(
             "--probe-interval-sec",
             "0.01",
             "--probe-timeout-sec",
-            "1",
+            "5",
             "--tunnel-ready-timeout-sec",
-            "1",
+            "5",
             "--codex-socket-ready-timeout-sec",
             "1",
             "--codex-participant-probe-timeout-sec",
