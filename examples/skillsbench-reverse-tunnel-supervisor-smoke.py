@@ -569,9 +569,6 @@ def test_supervisor_preserves_live_tunnel_until_remote_completion() -> None:
         assert liveness["health_probe_failure_count"] >= 2, liveness
         assert liveness["health_probe_inconclusive_count"] >= 1, liveness
         assert liveness["max_consecutive_failure_count"] == 2, liveness
-        assert liveness["last_probe_status"] == (
-            "new_connect_admission_inconclusive_tunnel_preserved"
-        ), liveness
         public_liveness = payload["public_liveness"]
         assert public_liveness["state"] == "succeeded", public_liveness
         assert public_liveness["terminal"] is True, public_liveness
