@@ -3,12 +3,25 @@ from __future__ import annotations
 from typing import Any
 
 from .. import compact_control_plane_policy, control_plane_self_repair_allows
+from ..agents.capability_gate import (
+    CAPABILITY_OWNER_GATE_HINTS,
+    missing_required_capabilities,
+)
+from ..todos.contract import (
+    normalize_required_capabilities,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
+    normalize_todo_global_gate,
+    normalize_todo_id,
+    normalize_todo_required_decision_scopes,
+)
 from ..todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
     standing_decision_authority_for_agent,
 )
-from ..todos.user_gate import open_todo_count
+from ..todos.user_gate import open_todo_count, open_user_gate_todo_items
 
 STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "goal_id",
@@ -20,8 +33,28 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
 )
 DECISION_SCOPE_REPAIR_TRIGGER = "required_decision_scope_projection_drift"
 USER_GATE_SCOPE_REPAIR_TRIGGER = "user_gate_scope_projection_drift"
+RUNTIME_CAPABILITY_USER_GATE_REPAIR_TRIGGER = "runtime_capability_user_gate_overreach"
 TODO_PROJECTION_REPAIR_TRIGGERS = frozenset(
-    {DECISION_SCOPE_REPAIR_TRIGGER, USER_GATE_SCOPE_REPAIR_TRIGGER}
+    {
+        DECISION_SCOPE_REPAIR_TRIGGER,
+        USER_GATE_SCOPE_REPAIR_TRIGGER,
+        RUNTIME_CAPABILITY_USER_GATE_REPAIR_TRIGGER,
+    }
+)
+RUNTIME_RECOVERY_ACTION_TOKENS = frozenset(
+    {
+        "configure",
+        "execute",
+        "install",
+        "launch",
+        "materialize",
+        "rebuild",
+        "repair",
+        "restore",
+        "retry",
+        "run",
+        "start",
+    }
 )
 
 
@@ -79,6 +112,135 @@ def _compact_health_items(
     return compact
 
 
+def _runtime_recovery_action(action_kind: Any) -> bool:
+    tokens = {
+        token
+        for token in str(action_kind or "").strip().lower().replace("-", "_").split("_")
+        if token
+    }
+    return bool(tokens & RUNTIME_RECOVERY_ACTION_TOKENS)
+
+
+def _source_todo_items(
+    summary: dict[str, Any] | None,
+    source_items: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    candidates = list(source_items or [])
+    if source_items is None and isinstance(summary, dict):
+        for key in (
+            "items",
+            "first_open_items",
+            "backlog_items",
+            "executable_backlog_items",
+        ):
+            values = summary.get(key)
+            if isinstance(values, list):
+                candidates.extend(item for item in values if isinstance(item, dict))
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in candidates:
+        identity = (
+            str(item.get("todo_id") or "").strip(),
+            str(item.get("text") or "").strip(),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(item)
+    return result
+
+
+def build_runtime_capability_user_gate_repair_hint(
+    *,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    user_todo_source_items: list[dict[str, Any]] | None,
+    agent_todo_source_items: list[dict[str, Any]] | None,
+    agent_id: str | None,
+    available_capabilities: Any,
+) -> dict[str, Any] | None:
+    """Detect an execution request misclassified as an owner decision gate."""
+
+    normalized_agent_id = normalize_todo_claimed_by(agent_id)
+    if not normalized_agent_id:
+        return None
+    agent_items = _source_todo_items(
+        agent_todo_summary,
+        agent_todo_source_items,
+    )
+    agent_items_by_id = {
+        todo_id: item
+        for item in agent_items
+        for todo_id in [normalize_todo_id(item.get("todo_id"))]
+        if todo_id
+    }
+    user_summary = {
+        "items": _source_todo_items(user_todo_summary, user_todo_source_items)
+    }
+    for gate in open_user_gate_todo_items(user_summary):
+        if normalize_todo_global_gate(gate.get("global_gate")):
+            continue
+        blocks_agent = normalize_todo_blocks_agent(gate.get("blocks_agent"))
+        if blocks_agent and blocks_agent != normalized_agent_id:
+            continue
+        if normalize_todo_decision_scope(gate.get("decision_scope")):
+            continue
+        if not _runtime_recovery_action(gate.get("action_kind")):
+            continue
+        target_todo_id = normalize_todo_id(gate.get("unblocks_todo_id"))
+        target = agent_items_by_id.get(target_todo_id)
+        if not target:
+            continue
+        target_owner = normalize_todo_claimed_by(target.get("claimed_by"))
+        if target_owner and target_owner != normalized_agent_id:
+            continue
+        if normalize_todo_required_decision_scopes(
+            target.get("required_decision_scopes")
+        ):
+            continue
+        required_capabilities = normalize_required_capabilities(
+            target.get("required_capabilities")
+        )
+        if not required_capabilities:
+            continue
+        if set(required_capabilities) & CAPABILITY_OWNER_GATE_HINTS:
+            continue
+        if missing_required_capabilities(
+            target,
+            available_capabilities=available_capabilities,
+        ):
+            continue
+        gate_todo_id = normalize_todo_id(gate.get("todo_id"))
+        return {
+            "source": "quota.should-run",
+            "trigger": RUNTIME_CAPABILITY_USER_GATE_REPAIR_TRIGGER,
+            "schema_version": "runtime_capability_user_gate_repair_v0",
+            "recommended_mode": "repair_user_gate_projection",
+            "effective_action": "runtime_user_gate_projection_repair",
+            "blocked_action_scope": "user_gate_projection",
+            "allowed": True,
+            "notify": "DONT_NOTIFY",
+            "reason": (
+                "an execution-shaped user_gate without decision scope links to "
+                "this agent's capability-runnable todo"
+            ),
+            "repair_focus": (
+                "attempt the runtime recovery; on success complete or reclassify "
+                "the user_gate and resume the linked agent todo, otherwise write "
+                "the concrete capability blocker"
+            ),
+            "spend_policy": (
+                "append exactly one heartbeat spend only after the gate projection "
+                "repair or concrete blocker writeback is validated"
+            ),
+            "gate_todo_id": gate_todo_id,
+            "target_todo_id": target_todo_id,
+            "required_capabilities": required_capabilities,
+            "decision_scope_present": False,
+        }
+    return None
+
+
 def build_quota_stall_self_repair_hint(
     item: dict[str, Any],
     *,
@@ -91,8 +253,11 @@ def build_quota_stall_self_repair_hint(
     user_todo_source_items: list[dict[str, Any]] | None = None,
     agent_todo_source_items: list[dict[str, Any]] | None = None,
     standing_decision_authority: dict[str, Any] | None = None,
+    available_capabilities: Any = None,
 ) -> dict[str, Any] | None:
-    coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
+    coordination = (
+        item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
+    )
     decision_scope_consistency = build_required_decision_scope_consistency(
         agent_todo_summary,
         user_todo_summary,
@@ -107,6 +272,16 @@ def build_quota_stall_self_repair_hint(
     )
     if decision_scope_repair:
         return decision_scope_repair
+    runtime_user_gate_repair = build_runtime_capability_user_gate_repair_hint(
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+        user_todo_source_items=user_todo_source_items,
+        agent_todo_source_items=agent_todo_source_items,
+        agent_id=agent_id,
+        available_capabilities=available_capabilities,
+    )
+    if runtime_user_gate_repair:
+        return runtime_user_gate_repair
 
     control_plane = compact_control_plane_policy(item.get("control_plane"))
     if not control_plane:
@@ -212,4 +387,11 @@ def stall_repair_payload(repair: dict[str, Any] | None) -> dict[str, Any]:
 def stall_repair_suppresses_user_gate_notification(
     repair: dict[str, Any] | None,
 ) -> bool:
-    return bool(repair and repair.get("trigger") == USER_GATE_SCOPE_REPAIR_TRIGGER)
+    return bool(
+        repair
+        and repair.get("trigger")
+        in {
+            USER_GATE_SCOPE_REPAIR_TRIGGER,
+            RUNTIME_CAPABILITY_USER_GATE_REPAIR_TRIGGER,
+        }
+    )

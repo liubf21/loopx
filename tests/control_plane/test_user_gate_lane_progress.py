@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from loopx.control_plane.quota.stall_repair import (
+    build_runtime_capability_user_gate_repair_hint,
+)
+from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module
 from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
-from loopx.control_plane.quota.turn_envelope import build_turn_envelope
-from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
 )
+from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.scheduler.state import (
     SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
 )
@@ -216,6 +219,143 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
     assert next_hint["codex_app"]["stateful_backoff"]["progression_index"] == 1
     assert next_hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
     assert next_hint["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60"
+
+
+def _runtime_recovery_gate_status(
+    *,
+    decision_scope: str | None = None,
+    required_capabilities: list[str] | None = None,
+) -> dict:
+    target = quota_todo_item(
+        todo_id="todo_runtime_recovery",
+        status="blocked",
+        text="[P0] Restore the benchmark runtime and continue.",
+        claimed_by=AGENT_ID,
+        action_kind="repair_benchmark_runtime",
+        required_capabilities=required_capabilities
+        or ["shell", "filesystem_write", "network", "benchmark_runner"],
+    )
+    gate_metadata = {
+        "unblocks_todo_id": target["todo_id"],
+    }
+    if decision_scope:
+        gate_metadata["decision_scope"] = decision_scope
+    gate = quota_todo_item(
+        todo_id="todo_restore_runtime",
+        role="user",
+        status="open",
+        task_class="user_gate",
+        text="[P0-user] Restore the local runtime endpoint.",
+        action_kind="restore_local_runtime_endpoint",
+        blocks_agent=AGENT_ID,
+        **gate_metadata,
+    )
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action="Restore the benchmark runtime and continue.",
+        agent_todos=quota_todo_summary(
+            [target],
+            role="agent",
+            claim_scope_agent_id=AGENT_ID,
+        ),
+        user_todos=quota_todo_summary([gate], role="user"),
+        quota_state="operator_gate",
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": [AGENT_ID],
+        },
+    )
+
+
+def test_capability_runnable_runtime_recovery_gate_routes_to_agent_repair() -> None:
+    payload = build_quota_should_run(
+        _runtime_recovery_gate_status(),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        available_capabilities=[
+            "shell",
+            "filesystem_write",
+            "network",
+            "benchmark_runner",
+        ],
+        scheduler_execution_context=APP_CONTEXT,
+    )
+
+    repair = payload["stall_self_repair"]
+    assert repair["trigger"] == "runtime_capability_user_gate_overreach"
+    assert repair["gate_todo_id"] == "todo_restore_runtime"
+    assert repair["target_todo_id"] == "todo_runtime_recovery"
+    assert payload["decision"] == "self_repair"
+    assert payload["self_repair_allowed"] is True
+    assert payload["requires_user_action"] is False
+    assert payload["interaction_contract"]["mode"] == "control_plane_self_repair"
+    assert payload["interaction_contract"]["user_channel"] == {
+        "action_required": False,
+        "notify": "DONT_NOTIFY",
+        "reason": repair["reason"],
+    }
+    assert payload["interaction_contract"]["agent_channel"]["must_attempt"] is True
+    assert "response_plan" not in payload["interaction_contract"]
+
+
+def test_empty_authoritative_user_source_ignores_stale_summary_gate() -> None:
+    status = _runtime_recovery_gate_status()
+    item = status["attention_queue"]["items"][0]
+
+    repair = build_runtime_capability_user_gate_repair_hint(
+        user_todo_summary=item["user_todos"],
+        agent_todo_summary=item["agent_todos"],
+        user_todo_source_items=[],
+        agent_todo_source_items=item["agent_todos"]["items"],
+        agent_id=AGENT_ID,
+        available_capabilities=[
+            "shell",
+            "filesystem_write",
+            "network",
+            "benchmark_runner",
+        ],
+    )
+
+    assert repair is None
+
+
+def test_runtime_recovery_gate_with_decision_scope_remains_owner_gate() -> None:
+    payload = build_quota_should_run(
+        _runtime_recovery_gate_status(
+            decision_scope="direction:action:runtime_recovery",
+        ),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        available_capabilities=[
+            "shell",
+            "filesystem_write",
+            "network",
+            "benchmark_runner",
+        ],
+        scheduler_execution_context=APP_CONTEXT,
+    )
+
+    assert "stall_self_repair" not in payload
+    assert payload["interaction_contract"]["mode"] == "user_gate"
+    assert payload["interaction_contract"]["user_channel"]["action_required"] is True
+    assert (
+        payload["interaction_contract"]["response_plan"]["kind"] == "surface_user_gate"
+    )
+
+
+def test_runtime_recovery_gate_with_owner_capability_remains_owner_gate() -> None:
+    payload = build_quota_should_run(
+        _runtime_recovery_gate_status(required_capabilities=["credentials"]),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        available_capabilities=["credentials"],
+        scheduler_execution_context=APP_CONTEXT,
+    )
+
+    assert "stall_self_repair" not in payload
+    assert payload["interaction_contract"]["mode"] == "user_gate"
+    assert payload["interaction_contract"]["user_channel"]["action_required"] is True
 
 
 def test_acked_human_gate_advances_despite_unrelated_historical_host_failure(

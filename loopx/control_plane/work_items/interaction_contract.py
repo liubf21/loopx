@@ -130,7 +130,11 @@ def _user_gate_scope_projection_repair_active(payload: dict[str, Any]) -> bool:
     repair = payload.get("stall_self_repair")
     return bool(
         isinstance(repair, dict)
-        and repair.get("trigger") == "user_gate_scope_projection_drift"
+        and repair.get("trigger")
+        in {
+            "user_gate_scope_projection_drift",
+            "runtime_capability_user_gate_overreach",
+        }
     )
 
 
@@ -892,6 +896,12 @@ def _interaction_spend_after_validation(mode: str) -> bool:
 def _interaction_user_reason(payload: dict[str, Any]) -> Any:
     return (
         (
+            payload.get("stall_self_repair", {}).get("reason")
+            if _user_gate_scope_projection_repair_active(payload)
+            and isinstance(payload.get("stall_self_repair"), dict)
+            else None
+        )
+        or (
             payload.get("user_gate_notification_cooldown", {}).get("reason")
             if _user_gate_notification_suppressed(payload)
             else None
@@ -968,7 +978,10 @@ def _build_interaction_user_channel(
         "notify": "NOTIFY"
         if user_required or non_blocking_notice
         else "DONT_NOTIFY"
-        if _user_gate_notification_suppressed(payload)
+        if (
+            _user_gate_notification_suppressed(payload)
+            or _user_gate_scope_projection_repair_active(payload)
+        )
         else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
     }
     if actions:

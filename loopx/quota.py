@@ -1568,6 +1568,7 @@ def build_quota_should_run(
                     (agent_identity or {}).get("agent_id")
                 ),
             ),
+            available_capabilities=effective_available_capabilities,
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(
