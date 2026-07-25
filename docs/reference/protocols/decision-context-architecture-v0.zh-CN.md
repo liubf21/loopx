@@ -183,10 +183,15 @@ capability 与 goal 配置承担。
 
 ### P1：实验入口
 
-- 增加默认关闭、goal-scoped 的 config/status/catalog；
+- 增加默认关闭、goal-scoped 的 profile/activation status/catalog；
 - 增加 source-provider adapter，提供薄 CLI 编排 source scan、evidence 与 proposal；
 - 飞书等领域 adapter 保持可选，公开状态不含凭据和私有 locator；
 - 不修改 Core todo、gate、quota 或 authority 语义。
+
+首个入口切片已实现严格的私有 profile 加载、goal/agent activation 状态、公开安全的
+source manifest，以及显式配置、只读的 `local-file` source adapter。该切片
+尚不把 source scan 编排为 evidence/proposal packet，也不应用私有 cursor
+checkpoint；这两项仍是 P1 完成前的验收边界。
 
 ### P1：首个 dogfood
 

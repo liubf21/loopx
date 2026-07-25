@@ -1,9 +1,26 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Collection
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .architecture import build_decision_context_architecture_packet
+from .profile import resolve_decision_context_activation
+from .sources import build_decision_source_manifest
+
+PrintPayload = Callable[
+    [dict[str, object], str, Callable[[dict[str, object]], str]],
+    None,
+]
+FormatSelector = Callable[..., str]
+AddFormat = Callable[[argparse.ArgumentParser], None]
+
+
+def _collection_size(value: object) -> int:
+    if isinstance(value, Collection) and not isinstance(value, (str, bytes)):
+        return len(value)
+    return 0
 
 
 def _render(payload: dict[str, object]) -> str:
@@ -19,16 +36,17 @@ def _render(payload: dict[str, object]) -> str:
             "",
             f"- status: `{payload.get('status')}`",
             f"- capability_id: `{capability_id}`",
-            f"- packet_schemas: `{len(payload.get('packet_schemas') or [])}`",
-            f"- source_schemas: `{len(payload.get('source_schemas') or [])}`",
+            f"- packet_schemas: `{_collection_size(payload.get('packet_schemas'))}`",
+            f"- source_schemas: `{_collection_size(payload.get('source_schemas'))}`",
+            f"- source_count: `{payload.get('source_count', 0)}`",
             "",
         ]
     )
 
 
 def register_decision_context_commands(
-    subparsers: argparse._SubParsersAction,
-    add_subcommand_format: Callable[[argparse.ArgumentParser], None],
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    add_subcommand_format: AddFormat,
 ) -> None:
     parser = subparsers.add_parser(
         "decision-context",
@@ -40,16 +58,67 @@ def register_decision_context_commands(
         help="Render the default-off Stage-0 Decision Context contract.",
     )
     add_subcommand_format(architecture)
+    status = commands.add_parser(
+        "inspect-profile",
+        help="Inspect a default-off goal profile without provider access.",
+    )
+    add_subcommand_format(status)
+    status.add_argument("--goal-id", required=True)
+    status.add_argument("--agent-id", required=True)
+    status.add_argument(
+        "--profile",
+        help="Private local profile. Omit it to prove the default-off route.",
+    )
+
+    manifest = commands.add_parser(
+        "source-manifest",
+        help="Project an enabled private source profile into a public-safe manifest.",
+    )
+    add_subcommand_format(manifest)
+    manifest.add_argument("--goal-id", required=True)
+    manifest.add_argument("--agent-id", required=True)
+    manifest.add_argument("--profile", required=True)
+    manifest.add_argument(
+        "--observed-at",
+        help="Optional timezone-aware ISO-8601 time for a reproducible manifest.",
+    )
 
 
 def handle_decision_context_command(
     args: argparse.Namespace,
     *,
-    output_format: Callable[..., str],
-    print_payload: Callable[[dict[str, object], str, Callable], None],
+    output_format: FormatSelector,
+    print_payload: PrintPayload,
 ) -> int | None:
     if args.command != "decision-context":
         return None
-    payload = build_decision_context_architecture_packet()
+    if args.decision_context_command == "architecture":
+        payload = build_decision_context_architecture_packet()
+    elif args.decision_context_command in {"inspect-profile", "source-manifest"}:
+        profile_value = str(getattr(args, "profile", None) or "").strip()
+        status, profile = resolve_decision_context_activation(
+            goal_id=args.goal_id,
+            agent_id=args.agent_id,
+            profile_path=Path(profile_value) if profile_value else None,
+        )
+        if args.decision_context_command == "inspect-profile":
+            payload = status
+        else:
+            observed_at = str(getattr(args, "observed_at", None) or "").strip()
+            payload = status | {
+                "source_manifest": (
+                    build_decision_source_manifest(
+                        goal_id=args.goal_id,
+                        observed_at=(
+                            observed_at or datetime.now(timezone.utc).isoformat()
+                        ),
+                        sources=profile.sources,
+                    )
+                    if status["available"] and profile is not None
+                    else None
+                )
+            }
+    else:
+        raise ValueError("decision-context requires a supported subcommand")
     print_payload(payload, output_format(args), _render)
     return 0

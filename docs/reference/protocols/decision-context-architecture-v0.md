@@ -156,10 +156,16 @@ context.
 
 ### P1: experimental entry point
 
-Add default-off goal config, status, catalog, source-provider adapters, and a
-thin CLI that orchestrates source scans, evidence, and proposals without
-changing Core semantics. Domain adapters such as Lark remain optional and
-credential-free in public state.
+Add a default-off goal profile, activation status, catalog, source-provider
+adapters, and a thin CLI that orchestrates source scans, evidence, and proposals
+without changing Core semantics. Domain adapters such as Lark remain optional
+and credential-free in public state.
+
+The first entry-point slice implements strict private profile loading,
+goal-and-agent activation status, public-safe source manifests, and an explicitly
+configured read-only `local-file` source adapter. It does not yet orchestrate
+source scans into evidence/proposal packets or apply private cursor
+checkpoints. Those remain the acceptance boundary for completing P1.
 
 ### P1: first dogfood
 

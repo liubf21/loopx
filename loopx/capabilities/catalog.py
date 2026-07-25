@@ -278,13 +278,46 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Separate current evidence, advisory proposals, and verified outcomes "
             "while keeping source providers replaceable and Core authority unchanged."
         ),
-        "entry_command": "loopx decision-context architecture --format json",
+        "entry_command": (
+            "loopx decision-context inspect-profile "
+            "--goal-id <goal-id> --agent-id <agent-id> --format json"
+        ),
         "commands": [
             {
                 "command": "loopx decision-context architecture --format json",
                 "purpose": "Render the default-off Stage-0 packet, source, provider, and lifecycle boundaries.",
                 "write_boundary": "stateless contract output only; no provider, source, goal state, or external write",
-            }
+            },
+            {
+                "command": (
+                    "loopx decision-context inspect-profile "
+                    "--goal-id <goal-id> --agent-id <agent-id> "
+                    "[--profile <private-local-profile>] --format json"
+                ),
+                "purpose": (
+                    "Resolve the default-off goal and agent route while projecting "
+                    "only public-safe provider availability."
+                ),
+                "write_boundary": (
+                    "reads an optional private local profile; never emits source "
+                    "locators, provider config, raw content, cursors, or credentials"
+                ),
+            },
+            {
+                "command": (
+                    "loopx decision-context source-manifest "
+                    "--goal-id <goal-id> --agent-id <agent-id> "
+                    "--profile <private-local-profile> --format json"
+                ),
+                "purpose": (
+                    "Project an enabled source profile into a public-safe manifest "
+                    "before any provider access."
+                ),
+                "write_boundary": (
+                    "read-only local projection; no provider access, cursor write, "
+                    "goal mutation, or external action"
+                ),
+            },
         ],
         "implemented_protocols": [
             {
@@ -317,6 +350,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.decision_context.sources",
                 "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
             },
+            {
+                "schema_version": "decision_context_profile_v0",
+                "module": "loopx.capabilities.decision_context.profile",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
+            {
+                "schema_version": "decision_context_activation_status_v0",
+                "module": "loopx.capabilities.decision_context.profile",
+                "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
+            },
         ],
         "smokes": ["python3 examples/decision-context-contract-smoke.py"],
         "docs": [
@@ -327,11 +370,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The capability is default-off and cannot create action authority or mutate Core state.",
             "Private source locators, cursors, raw content, provider payloads, tool output, and credentials stay outside public packets.",
             "DecisionSourceProvider rebases current authority; ContextProvider supplies advisory recall only.",
-            "Concrete provider adapters and goal writeback remain deferred until the evidence assembler and private dogfood are validated.",
+            "The built-in local-file adapter is read-only and explicitly configured; domain adapters and cursor writeback remain deferred.",
         ],
         "next_real_step": (
-            "Build the deterministic evidence assembler, then validate one "
-            "default-off provider adapter and outcome receipt in private dogfood."
+            "Compose bounded source scans and the evidence assembler behind this "
+            "entry point, then validate an outcome receipt in private dogfood."
         ),
     },
     {
@@ -1176,9 +1219,7 @@ def capability_ids(
     return build_capability_registry(
         extension_manifest_paths,
         extension_state_file=extension_state_file,
-    ).capability_ids(
-        include_internal=include_internal
-    )
+    ).capability_ids(include_internal=include_internal)
 
 
 def get_capability(
