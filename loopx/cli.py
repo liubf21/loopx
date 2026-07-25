@@ -14,6 +14,10 @@ from .capabilities.decision_context.cli import (
     handle_decision_context_command,
     register_decision_context_commands,
 )
+from .capabilities.material_lifecycle.cli import (
+    handle_material_lifecycle_command,
+    register_material_lifecycle_commands,
+)
 from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
@@ -197,6 +201,8 @@ def build_parser() -> LoopXArgumentParser:
     register_content_ops_commands(sub, add_subcommand_format)
 
     register_decision_context_commands(sub, add_subcommand_format)
+
+    register_material_lifecycle_commands(sub, add_subcommand_format)
 
     register_issue_fix_commands(sub, add_subcommand_format)
 
@@ -470,6 +476,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if decision_context_result is not None:
         return decision_context_result
+
+    material_lifecycle_result = handle_material_lifecycle_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if material_lifecycle_result is not None:
+        return material_lifecycle_result
 
     review_batch_result = handle_review_batch_command(
         args,

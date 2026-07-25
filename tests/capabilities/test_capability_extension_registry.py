@@ -25,6 +25,7 @@ from loopx.extensions.runtime import (
 BUILTIN_IDS = [
     "issue-fix",
     "decision-context",
+    "material-lifecycle",
     "semantic-preference",
     "reward-memory",
     "periodic-report",

@@ -1,0 +1,78 @@
+"""Provider-neutral architecture projection for Material Lifecycle."""
+
+from __future__ import annotations
+
+from .inventory import (
+    MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
+    MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
+)
+from .lifecycle import MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION
+from .ranking import (
+    MATERIAL_RERANK_APPLY_RECEIPT_SCHEMA_VERSION,
+    MATERIAL_RERANK_PROPOSAL_SCHEMA_VERSION,
+)
+
+MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION = "material_lifecycle_architecture_v0"
+
+
+def build_material_lifecycle_architecture_packet() -> dict[str, object]:
+    """Render the default-off Stage-0 capability contract."""
+
+    return {
+        "schema_version": MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION,
+        "status": "experimental",
+        "capability": {
+            "capability_id": "material_lifecycle",
+            "scope": "goal",
+            "default_enabled": False,
+            "creates_authority": False,
+            "mutates_core_state": False,
+        },
+        "contract_schemas": [
+            MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
+            MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
+            MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION,
+            MATERIAL_RERANK_PROPOSAL_SCHEMA_VERSION,
+            MATERIAL_RERANK_APPLY_RECEIPT_SCHEMA_VERSION,
+        ],
+        "sibling_capabilities": {
+            "decision_context": (
+                "supplies revisioned evidence for bounded rerank proposals"
+            ),
+            "reward_memory": (
+                "stores reviewed reusable lessons, not current material queues"
+            ),
+            "content_ops": (
+                "consumes selected materials for creation, but does not own "
+                "candidate or archive truth"
+            ),
+        },
+        "provider_boundaries": {
+            "raw_material_store": "private_external_authority",
+            "inventory_provider": "read_only_snapshot_and_parse_metadata",
+            "migration_adapter": "owner_gated_dual_read_apply_and_rollback",
+            "exploration_provider": "deferred_provider_neutral_candidate_intake",
+        },
+        "lifecycle": [
+            "snapshot",
+            "inventory",
+            "candidate",
+            "active",
+            "archive_or_carryover",
+            "bounded_rerank",
+            "audited_apply",
+        ],
+        "invariants": [
+            "raw_material_and_private_locations_never_enter_public_packets",
+            "source_snapshot_and_backup_precede_migration",
+            "legacy_and_new_stores_dual_read_before_owner_gated_cutover",
+            "stable_material_refs_survive_archive_and_reactivation",
+            "rerank_is_a_bounded_delta_with_protected_items_and_no_change",
+            "proposal_and_apply_receipt_remain_separate",
+            "automation_prompts_do_not_own_source_lists_or_ranking_rules",
+        ],
+        "next_stage": (
+            "read_only_legacy_inventory_and_migration_planner_then_"
+            "decision_driven_rerank_and_source_profile_dogfood"
+        ),
+    }

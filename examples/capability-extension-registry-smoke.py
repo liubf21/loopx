@@ -60,6 +60,7 @@ next_real_step = "Keep explicit enablement bounded."
     assert [item["id"] for item in baseline["capabilities"]] == [
         "issue-fix",
         "decision-context",
+        "material-lifecycle",
         "semantic-preference",
         "reward-memory",
         "periodic-report",

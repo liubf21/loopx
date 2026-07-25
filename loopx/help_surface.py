@@ -217,6 +217,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "configure-goal",
         "content-ops",
         "decision-context",
+        "material-lifecycle",
         "demo",
         "dreaming",
         "global-summary",

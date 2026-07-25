@@ -335,6 +335,79 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "material-lifecycle",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Backup-safe material inventory, archive, and bounded rerank contract",
+        "status": "experimental",
+        "default_enabled": False,
+        "real_world_anchor": (
+            "large local candidate and archive stores that must remain "
+            "recoverable while decisions change their short-list"
+        ),
+        "user_value": (
+            "Preserve raw source authority and stable material references while "
+            "making migration, archive transitions, and small reranks auditable."
+        ),
+        "entry_command": "loopx material-lifecycle architecture --format json",
+        "commands": [
+            {
+                "command": "loopx material-lifecycle architecture --format json",
+                "purpose": "Render the default-off Stage-0 inventory, migration, lifecycle, and bounded-rerank boundaries.",
+                "write_boundary": "stateless contract output only; no source store, backup, goal state, provider, or external write",
+            }
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "material_lifecycle_architecture_v0",
+                "module": "loopx.capabilities.material_lifecycle.architecture",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+            {
+                "schema_version": "material_store_inventory_v0",
+                "module": "loopx.capabilities.material_lifecycle.inventory",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+            {
+                "schema_version": "material_migration_plan_v0",
+                "module": "loopx.capabilities.material_lifecycle.inventory",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+            {
+                "schema_version": "material_lifecycle_receipt_v0",
+                "module": "loopx.capabilities.material_lifecycle.lifecycle",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+            {
+                "schema_version": "material_rerank_proposal_v0",
+                "module": "loopx.capabilities.material_lifecycle.ranking",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+            {
+                "schema_version": "material_rerank_apply_receipt_v0",
+                "module": "loopx.capabilities.material_lifecycle.ranking",
+                "doc": "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            },
+        ],
+        "smokes": ["python3 examples/material-lifecycle-contract-smoke.py"],
+        "docs": [
+            "docs/reference/protocols/material-lifecycle-architecture-v0.md",
+            "docs/reference/protocols/material-lifecycle-architecture-v0.zh-CN.md",
+        ],
+        "boundaries": [
+            "The capability is default-off and cannot create action authority or mutate Core state.",
+            "Raw material, private locations, provider payloads, credentials, and source-store formats stay outside public packets.",
+            "Snapshot and verified backup precede dual-read reconciliation; cutover and rollback remain owner-gated.",
+            "Decision Context may supply revisioned evidence, but Material Lifecycle owns candidate, archive, and rerank receipts.",
+            "Concrete legacy adapters, exploration providers, source profiles, and material-store writes remain deferred to private dogfood.",
+        ],
+        "next_real_step": (
+            "Build one read-only legacy inventory and migration planner, then "
+            "validate a decision-driven bounded rerank without mutating raw sources."
+        ),
+    },
+    {
         "id": "semantic-preference",
         "origin": "builtin",
         "visibility": "public",

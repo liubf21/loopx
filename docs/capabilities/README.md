@@ -26,6 +26,10 @@ Current capability paths:
   ([中文](../reference/protocols/decision-context-architecture-v0.zh-CN.md)):
   separate current evidence, advisory proposals, and verified outcomes through
   default-off provider-neutral packet and incremental source contracts.
+- [material-lifecycle](../reference/protocols/material-lifecycle-architecture-v0.md)
+  ([中文](../reference/protocols/material-lifecycle-architecture-v0.zh-CN.md)):
+  preserve raw source authority while inventorying, archiving, migrating, and
+  applying bounded material reranks.
 - [periodic-report](periodic-report/README.md): evaluate cadence and material
   progress triggers, then compose deterministic provider-neutral report runs
   with source, artifact, archive, and delivery receipts.
