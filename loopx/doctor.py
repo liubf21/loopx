@@ -42,6 +42,12 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "use `.loopx/registry.json` as the project-local doc registry",
         "not a substitute for project-local authority registration",
     ),
+    "loopx-material": (
+        "The skill is installed globally with LoopX",
+        "active only for a connected project's explicit goal-scoped Material Lifecycle work",
+        "Do not hide overflow in an unranked supporting index",
+        "Apply only when all are true",
+    ),
     "loopx-self-repair": (
         "Build a compact evidence packet",
         "loopx --format json diagnose --goal-id <goal-id>",

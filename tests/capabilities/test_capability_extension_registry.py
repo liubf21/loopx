@@ -112,6 +112,18 @@ def test_builtin_catalog_preserves_order_and_marks_provider() -> None:
     ]
 
 
+def test_material_lifecycle_catalog_exposes_global_skill_project_activation() -> None:
+    capability = build_capability_detail_packet("material-lifecycle")["capability"]
+
+    assert capability["default_enabled"] is False
+    assert capability["workflow_skill"] == {
+        "name": "loopx-material",
+        "delivery": "global_versioned_skill",
+        "activation": "explicit_goal_scoped_material_lifecycle_work",
+        "project_copy_required": False,
+    }
+
+
 def test_periodic_report_catalog_exposes_extension_boundary_contracts() -> None:
     detail = build_capability_detail_packet("periodic-report")
     capability = detail["capability"]

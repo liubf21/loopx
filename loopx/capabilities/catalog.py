@@ -420,6 +420,12 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "and small reranks auditable."
         ),
         "entry_command": "loopx material-lifecycle architecture --format json",
+        "workflow_skill": {
+            "name": "loopx-material",
+            "delivery": "global_versioned_skill",
+            "activation": "explicit_goal_scoped_material_lifecycle_work",
+            "project_copy_required": False,
+        },
         "commands": [
             {
                 "command": "loopx material-lifecycle architecture --format json",
@@ -480,6 +486,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Snapshot and verified backup precede dual-read reconciliation; cutover and rollback remain owner-gated.",
             "Decision Context may supply revisioned evidence, but Material Lifecycle owns candidate, archive, and rerank receipts.",
             "Oversized ranked entries are rebuilt into independently sortable entries; overflow cannot be hidden outside the ranked set.",
+            "The official loopx-material skill is globally delivered but remains inactive for projects without explicit goal-scoped Material Lifecycle work.",
             "Concrete legacy adapters, exploration providers, source profiles, and material-store writes remain deferred to private dogfood.",
         ],
         "next_real_step": (

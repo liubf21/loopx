@@ -455,6 +455,7 @@ The reusable skills have intentionally narrow jobs:
 | `loopx-project` | Connecting projects, reading status/quota/history, diagnosing LoopX, generating heartbeat/review packets, and refreshing state. | Reading private project documents by default or replacing the CLI as source of truth. |
 | `loopx-pr-review` | Running `/loopx-pr-review`, preserving the `loopx pr-review` packet, and guiding per-PR five-block reviews. | Approving, commenting on, merging, self-merging, or admin-bypassing a PR. |
 | `loopx-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
+| `loopx-material` | Operating an explicitly activated project's lossless material inventory, lifecycle, ranked-entry rebuild, bounded rerank, owner-gated apply, and rollback. | Ordinary one-off reading, project-specific source discovery, or mutating a material store merely because the global skill is installed. |
 | `loopx-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
 
 Auto-research role guidance is worker-local: the visible worker launcher owns
@@ -471,6 +472,13 @@ Keep three layers separate:
 - **Repository rules** belong in `AGENTS.md`, `CONTRIBUTING.md`, and public
   docs. They can constrain contributors and agents in this repository, but they
   should not silently become global skill policy for every project.
+
+Capability skills such as `loopx-material` follow **global delivery,
+project-scoped activation**. The installer publishes one versioned skill under
+`~/.codex/skills`; a connected project's explicit goal/profile/todo state
+decides whether the workflow is active. Do not copy the skill into every
+project or treat global visibility as permission to mutate that project's
+material authority.
 
 To disconnect only the current project from LoopX, use the project-local
 uninstall command from that project root. It defaults to a dry-run preview and
@@ -496,6 +504,7 @@ rm -f ~/.local/bin/loopx ~/.local/bin/loopx-canary
 rm -rf ~/.codex/skills/loopx-project \
        ~/.codex/skills/loopx-pr-review \
        ~/.codex/skills/loopx-doc-registry \
+       ~/.codex/skills/loopx-material \
        ~/.codex/skills/loopx-self-repair
 ```
 
