@@ -136,7 +136,24 @@ Rerank from revision-bound Decision Context evidence.
 - Emit a no-change proposal when evidence does not justify movement.
 - Keep proposal and apply receipt separate.
 
-### 6. Apply With A Lossless Gate
+### 6. Build A Readable Projection
+
+The managed catalog remains authority, but operators need a readable view.
+Build that view from exact-read-backed presentation records:
+
+- preserve contiguous ranks and the explicit ranked backlog;
+- keep at most three primary materials per entry;
+- require every expected selected material exactly once;
+- keep project-specific taxonomy, summaries, judgments, links, and language in
+  the private project adapter;
+- emit a content-free receipt with revision, counts, digest, and verification;
+- never treat the readable Markdown as ranking or source authority.
+
+LoopX owns validation, rendering, and the content-free receipt contract. The
+project adapter owns source parsing and supplies already-promoted display
+records. One-time legacy parsing and migration scripts remain project-local.
+
+### 7. Apply With A Lossless Gate
 
 Preview first. Apply only when all are true:
 

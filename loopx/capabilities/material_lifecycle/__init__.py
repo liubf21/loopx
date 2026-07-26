@@ -76,6 +76,10 @@ from .ranking import (
     build_material_rerank_apply_receipt,
     build_material_rerank_proposal,
 )
+from .readable_projection import (
+    MATERIAL_READABLE_PROJECTION_RECEIPT_SCHEMA_VERSION,
+    build_material_readable_projection,
+)
 from .rebuild import (
     MATERIAL_RANKED_ENTRY_REBUILD_APPLY_RECEIPT_SCHEMA_VERSION,
     MATERIAL_RANKED_ENTRY_REBUILD_PLAN_SCHEMA_VERSION,
@@ -98,6 +102,7 @@ __all__ = [
     "MATERIAL_MIGRATION_ROLLBACK_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RANKED_ENTRY_REBUILD_APPLY_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RANKED_ENTRY_REBUILD_PLAN_SCHEMA_VERSION",
+    "MATERIAL_READABLE_PROJECTION_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RERANK_APPLY_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RERANK_PROPOSAL_SCHEMA_VERSION",
     "MATERIAL_SKILL_ID",
@@ -131,6 +136,7 @@ __all__ = [
     "build_material_migration_plan",
     "build_material_ranked_entry_rebuild_apply_receipt",
     "build_material_ranked_entry_rebuild_plan",
+    "build_material_readable_projection",
     "build_material_rerank_apply_receipt",
     "build_material_rerank_proposal",
     "build_material_store_inventory",
