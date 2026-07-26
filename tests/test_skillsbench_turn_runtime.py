@@ -1230,6 +1230,135 @@ pathlib.Path(sys.argv[output_index]).write_text("bounded turn complete", encodin
     assert "thread-single-001" not in public_trace_text
 
 
+def test_skillsbench_single_turn_codex_exec_hands_exhausted_progress_to_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    invocation_log = tmp_path / "invocations.jsonl"
+    fake_codex = tmp_path / "fake-codex"
+    fake_codex.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import sys
+import time
+
+log_path = pathlib.Path(os.environ["FAKE_CODEX_INVOCATION_LOG"])
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps({"argv": sys.argv[1:]}) + "\\n")
+print(json.dumps({"type": "thread.started", "thread_id": "private-thread"}), flush=True)
+time.sleep(10)
+""",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+    monkeypatch.setenv("FAKE_CODEX_INVOCATION_LOG", str(invocation_log))
+    trace_dir = tmp_path / "public-traces"
+    trace_dir.mkdir()
+    relay = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(
+            codex_bin=str(fake_codex),
+            loopx_turn_agent_cli=True,
+            loopx_turn_max_turns=1,
+            remote_command_file_bridge_command="synthetic-bridge",
+            worker_public_trace_dir=str(trace_dir),
+            bridge_idle_timeout_sec=0.25,
+            timeout_sec=30,
+        )
+    )
+    monkeypatch.setattr(
+        relay,
+        "_consume_remote_bridge_for_solver",
+        lambda: {"ready": True},
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_consumption_trace",
+        lambda _probe: None,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_start_json_file_bridge_server",
+        lambda **_kwargs: ("synthetic-agent-bridge", None),
+    )
+
+    def write_progress_summary(**kwargs: Any) -> Path:
+        kwargs["summary_path"].write_text(
+            json.dumps(
+                {
+                    "record_phase": "complete",
+                    "operation": "run_command",
+                    "task_facing_operation": True,
+                    "success": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return kwargs["tmp_path"] / "synthetic-wrapper"
+
+    monkeypatch.setattr(
+        relay,
+        "_write_instrumented_bridge_wrapper",
+        write_progress_summary,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_prompt_with_remote_bridge_packet",
+        lambda prompt, **_kwargs: prompt,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_agent_operations_trace",
+        lambda **_kwargs: None,
+    )
+
+    result = relay._run_loopx_turn_agent_prompt(
+        "private task fixture",
+        session={"cwd": str(tmp_path), "model": None},
+        session_id="fixture-session",
+        stdout=SimpleNamespace(write=lambda _value: None, flush=lambda: None),
+        turn_deadline=time.monotonic() + 20,
+    )
+
+    assert (
+        result.response_text
+        == runtime.SKILLSBENCH_TURN_AGENT_VALIDATION_HANDOFF_RESPONSE
+    )
+    assert result.progress_evidence["task_facing_operation_count"] == 1
+    assert result.progress_evidence["task_facing_success_count"] == 1
+    assert result.progress_evidence["raw_material_recorded"] is False
+    assert len(invocation_log.read_text(encoding="utf-8").splitlines()) == 2
+    traces = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in trace_dir.glob("*.compact.json")
+    ]
+    assert any(
+        trace.get("trace_kind") == "codex_exec_process_failure"
+        and trace["codex_exec_process"][
+            "independent_validation_handoff_scheduled"
+        ]
+        is True
+        for trace in traces
+    )
+    assert "private task fixture" not in json.dumps(traces, sort_keys=True)
+    assert "private-thread" not in json.dumps(traces, sort_keys=True)
+
+
+def test_skillsbench_progress_validation_handoff_is_not_host_completion() -> None:
+    result = runtime._host_result(
+        {"turn_key": "synthetic-turn"},
+        runtime.SKILLSBENCH_TURN_AGENT_VALIDATION_HANDOFF_RESPONSE,
+    )
+
+    assert (
+        result["classification"]
+        == "skillsbench_loopx_turn_agent_cli_validation_handoff"
+    )
+    assert "independent validation" in result["summary"]
+
+
 def test_codex_exec_transport_retry_requires_no_task_facing_operation(
     tmp_path: Path,
 ) -> None:
