@@ -1,5 +1,16 @@
 """Goal-scoped Material Lifecycle capability contracts."""
 
+from .apply import (
+    MATERIAL_MIGRATION_APPLY_RECEIPT_SCHEMA_VERSION,
+    MATERIAL_MIGRATION_ROLLBACK_RECEIPT_SCHEMA_VERSION,
+    MaterialAuthoritySnapshot,
+    MaterialAuthorityTransition,
+    MaterialDualReadReconciliation,
+    MaterialMigrationApplyProvider,
+    MaterialStagedStore,
+    apply_material_migration,
+    rollback_material_migration,
+)
 from .architecture import (
     MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION,
     build_material_lifecycle_architecture_packet,
@@ -37,27 +48,36 @@ from .ranking import (
 )
 
 __all__ = [
+    "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_STATES",
-    "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
+    "MATERIAL_MIGRATION_APPLY_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION",
+    "MATERIAL_MIGRATION_ROLLBACK_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RERANK_APPLY_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_RERANK_PROPOSAL_SCHEMA_VERSION",
     "MATERIAL_STORE_INVENTORY_SCHEMA_VERSION",
-    "MaterialInventoryProvider",
+    "MaterialAuthoritySnapshot",
+    "MaterialAuthorityTransition",
     "MaterialDecisionPlanning",
     "MaterialDecisionPolicy",
     "MaterialDecisionPolicyResult",
+    "MaterialDualReadReconciliation",
+    "MaterialInventoryProvider",
+    "MaterialMigrationApplyProvider",
     "MaterialMigrationPreparation",
+    "MaterialStagedStore",
     "MaterialStoreSnapshot",
+    "apply_material_migration",
+    "build_material_explore_intent",
     "build_material_lifecycle_architecture_packet",
     "build_material_lifecycle_receipt",
-    "build_material_explore_intent",
     "build_material_migration_plan",
     "build_material_rerank_apply_receipt",
     "build_material_rerank_proposal",
     "build_material_store_inventory",
     "plan_material_decision_actions",
     "prepare_material_migration",
+    "rollback_material_migration",
 ]

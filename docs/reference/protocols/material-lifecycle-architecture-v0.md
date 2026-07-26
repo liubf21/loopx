@@ -110,6 +110,32 @@ capability. A host adapter may parse Markdown, a database, or another source,
 but it must prove the same read-only and backup invariants before LoopX will
 prepare migration.
 
+## Owner-Gated Apply and Rollback
+
+`MaterialMigrationApplyProvider` is the private write adapter boundary. The
+generic capability never receives raw material or a private location. It
+orchestrates five explicit steps:
+
+1. compare-and-swap the current authority revision against the prepared source;
+2. stage the target store with an atomic write and verified readback;
+3. recheck the source authority revision after staging;
+4. reconcile stable IDs, item counts, lifecycle counts, and content parity
+   under dual read;
+5. atomically switch the authority pointer with an explicit owner-gate
+   reference.
+
+`material_migration_apply_receipt_v0` records the before/after revisions,
+target digest, item and lifecycle counts, reconciliation reference, authority
+reference, rollback reference, and the verified CAS/atomic-write/readback
+invariants. It remains public-safe and content-free.
+
+Rollback uses the same authority-pointer CAS. It only proceeds while the
+currently authoritative revision still equals the applied target revision,
+requires a separate owner-gate reference, and emits
+`material_migration_rollback_receipt_v0`. The provider owns filesystem,
+database, or object-store mechanics; the capability owns ordering, validation,
+and auditable receipts.
+
 ## Decision-Driven Ranking and Exploration
 
 The provider-neutral decision-planning path accepts a validated, public-safe
@@ -136,10 +162,11 @@ validated receipts, not in an automation prompt.
 ## Stage Boundary
 
 The capability now ships deterministic contracts, a provider-neutral read-only
-preparation path, bounded decision planning, catalog visibility, an
-architecture CLI, focused tests, and a public smoke. It does not ship:
+preparation path, owner-gated apply/rollback orchestration, bounded decision
+planning, catalog visibility, an architecture CLI, focused tests, and a public
+smoke. It does not ship:
 
-- a built-in legacy material parser or migration apply path;
+- a built-in legacy material parser or private write adapter;
 - raw-material persistence;
 - a built-in decision policy;
 - an exploration provider;

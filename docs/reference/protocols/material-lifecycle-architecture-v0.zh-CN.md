@@ -102,6 +102,26 @@ digest、生命周期计数、解析错误引用，以及三个显式验证结�
 解析 Markdown、数据库或其他来源，但必须证明同一组只读与 backup invariant，
 LoopX 才会准备迁移。
 
+## Owner-Gated Apply 与回滚
+
+`MaterialMigrationApplyProvider` 是私有写 adapter 边界。通用 capability 不接收原始
+材料或私有位置，只编排五个显式步骤：
+
+1. 用准备阶段的 source revision 对当前 authority 做 compare-and-swap；
+2. 以原子写入和读回验证生成 staged store；
+3. staging 后再次检查 source authority revision；
+4. 双读对账 stable ID、item count、lifecycle count 与 content parity；
+5. 携带显式 owner-gate reference，原子切换 authority pointer。
+
+`material_migration_apply_receipt_v0` 记录 before/after revision、target digest、item 与
+lifecycle count、reconciliation reference、authority reference、rollback reference，
+以及已验证的 CAS、原子写入和读回不变量。Receipt 仍保持 public-safe，不携带正文。
+
+回滚复用同一个 authority-pointer CAS。只有当前 authority 仍等于已应用的 target
+revision 时才继续，且需要独立 owner-gate reference，最终生成
+`material_migration_rollback_receipt_v0`。Provider 负责文件系统、数据库或对象存储的
+具体机制；capability 负责顺序、不变量和可审计 receipt。
+
 ## 决策驱动的排序与探索
 
 provider-neutral 的决策规划路径接收 Decision Context 产出的、经过验证且
@@ -122,10 +142,11 @@ provider 调用数、新增候选数与显式 stop condition。它仅用于分�
 
 ## 本阶段不做什么
 
-当前 capability 交付确定性契约、provider-neutral 的只读准备路径、受限决策
-规划、catalog、架构 CLI、聚焦测试和公开 smoke，不交付：
+当前 capability 交付确定性契约、provider-neutral 的只读准备路径、owner-gated
+apply/rollback 编排、受限决策规划、catalog、架构 CLI、聚焦测试和公开 smoke，
+不交付：
 
-- 内置 legacy 素材 parser 或迁移 apply；
+- 内置 legacy 素材 parser 或私有写 adapter；
 - 原始素材持久化；
 - 内置决策 policy；
 - 联网探索 provider；
