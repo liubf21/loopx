@@ -183,7 +183,10 @@ from loopx.benchmarks.read_models.goal_start_control_score import (
     goal_start_public_text_list as _goal_start_public_text_list,
     goal_start_public_todo_id_list as _goal_start_public_todo_id_list,
 )
-from loopx.control_plane.turn_driver import loopx_turn_execution_committed
+from loopx.control_plane.turn_driver import (
+    loopx_turn_execution_committed,
+    loopx_turn_execution_has_durable_effects,
+)
 
 
 class SkillsBenchRunnerInterrupted(RuntimeError):
@@ -192,6 +195,10 @@ class SkillsBenchRunnerInterrupted(RuntimeError):
 
 class SkillsBenchProductModeNoLifecycleRequests(RuntimeError):
     """Product-mode agent made no required case-local LoopX lifecycle request."""
+
+
+class SkillsBenchLoopXTurnTerminalFailureStall(RuntimeError):
+    """A terminal failed Turn did not let BenchFlow close the case."""
 
 
 from scripts import skillsbench_runner_constants as _runner_constants
@@ -2770,6 +2777,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_orphan_cleanup_status",
         "host_local_acp_attempt_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
+        "benchflow_loopx_turn_terminal_failure_status",
+        "benchflow_loopx_turn_terminal_failure_category",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "remote_command_file_bridge_agent_transport_mode",
@@ -2945,6 +2954,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_final_verifier_timeout_triggered",
         "benchflow_final_verifier_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_raw_output_recorded",
+        "benchflow_final_verifier_started",
         "benchflow_verifier_completion_poll_enabled",
         "benchflow_verifier_completion_poll_timeout_triggered",
         "benchflow_verifier_completion_poll_raw_command_recorded",
@@ -2960,6 +2970,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_task_cancel_timeout",
         "benchflow_setup_stall_cleanup_requested",
         "benchflow_setup_stall_cleanup_raw_logs_read",
+        "benchflow_loopx_turn_terminal_failure_watchdog_enabled",
+        "benchflow_loopx_turn_terminal_failure_observed",
+        "benchflow_loopx_turn_terminal_failure_triggered",
+        "benchflow_loopx_turn_terminal_failure_raw_material_recorded",
+        "benchflow_loopx_turn_terminal_failure_task_cancel_requested",
+        "benchflow_loopx_turn_terminal_failure_task_cancel_acknowledged",
+        "benchflow_loopx_turn_terminal_failure_task_cancel_timeout",
         "runner_interrupted_before_official_result",
         "runner_interruption_compact_closeout_expected",
         "runner_interruption_raw_material_recorded",
@@ -3029,6 +3046,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
         "benchflow_setup_stall_cleanup_alive_after_count",
+        "benchflow_loopx_turn_terminal_failure_grace_sec",
         "verifier_dependency_cache_env_key_count",
         "goal_start_planned_todo_count_expected",
         "remote_command_file_bridge_solver_trace_count",
@@ -3934,6 +3952,10 @@ def install_benchflow_verifier_prep_timeout_override(
         return "/verifier/test.sh" in command
 
     async def _run_with_override(self: Any, phase: str, original: Any) -> Any:
+        if phase == "verify":
+            prerequisites["benchflow_final_verifier_started"] = True
+            if isinstance(trace, dict):
+                trace["benchflow_final_verifier_started"] = True
         if not enabled and not final_timeout_enabled and not soft_timeout_enabled:
             return await original(self)
 
@@ -11957,6 +11979,160 @@ def _merge_host_local_acp_relay_trace_summary(
         )
 
 
+def _loopx_turn_terminal_failure_checkpoint(
+    plan: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Read the public trace needed to identify a stranded failed Turn."""
+
+    if plan.get("route") != LOOPX_TURN_AGENT_CLI_ROUTE:
+        return None
+    trace: dict[str, Any] = {}
+    _merge_host_local_acp_relay_trace_summary(plan, trace)
+    executions = trace.get("loopx_turn_executions")
+    latest = (
+        executions[-1]
+        if isinstance(executions, list)
+        and executions
+        and isinstance(executions[-1], Mapping)
+        else None
+    )
+    if latest is None or loopx_turn_execution_committed(latest):
+        return None
+    receipt = latest.get("receipt")
+    receipt = receipt if isinstance(receipt, Mapping) else {}
+    terminal_failure = bool(
+        latest.get("status") in {"failed", "validation_failed"}
+        or receipt.get("status") == "failed"
+        or receipt.get("failed_phase")
+    )
+    if (
+        not terminal_failure
+        or loopx_turn_execution_has_durable_effects(latest)
+        or trace.get("host_local_acp_codex_exec_failure_trace_present") is not True
+    ):
+        return None
+
+    def safe_label(value: Any, *, default: str) -> str:
+        text = str(value or "")
+        if re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", text):
+            return text
+        return default
+
+    return {
+        "schema_version": "skillsbench_loopx_turn_terminal_failure_checkpoint_v0",
+        "status": safe_label(latest.get("status"), default="failed"),
+        "result_kind": safe_label(
+            receipt.get("result_kind") or latest.get("result_kind"),
+            default="unknown",
+        ),
+        "failed_phase": safe_label(
+            receipt.get("failed_phase"),
+            default="unknown",
+        ),
+        "failure_category": safe_label(
+            trace.get("host_local_acp_codex_exec_failure_category"),
+            default="unknown",
+        ),
+        "durable_effects_observed": False,
+        "raw_material_recorded": False,
+    }
+
+
+async def _await_benchflow_task_with_loopx_turn_closeout_watchdog(
+    task: asyncio.Task[Any],
+    plan: dict[str, Any],
+    *,
+    grace_seconds: float = DEFAULT_LOOPX_TURN_TERMINAL_FAILURE_GRACE_SEC,
+    poll_interval_seconds: float = LOOPX_TURN_TERMINAL_FAILURE_POLL_SEC,
+    cancel_timeout_seconds: float = 5.0,
+) -> Any:
+    """Let BenchFlow close normally, but fail closed when a failed Turn strands it."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    enabled = bool(
+        plan.get("route") == LOOPX_TURN_AGENT_CLI_ROUTE
+        and (
+            prerequisites.get("host_local_acp_launch") is True
+            or prerequisites.get("agent_execution_mode") == "host_local_acp"
+        )
+    )
+    prerequisites["benchflow_loopx_turn_terminal_failure_watchdog_enabled"] = enabled
+    prerequisites["benchflow_loopx_turn_terminal_failure_grace_sec"] = max(
+        0,
+        int(grace_seconds),
+    )
+    prerequisites["benchflow_loopx_turn_terminal_failure_raw_material_recorded"] = (
+        False
+    )
+    if not enabled:
+        return await task
+
+    failure_observed_at: float | None = None
+    while True:
+        done, _pending = await asyncio.wait(
+            {task},
+            timeout=max(0.01, poll_interval_seconds),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if done:
+            return await task
+        if prerequisites.get("benchflow_final_verifier_started") is True:
+            return await task
+        checkpoint = _loopx_turn_terminal_failure_checkpoint(plan)
+        if checkpoint is None:
+            continue
+        if failure_observed_at is None:
+            failure_observed_at = asyncio.get_running_loop().time()
+            prerequisites[
+                "benchflow_loopx_turn_terminal_failure_observed"
+            ] = True
+            prerequisites["benchflow_loopx_turn_terminal_failure_status"] = str(
+                checkpoint["status"]
+            )
+            prerequisites["benchflow_loopx_turn_terminal_failure_category"] = str(
+                checkpoint["failure_category"]
+            )
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="loopx_turn_terminal_failure_waiting_for_closeout",
+                worker_status="agent_active",
+            )
+        if (
+            asyncio.get_running_loop().time() - failure_observed_at
+            < max(0.0, grace_seconds)
+        ):
+            continue
+
+        prerequisites["benchflow_loopx_turn_terminal_failure_triggered"] = True
+        prerequisites[
+            "benchflow_loopx_turn_terminal_failure_task_cancel_requested"
+        ] = True
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            run_stage="loopx_turn_terminal_failure_closeout_stalled",
+            worker_status="agent_active",
+        )
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, timeout=max(0.01, cancel_timeout_seconds))
+        except asyncio.CancelledError:
+            prerequisites[
+                "benchflow_loopx_turn_terminal_failure_task_cancel_acknowledged"
+            ] = True
+        except asyncio.TimeoutError:
+            prerequisites[
+                "benchflow_loopx_turn_terminal_failure_task_cancel_timeout"
+            ] = True
+        except Exception:
+            prerequisites[
+                "benchflow_loopx_turn_terminal_failure_task_cancel_acknowledged"
+            ] = True
+        cleanup_host_local_acp_attempt_children(plan)
+        raise SkillsBenchLoopXTurnTerminalFailureStall(
+            "SkillsBench LoopX Turn terminal failure did not close BenchFlow"
+        )
+
+
 def _round_count_key(round_index: int) -> str:
     return str(max(0, int(round_index)))
 
@@ -15056,32 +15232,36 @@ async def run_benchflow_case(
         return False
 
     async def run_benchflow_with_setup_stall_watchdog() -> None:
+        async def await_task_completion(monitored_task: asyncio.Task[Any]) -> None:
+            await monitored_task
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="benchflow_run_completed",
+                worker_status="worker_completed",
+            )
+
         _write_public_runner_lifecycle_receipt(
             plan,
             run_stage="benchflow_run_started",
             worker_status="worker_running",
         )
         task = asyncio.create_task(benchflow_run(config))
-        if build_stall_timeout_sec <= 0:
-            await task
-            _write_public_runner_lifecycle_receipt(
+        monitored_task = asyncio.create_task(
+            _await_benchflow_task_with_loopx_turn_closeout_watchdog(
+                task,
                 plan,
-                run_stage="benchflow_run_completed",
-                worker_status="worker_completed",
             )
+        )
+        if build_stall_timeout_sec <= 0:
+            await await_task_completion(monitored_task)
             return
         done, _pending = await asyncio.wait(
-            {task},
+            {monitored_task},
             timeout=build_stall_timeout_sec,
             return_when=asyncio.FIRST_COMPLETED,
         )
         if done:
-            await task
-            _write_public_runner_lifecycle_receipt(
-                plan,
-                run_stage="benchflow_run_completed",
-                worker_status="worker_completed",
-            )
+            await await_task_completion(monitored_task)
             return
         if agent_lifecycle_started():
             _write_public_runner_lifecycle_receipt(
@@ -15089,12 +15269,7 @@ async def run_benchflow_case(
                 run_stage="benchflow_run_continues_after_agent_lifecycle_started",
                 worker_status="agent_active",
             )
-            await task
-            _write_public_runner_lifecycle_receipt(
-                plan,
-                run_stage="benchflow_run_completed",
-                worker_status="worker_completed",
-            )
+            await await_task_completion(monitored_task)
             return
         prerequisites["benchflow_setup_stall_timeout_triggered"] = True
         prerequisites["benchflow_setup_stall_before_agent_lifecycle"] = True
@@ -15105,12 +15280,15 @@ async def run_benchflow_case(
         )
         prerequisites["benchflow_setup_stall_task_cancel_requested"] = True
         task.cancel()
+        monitored_task.cancel()
         try:
             await asyncio.wait_for(task, timeout=5)
         except asyncio.CancelledError:
             prerequisites["benchflow_setup_stall_task_cancel_acknowledged"] = True
         except asyncio.TimeoutError:
             prerequisites["benchflow_setup_stall_task_cancel_timeout"] = True
+        with contextlib.suppress(asyncio.CancelledError):
+            await monitored_task
         cleanup_benchflow_setup_stall_children(plan)
         raise asyncio.TimeoutError(
             "skillsbench docker compose build/setup stall timeout before agent lifecycle"
