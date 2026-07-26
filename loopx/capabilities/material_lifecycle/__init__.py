@@ -23,6 +23,12 @@ from .decision_planning import (
     build_material_explore_intent,
     plan_material_decision_actions,
 )
+from .explore_execution import (
+    MATERIAL_EXPLORE_EXECUTION_RECEIPT_SCHEMA_VERSION,
+    MaterialExploreCandidate,
+    MaterialExploreExecution,
+    execute_material_explore_intent,
+)
 from .inventory import (
     MATERIAL_LIFECYCLE_STATES,
     MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
@@ -49,6 +55,7 @@ from .ranking import (
 
 __all__ = [
     "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
+    "MATERIAL_EXPLORE_EXECUTION_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_STATES",
@@ -63,6 +70,8 @@ __all__ = [
     "MaterialDecisionPlanning",
     "MaterialDecisionPolicy",
     "MaterialDecisionPolicyResult",
+    "MaterialExploreCandidate",
+    "MaterialExploreExecution",
     "MaterialDualReadReconciliation",
     "MaterialInventoryProvider",
     "MaterialMigrationApplyProvider",
@@ -77,6 +86,7 @@ __all__ = [
     "build_material_rerank_apply_receipt",
     "build_material_rerank_proposal",
     "build_material_store_inventory",
+    "execute_material_explore_intent",
     "plan_material_decision_actions",
     "prepare_material_migration",
     "rollback_material_migration",

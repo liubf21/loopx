@@ -150,6 +150,17 @@ advances a source cursor. If the policy is unavailable or emits invalid output,
 planning fails open to an audited no-change proposal and discards partial
 exploration output.
 
+`execute_material_explore_intent(...)` is the explicit read-only execution
+boundary. A private host supplies transient queries, a configured
+`ContextProvider`, and an execution-authority reference. The executor enforces
+the intent's call and candidate budgets, keeps queries, resource locations, and
+content in-process, and emits `material_explore_execution_receipt_v0` with only
+opaque result references and compact telemetry. Provider failure fails open.
+
+The receipt cannot authorize rerank, candidate insertion, cursor advancement,
+or any source mutation. Every hit remains a candidate until an independent
+managed-material exact read verifies it against the current authority.
+
 Search engines, web clients, messaging providers, and repository scanners
 remain replaceable providers. Their raw queries, output, credentials, and
 private locations cannot enter public packets.
@@ -163,15 +174,16 @@ validated receipts, not in an automation prompt.
 
 The capability now ships deterministic contracts, a provider-neutral read-only
 preparation path, owner-gated apply/rollback orchestration, bounded decision
-planning, catalog visibility, an architecture CLI, focused tests, and a public
-smoke. It does not ship:
+planning and exploration execution, catalog visibility, an architecture CLI,
+focused tests, and a public smoke. It does not ship:
 
 - a built-in legacy material parser or private write adapter;
 - raw-material persistence;
 - a built-in decision policy;
 - an exploration provider;
 - a messaging or contact source profile;
-- automatic reranking, provider calls, archive moves, or cursor advancement.
+- automatic reranking, automatic provider calls, archive moves, or cursor
+  advancement.
 
 Those require a private read-only adapter, exact dual-read reconciliation, and
 an explicit owner gate.
