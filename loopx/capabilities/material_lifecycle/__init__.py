@@ -36,6 +36,18 @@ from .inventory import (
     build_material_migration_plan,
     build_material_store_inventory,
 )
+from .intake import (
+    MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION,
+    MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION,
+    MATERIAL_CANDIDATE_INTAKE_ROLLBACK_RECEIPT_SCHEMA_VERSION,
+    MaterialCandidateAppendReconciliation,
+    MaterialCandidateIntakeProvider,
+    MaterialCandidateReadback,
+    MaterialStagedCandidate,
+    apply_material_candidate_intake,
+    build_material_candidate_intake_proposal,
+    rollback_material_candidate_intake,
+)
 from .lifecycle import (
     MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION,
     build_material_lifecycle_receipt,
@@ -73,6 +85,9 @@ from .rebuild import (
 )
 
 __all__ = [
+    "MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION",
+    "MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION",
+    "MATERIAL_CANDIDATE_INTAKE_ROLLBACK_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
     "MATERIAL_EXPLORE_EXECUTION_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION",
@@ -92,6 +107,9 @@ __all__ = [
     "MATERIAL_STORE_INVENTORY_SCHEMA_VERSION",
     "MaterialAuthoritySnapshot",
     "MaterialAuthorityTransition",
+    "MaterialCandidateAppendReconciliation",
+    "MaterialCandidateIntakeProvider",
+    "MaterialCandidateReadback",
     "MaterialDecisionPlanning",
     "MaterialDecisionPolicy",
     "MaterialDecisionPolicyResult",
@@ -102,8 +120,11 @@ __all__ = [
     "MaterialMigrationApplyProvider",
     "MaterialMigrationPreparation",
     "MaterialStagedStore",
+    "MaterialStagedCandidate",
     "MaterialStoreSnapshot",
     "apply_material_migration",
+    "apply_material_candidate_intake",
+    "build_material_candidate_intake_proposal",
     "build_material_explore_intent",
     "build_material_lifecycle_architecture_packet",
     "build_material_lifecycle_receipt",
@@ -123,5 +144,6 @@ __all__ = [
     "prepare_material_migration",
     "project_material_skill_target",
     "rollback_material_migration",
+    "rollback_material_candidate_intake",
     "uninstall_project_material_skill",
 ]
