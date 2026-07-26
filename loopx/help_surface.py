@@ -163,6 +163,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
         "title": "Maintainer and adapter commands",
         "commands": [
             {"command": "loopx check", "purpose": "Run contract and public/private boundary checks."},
+            {
+                "command": "loopx change-quality --help",
+                "purpose": "Qualify one exact final diff against an enabled project policy and receipt contract.",
+            },
             {"command": "loopx registry", "purpose": "Inspect registered goals and adapters."},
             {"command": "loopx sync-global", "purpose": "Merge project state into the shared registry."},
             {

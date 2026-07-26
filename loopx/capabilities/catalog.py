@@ -558,15 +558,15 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             {
                 "schema_version": "loopx_project_skill_status_v0",
                 "module": "loopx.project_skill_delivery",
-                "doc": "docs/project-skill-delivery.md",
+                "doc": "docs/reference/project-skill-delivery.md",
             },
             {
                 "schema_version": "loopx_managed_project_skill_v0",
                 "module": "loopx.project_skill_delivery",
-                "doc": "docs/project-skill-delivery.md",
+                "doc": "docs/reference/project-skill-delivery.md",
             },
         ],
-        "docs": ["docs/project-skill-delivery.md"],
+        "docs": ["docs/reference/project-skill-delivery.md"],
         "boundaries": [
             "Only skills marked project-scoped in the LoopX release can be delivered.",
             "Project connection, preview-first mutation, digest readback, symlink containment, and rollback are mandatory.",
