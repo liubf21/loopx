@@ -25,6 +25,7 @@ from loopx.extensions.runtime import (
 BUILTIN_IDS = [
     "issue-fix",
     "decision-context",
+    "project-skill-delivery",
     "material-lifecycle",
     "semantic-preference",
     "reward-memory",
@@ -112,15 +113,40 @@ def test_builtin_catalog_preserves_order_and_marks_provider() -> None:
     ]
 
 
-def test_material_lifecycle_catalog_exposes_global_skill_project_activation() -> None:
+def test_material_lifecycle_catalog_exposes_managed_project_skill() -> None:
     capability = build_capability_detail_packet("material-lifecycle")["capability"]
 
     assert capability["default_enabled"] is False
     assert capability["workflow_skill"] == {
         "name": "loopx-material",
-        "delivery": "global_versioned_skill",
-        "activation": "explicit_goal_scoped_material_lifecycle_work",
-        "project_copy_required": False,
+        "delivery": "project_managed_copy",
+        "activation": "explicit_project_install_plus_goal_authority",
+        "project_copy_required": True,
+        "install_command": (
+            "loopx project-skill install --project . --skill "
+            "loopx-material --surface codex --execute"
+        ),
+    }
+
+
+def test_project_skill_delivery_catalog_is_host_neutral() -> None:
+    capability = build_capability_detail_packet("project-skill-delivery")[
+        "capability"
+    ]
+
+    assert capability["status"] == "active-preview"
+    assert capability["entry_command"].startswith("loopx project-skill status")
+    command_text = "\n".join(
+        str(item["command"]) for item in capability["commands"]
+    )
+    assert "project-skill install" in command_text
+    assert "project-skill uninstall" in command_text
+    assert {
+        protocol["schema_version"]
+        for protocol in capability["implemented_protocols"]
+    } == {
+        "loopx_project_skill_status_v0",
+        "loopx_managed_project_skill_v0",
     }
 
 

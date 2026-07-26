@@ -120,6 +120,10 @@ from .cli_rollout import (
     append_benchmark_run_rollout_event,
     append_cli_rollout_event,
 )
+from .project_skill_cli import (
+    handle_project_skill_command,
+    register_project_skill_commands,
+)
 from .help_surface import (
     build_command_reference_payload,
     render_command_reference_markdown,
@@ -211,6 +215,8 @@ def build_parser() -> LoopXArgumentParser:
     register_decision_context_commands(sub, add_subcommand_format)
 
     register_material_lifecycle_commands(sub, add_subcommand_format)
+
+    register_project_skill_commands(sub, add_subcommand_format)
 
     register_issue_fix_commands(sub, add_subcommand_format)
 
@@ -493,6 +499,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if material_lifecycle_result is not None:
         return material_lifecycle_result
+
+    project_skill_result = handle_project_skill_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if project_skill_result is not None:
+        return project_skill_result
 
     review_batch_result = handle_review_batch_command(
         args,

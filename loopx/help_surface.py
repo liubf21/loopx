@@ -153,6 +153,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
+            {
+                "command": "loopx project-skill --help",
+                "purpose": "Install, inspect, or remove release-owned skills in selected project agent hosts.",
+            },
         ],
     },
     {

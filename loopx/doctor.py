@@ -14,6 +14,7 @@ from typing import Any
 
 from . import __version__
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path
+from .project_skill_delivery import discover_project_scoped_skill_ids
 from .registry_writability import probe_registry_write_path
 from .release_manifest import load_release_manifest, release_version_tag
 
@@ -41,12 +42,6 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "Use even when the user does not mention LoopX or doc registry",
         "use `.loopx/registry.json` as the project-local doc registry",
         "not a substitute for project-local authority registration",
-    ),
-    "loopx-material": (
-        "The skill is installed globally with LoopX",
-        "active only for a connected project's explicit goal-scoped Material Lifecycle work",
-        "Do not hide overflow in an unranked supporting index",
-        "Apply only when all are true",
     ),
     "loopx-self-repair": (
         "Build a compact evidence packet",
@@ -741,6 +736,14 @@ def collect_doctor(
     skills_root = codex_home() / "skills"
     skill_path = skills_root / "loopx-project" / "SKILL.md"
     skills = installed_skill_summary(skills_root)
+    project_scoped_skill_ids = discover_project_scoped_skill_ids(
+        repo_root / "skills"
+    )
+    globally_visible_project_skills = [
+        skill_name
+        for skill_name in project_scoped_skill_ids
+        if (skills_root / skill_name).exists()
+    ]
     default_release = command_root_summary(command_path, command_realpath)
     default_release["release_manifest_available"] = release_manifest.get("available")
     default_release["release_manifest_path"] = release_manifest.get("path")
@@ -947,6 +950,16 @@ def collect_doctor(
             applicable=installed_skills_required,
         ),
         {
+            "id": "project_scoped_skills_absent_globally",
+            "required": False,
+            "ok": not globally_visible_project_skills,
+            "detail": (
+                "none"
+                if not globally_visible_project_skills
+                else ",".join(globally_visible_project_skills)
+            ),
+        },
+        {
             "id": "global_registry_writable",
             "required": True,
             "ok": bool(global_registry_writability.get("ok")),
@@ -1007,6 +1020,8 @@ def collect_doctor(
         },
         "skill_delivery": skill_delivery,
         "skills": skills,
+        "project_scoped_skill_ids": list(project_scoped_skill_ids),
+        "globally_visible_project_skills": globally_visible_project_skills,
         "checks": checks,
         "fix": (
             "Do not infer custom-host skill delivery from `~/.codex/skills`; "

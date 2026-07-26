@@ -9,10 +9,24 @@ Use this skill for the lifecycle and authority of a project's durable material
 store. Source discovery, domain-specific scoring, and note writing may be
 provided by project skills; this skill owns the generic lossless lifecycle.
 
-The skill is installed globally with LoopX so every worker receives one
-versioned workflow. It is active only for a connected project's explicit
-goal-scoped Material Lifecycle work. Do not copy this skill into each project
-or infer activation merely because a material file exists.
+LoopX ships the canonical source for this skill, but does not install it into
+the user's global skill directory. Install a managed copy only in a connected
+project that explicitly enables Material Lifecycle:
+
+```bash
+loopx project-skill install \
+  --project . \
+  --skill loopx-material \
+  --surface codex \
+  --execute
+```
+
+Use `--surface claude-code` or `--surface opencode` for those hosts; repeat the
+flag to install multiple host-native copies in one transaction. Managed copies
+live under `.agents/skills/`, `.claude/skills/`, or `.opencode/skills/` and are
+upgraded or removed through the same CLI. Project-local discovery does not
+itself activate material-store writes; the selected goal still needs explicit
+Material Lifecycle authority.
 
 ## Activation Gate
 
@@ -20,17 +34,20 @@ Before changing a material store:
 
 1. Resolve the current project, `goal_id`, registered agent, and active todo
    through `loopx start-goal --guided`, `loopx status`, or `loopx diagnose`.
-2. Confirm the selected todo explicitly targets `material_lifecycle`, or that
+2. Run `loopx project-skill status --project . --skill loopx-material` and
+   confirm the required host surfaces are current.
+3. Confirm the selected todo explicitly targets `material_lifecycle`, or that
    the goal authority declares an active Material Lifecycle profile and its
-   source store. A catalog entry or globally installed skill is not activation.
-3. Confirm the goal boundary covers the exact private adapter and authority
+   source store. A catalog entry or project-local skill is not activation.
+4. Confirm the goal boundary covers the exact private adapter and authority
    paths. Public LoopX contracts never grant access to private source content.
-4. Run `loopx material-lifecycle architecture --format json` and preserve its
+5. Run `loopx material-lifecycle architecture --format json` and preserve its
    default-off, owner-gated, provider-neutral boundaries.
 
-If activation or authority is missing, stop before source mutation. Create a
-bounded setup todo or owner gate; do not silently install project-local copies,
-invent a store, or treat chat history as authority.
+If the project-local skill is missing, preview an explicit project install; do
+not fall back to a global copy. If activation or authority is missing, stop
+before source mutation. Create a bounded setup todo or owner gate; do not
+invent a store or treat chat history as authority.
 
 ## Ownership Boundary
 

@@ -564,6 +564,11 @@ if [[ "$install_skill" != "0" && -d "$skills_source" ]]; then
   skill_line=""
   while IFS= read -r skill_source; do
     skill_name="$(basename "$skill_source")"
+    skill_scope_file="$skill_source/.loopx-skill-scope"
+    if [[ -f "$skill_scope_file" ]] && [[ "$(tr -d '[:space:]' <"$skill_scope_file")" == "project" ]]; then
+      skill_line="${skill_line}- project skill source: $skill_source (install explicitly per project)"$'\n'
+      continue
+    fi
     skill_target="$skills_dir/$skill_name"
     rm -rf "$skill_target"
     mkdir -p "$skill_target"

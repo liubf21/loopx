@@ -214,6 +214,8 @@ def main() -> int:
         assert f"- skill: {codex_home / 'skills' / 'loopx-pr-review'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-self-repair'}" in install.stdout, install.stdout
+        assert "project skill source:" in install.stdout, install.stdout
+        assert "install explicitly per project" in install.stdout, install.stdout
         assert f"codex skills: {codex_home / 'skills'}" in install.stdout, install.stdout
         assert f"claude skills: {home / '.claude' / 'skills'}" in install.stdout, install.stdout
         assert "loopx OpenCode bridge: skipped (opt-in" in install.stdout, install.stdout
@@ -353,6 +355,8 @@ def main() -> int:
         assert "Guide agentloop" not in pr_review_metadata_text, pr_review_metadata_text
         auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
         assert not auto_research_skill.exists(), auto_research_skill
+        material_skill = codex_home / "skills" / "loopx-material" / "SKILL.md"
+        assert not material_skill.exists(), material_skill
         loopx_prompt = codex_home / "prompts" / "loopx.md"
         assert not loopx_prompt.exists(), loopx_prompt
         loopx_command_skill = codex_home / "skills" / "loopx" / "SKILL.md"
@@ -494,6 +498,8 @@ def main() -> int:
         assert doctor_payload["skill"]["exists"] is True, doctor_payload
         assert doctor_payload["skill"]["delivery_hints"] is True, doctor_payload
         assert "loopx-auto-research" not in doctor_payload["skills"], doctor_payload
+        assert "loopx-material" not in doctor_payload["skills"], doctor_payload
+        assert doctor_payload["globally_visible_project_skills"] == [], doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-pr-review"]["exists"] is True, doctor_payload
@@ -531,6 +537,7 @@ def main() -> int:
             "installed_skill_delivery_hints",
             "installed_required_skills",
             "installed_required_skill_routes",
+            "project_scoped_skills_absent_globally",
         ):
             assert doctor_checks[check_id]["ok"] is True, doctor_payload
 

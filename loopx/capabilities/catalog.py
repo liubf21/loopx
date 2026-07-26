@@ -403,6 +403,76 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "project-skill-delivery",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Managed project skill delivery",
+        "status": "active-preview",
+        "real_world_anchor": (
+            "one release-owned skill delivered into selected projects for "
+            "Codex, Claude Code, or OpenCode"
+        ),
+        "user_value": (
+            "Keep capability skills out of global agent configuration while "
+            "installing, upgrading, and removing verified project-local copies "
+            "through one host-neutral lifecycle."
+        ),
+        "entry_command": (
+            "loopx project-skill status --project . --skill <skill-id> "
+            "--surface codex --format json"
+        ),
+        "commands": [
+            {
+                "command": (
+                    "loopx project-skill status --project . --skill "
+                    "<skill-id> --surface <surface> --format json"
+                ),
+                "purpose": "Inspect source and managed-copy digests without writing the project.",
+                "write_boundary": "read-only project and release inspection",
+            },
+            {
+                "command": (
+                    "loopx project-skill install --project . --skill "
+                    "<skill-id> --surface <surface> --execute --format json"
+                ),
+                "purpose": "Transactionally install or upgrade one release-owned project skill for one or more agent hosts.",
+                "write_boundary": "managed host-native project skill directories only; unmanaged or locally modified targets fail closed",
+            },
+            {
+                "command": (
+                    "loopx project-skill uninstall --project . --skill "
+                    "<skill-id> --surface <surface> --execute --format json"
+                ),
+                "purpose": "Transactionally remove verified managed copies while preserving user-owned targets.",
+                "write_boundary": "verified managed host-native project skill directories only",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "loopx_project_skill_status_v0",
+                "module": "loopx.project_skill_delivery",
+                "doc": "docs/project-skill-delivery.md",
+            },
+            {
+                "schema_version": "loopx_managed_project_skill_v0",
+                "module": "loopx.project_skill_delivery",
+                "doc": "docs/project-skill-delivery.md",
+            },
+        ],
+        "docs": ["docs/project-skill-delivery.md"],
+        "boundaries": [
+            "Only skills marked project-scoped in the LoopX release can be delivered.",
+            "Project connection, preview-first mutation, digest readback, symlink containment, and rollback are mandatory.",
+            "Skill discovery never creates a goal, todo, write scope, domain authority, credential, or external permission.",
+            "Public delivery metadata contains no private project content, locators, provider payloads, or credentials.",
+        ],
+        "next_real_step": (
+            "Dogfood a second project-scoped skill or host combination before "
+            "considering higher-level automatic installation."
+        ),
+    },
+    {
         "id": "material-lifecycle",
         "origin": "builtin",
         "visibility": "public",
@@ -422,9 +492,13 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "entry_command": "loopx material-lifecycle architecture --format json",
         "workflow_skill": {
             "name": "loopx-material",
-            "delivery": "global_versioned_skill",
-            "activation": "explicit_goal_scoped_material_lifecycle_work",
-            "project_copy_required": False,
+            "delivery": "project_managed_copy",
+            "activation": "explicit_project_install_plus_goal_authority",
+            "project_copy_required": True,
+            "install_command": (
+                "loopx project-skill install --project . --skill "
+                "loopx-material --surface codex --execute"
+            ),
         },
         "commands": [
             {
@@ -486,7 +560,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Snapshot and verified backup precede dual-read reconciliation; cutover and rollback remain owner-gated.",
             "Decision Context may supply revisioned evidence, but Material Lifecycle owns candidate, archive, and rerank receipts.",
             "Oversized ranked entries are rebuilt into independently sortable entries; overflow cannot be hidden outside the ranked set.",
-            "The official loopx-material skill is globally delivered but remains inactive for projects without explicit goal-scoped Material Lifecycle work.",
+            "LoopX ships the canonical loopx-material source, but discovery uses an explicit managed project copy rather than a global skill install.",
+            "A project-local skill makes the workflow discoverable; it does not replace explicit goal-scoped Material Lifecycle authority.",
             "Concrete legacy adapters, exploration providers, source profiles, and material-store writes remain deferred to private dogfood.",
         ],
         "next_real_step": (
