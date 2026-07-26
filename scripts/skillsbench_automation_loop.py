@@ -1151,15 +1151,18 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
         configured_raw is None
         and bool(getattr(args, "host_local_acp_launch", False))
     ):
+        outer_timeout = max(0, int(getattr(args, "outer_timeout_sec", 0) or 0))
         if getattr(args, "route", "") == "codex-app-server-goal-baseline":
-            outer_timeout = max(0, int(getattr(args, "outer_timeout_sec", 0) or 0))
             return max(configured, outer_timeout)
         bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
         if bridge_idle_timeout > 0:
             return max(
                 1,
+                outer_timeout,
                 bridge_idle_timeout + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
             )
+        if outer_timeout > 0:
+            return outer_timeout
     if configured_raw is None and idle_timeout > 0:
         return min(configured, idle_timeout)
     return configured
