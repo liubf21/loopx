@@ -51,9 +51,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
     "loopx.control_plane.quota.goal_boundary:goal_boundary": (
         "Split registry boundary resolution from capability and write-scope projection."
     ),
-    "loopx.control_plane.quota.heartbeat_recommendation:build_heartbeat_recommendation": (
-        "Move recommendation modes into ordered policy rules with one projection assembler."
-    ),
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": (
         "Replace branch-heavy field parsing with the canonical todo field schema."
     ),
@@ -81,10 +78,6 @@ _OVERSIZED_DECISION_METRIC_CEILINGS = {
     "loopx.control_plane.quota.goal_boundary:goal_boundary": {
         "statements": 96,
         "decision_points": 66,
-    },
-    "loopx.control_plane.quota.heartbeat_recommendation:build_heartbeat_recommendation": {
-        "statements": 63,
-        "decision_points": 64,
     },
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": {
         "statements": 119,
