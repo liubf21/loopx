@@ -52,8 +52,63 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 | 42-52 分钟 | 同一机制怎样覆盖工程交付与研究探索？ | Issue Fix / Auto Research 并行回放 |
 | 52-60 分钟 | 怎样嵌入现有 Runner，哪些能力仍不成熟？ | 最小接入合同、能力边界与问答 |
 
-讲授时只保留一张主闭环图。代码路径、CLI 细节和扩展实验留在课后材料，避免把这一小时
-讲成模块目录巡礼。
+讲授时只保留一张主闭环图，并选择两到三段核心伪代码解释状态怎样移动。真实文件路径、
+完整 CLI 细节和扩展实验留在课后材料，避免把这一小时讲成模块目录巡礼。
+
+## 前置知识：先把 LoopX 的核心抽象放对位置
+
+这一节可以作为课前材料，也可以占用开场后的 5 分钟。理解 LoopX 不需要先记住所有 CLI，
+但要先区分三类东西：
+
+```text
+方向与完成条件：
+  Vision -> Goal -> Acceptance
+
+长期控制状态：
+  Todo / Frontier -> Claim / Authority -> Evidence / Receipt
+
+本轮执行协议：
+  Quota / Interaction Contract -> Turn -> Scheduler
+```
+
+它们分别解决“为什么做”“现在合法做什么”“这一轮怎样执行”。把三层混在一起，通常会
+出现两类错误：
+
+- Runner 用一段 prompt 同时保存目标、计划、权限和历史，session 一换就失去事实源；
+- Kernel 试图理解所有领域细节，最后既复制 evaluator，又难以支持新的项目。
+
+### 九个抽象的最小背景
+
+| 抽象 | 它拥有的事实 | 它不负责什么 |
+| --- | --- | --- |
+| Vision | 长期方向、角色边界、路线何时应重新审视 | 不选择当前动作 |
+| Goal | 当前阶段 objective、scope 与 stop condition | 不等同于 Todo 列表 |
+| Acceptance | 什么证据允许宣称阶段完成 | 不替代 validator |
+| Todo / Frontier | 当前工作身份、owner、gate、monitor、successor | 不自行修改 Goal |
+| Claim / Authority | 谁可处理工作，谁可执行哪类 effect | 不证明 effect 已发生 |
+| Evidence / Receipt | observation、revision、scope、effect 与 lineage | 不自动授予下一步权限 |
+| Capability / Provider | 领域事实归一化；外部 effect 与 readback | 不拥有通用 lifecycle |
+| Quota / Interaction Contract | 将当前状态编译为本轮 deliver、wait、ask、repair 或 quiet | 不执行 Agent runtime |
+| Turn / Scheduler | 一次有界执行；决定何时再次唤醒 | 不把“被唤醒”当成进展 |
+
+其中 Capability 与 Provider 容易混淆：
+
+```text
+Provider:
+  "PR head-A 的 checks 是 failed，外部任务 run-17 已 terminal。"
+
+Capability:
+  "这条 observation 应形成 diagnostic successor，
+   或形成 matched result / infra failure / promotion candidate。"
+
+Kernel:
+  "谁能 claim，是否有 quota，是否需要 gate，
+   transition 怎样 writeback，何时再唤醒，能否 terminal。"
+```
+
+所以 LoopX 不是一个包办所有推理的“大 Agent”。它更像一个长期控制内核：领域层提供
+可判定事实，host 执行 bounded Turn，Kernel 维护跨 Turn 仍需成立的身份、权限、证据和
+恢复合同。
 
 ## 开场：两种“看起来一直在推进”
 
@@ -187,6 +242,85 @@ Progress   = 与 Acceptance 相关的 durable transition
 只有 validation、receipt、durable writeback 和 acceptance audit 共同成立，Result 才成为
 控制面接受的 Progress。
 
+### 核心代码一：一轮怎样从 Decision 走到 Commit
+
+下面是 `build_quota_should_run`、`build_interaction_contract` 与
+`run_loopx_turn_once` 的教学压缩版。它是结构化伪代码，不是稳定 Python API：
+
+```python
+def advance_one_turn(status, goal_id, agent_id, host):
+    decision = build_quota_should_run(
+        status,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        available_capabilities=host.capabilities(),
+    )
+    contract = decision["interaction_contract"]
+
+    # User notification and Agent execution are separate channels.
+    host.deliver_user_channel(contract["user_channel"])
+
+    if not contract["agent_channel"]["must_attempt"]:
+        host.apply_scheduler_hint(decision.get("scheduler_hint"))
+        return {"kind": "quiet_or_wait", "spent": False}
+
+    todo = claim_selected_frontier(decision)
+    plan = build_turn_plan(decision, todo)
+
+    execution = run_loopx_turn_once(
+        plan,
+        host_runner=host.run,
+        task_validator=independent_validator,
+        writeback=append_durable_delta,
+        spend=append_quota_spend,
+        scheduler=apply_and_ack_scheduler,
+        execute=True,
+    )
+    return execution
+```
+
+真实 Turn transaction 使用固定 phase：
+
+```text
+host_execute
+  -> typed_result
+  -> validation
+  -> durable_writeback
+  -> quota_spend
+  -> scheduler_apply
+  -> scheduler_ack
+```
+
+固定 phase 有两个作用：
+
+1. **恢复**：journal 已经记录 `durable_writeback` 时，重启后不能再次执行外部 effect；
+2. **归因**：只有 validation 通过并写回成功，才允许 spend；scheduler apply 与 ACK 也有
+   独立 proposal identity。
+
+`interaction_contract` 还把三条通道分开：
+
+```python
+contract = {
+    "user_channel": {
+        "action_required": False,
+        "notify": "DONT_NOTIFY",
+    },
+    "agent_channel": {
+        "must_attempt": True,
+        "delivery_allowed": True,
+        "quiet_noop_allowed": False,
+    },
+    "cli_channel": {
+        "spend_after_validation": True,
+        "next_cli_actions": ["..."],
+    },
+}
+```
+
+这解释了为什么“需要提醒用户”“Agent 必须工作”“CLI 允许 spend”不能压成一个
+`should_run` 布尔值。长程系统必须能表达：用户无需响应但 Agent 可继续、Agent 只能 quiet、
+或用户需要做具体决定但其他 lane 仍可执行。
+
 ## 六条收敛不变量
 
 ### 方向不变量：每个 Todo 都必须能回到 Acceptance
@@ -285,6 +419,31 @@ progress。它们可以更新 cadence 或 compact counter，但不应消耗与�
 | Closed with gap | 剩余缺口、原因和不再继续的依据明确 |
 
 “没有更多想法”不是终态证据；“暂时看不到 Todo”也不是。
+
+### 核心代码二：Terminal 是严格合取，不是 Todo 为空
+
+下面的伪代码把终局审计压成一个可 review 的 predicate：
+
+```python
+def terminal_ready(state):
+    return all(
+        [
+            state.acceptance.verified,
+            state.external_effects.read_back,
+            state.open_advancement_count == 0,
+            state.open_monitor_count == 0,
+            state.blocking_gate_count == 0,
+            state.ready_successor_count == 0,
+            state.handoff_obligation_count == 0,
+            state.retryable_writeback_count == 0,
+            state.vision_checkpoint.satisfied,
+        ]
+    )
+```
+
+实际系统还会按领域加入 merge、promotion、rollback 或 `no_followup` 证明，但结构不变：
+终局是多项权威事实的合取。任何一个计数或 readback 缺失，都应产生明确 gap，而不是让
+空 Frontier 冒充 Complete。
 
 ## 防跑偏：方向必须外置，但不能冻结
 
@@ -435,6 +594,48 @@ Codex、Claude Code、自研 Agent 或远端开发机可以用各自方式承载
 必须按 agent lane、monitor target 或 failure identity 归因，不能让一个 lane 的变化替另一个
 lane 清零。
 
+### 核心代码三：先分类 Delta，再决定 Retry、Wait 或 Replan
+
+下面的 reducer 展示为什么 Loop detection 不能只比较“是否执行了命令”：
+
+```python
+def reduce_turn(before, observation, result, lane):
+    delta = classify_material_delta(
+        before=before,
+        observation=observation,
+        result=result,
+        acceptance=lane.acceptance,
+    )
+
+    if delta.is_material:
+        return Transition(
+            kind="validated_progress",
+            evidence=delta.evidence,
+            reset_no_progress_streak=True,
+            spend=True,
+        )
+
+    if lane.is_monitor and observation.authoritative_but_unchanged:
+        return Transition(
+            kind="wait",
+            next_due=backoff(lane.cadence),
+            spend=False,
+        )
+
+    streak = lane.no_progress_streak + 1
+    if streak >= lane.replan_threshold:
+        return Transition(
+            kind=classify_replan_or_repair(before, result),
+            required_delta=["successor", "route", "blocker", "vision"],
+            spend="only_after_required_delta_writeback",
+        )
+
+    return Transition(kind="bounded_retry", spend=False)
+```
+
+这段伪代码故意不让“新日志”“新总结”或“命令成功”自动进入 `is_material`。Materiality
+必须由 Acceptance、authoritative observation 和 lineage 共同判断。
+
 ### Monitor 必须能 quiet
 
 Monitor 只负责观察权威外部事实：
@@ -474,6 +675,52 @@ new evidence + route delta       -> valid replan
 ```
 
 Replan 的价值不是“想一个新点子”，而是让下一轮看到不同的合法 Frontier。
+
+### 核心代码四：Frontier Replan 是有顺序的规则，不是自由发挥
+
+`select_goal_frontier_replan_rule` 使用 first-match policy。下面保留了与本专题相关的主要
+顺序：
+
+```python
+def select_frontier_rule(facts):
+    ordered_rules = [
+        ("existing_obligation", facts.existing_replan_required, False),
+        ("blocking_handoff_gate", facts.blocking_handoff_gate_count > 0, False),
+        (
+            "ready_successor",
+            facts.ready_deferred_successor_count > 0
+            and not facts.successor_vision_required,
+            False,
+        ),
+        ("open_user_todo", facts.blocking_user_open_count > 0, False),
+        ("succession_gap", facts.succession_gap_without_frontier, True),
+        ("vision_acceptance_gap", facts.unsatisfied_gap_without_frontier, True),
+        ("long_todo_chain", facts.long_chain_without_ack, True),
+        ("long_todo_chain_acknowledged", facts.long_chain_with_ack, False),
+        ("watch_lane_acknowledged", facts.watch_lane_continuation_acknowledged, False),
+        ("current_agent_blocker", facts.current_agent_blocker_count > 0, False),
+        (
+            "monitor_no_change",
+            facts.monitor_only_lane and facts.monitor_streak_triggered,
+            True,
+        ),
+        ("not_monitor_only", not facts.monitor_only_lane, False),
+        ("no_open_monitor", facts.monitor_count <= 0, False),
+        ("advancement_remains", facts.advancement_count > 0, False),
+        ("monitor_frontier_exhausted", True, True),
+    ]
+    return first_matching_rule(ordered_rules)
+```
+
+第三列表示是否派生新的 Replan obligation。顺序很重要：
+
+- 已存在的 obligation、gate 或 runnable successor 先拥有 Frontier，不能被新的 planner
+  建议覆盖；
+- 只有 succession、Vision/Acceptance 或 monitor exhaustion 真的留下 gap，才派生 Replan；
+- 仍有 advancement work 时，不应因为旁边有 unchanged monitor 就全局 replan。
+
+Ordered rule 让“为什么这轮没有 replan”也可解释、可测试。否则多个各自合理的 signal
+会在不同调用方里形成不一致优先级。
 
 ### Self-Repair 与 Replan 修的不是同一层
 
