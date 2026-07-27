@@ -30,8 +30,9 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 2. 解释为什么 Turn 是执行窗口，Accepted Transition 才是进展单位；
 3. 用方向、权限、证据、Delta、活性和终局六条不变量审查长程系统；
 4. 解释 Replan、Self-Repair、Monitor Backoff 和 Explore 各自解决哪类停滞；
-5. 把 PR Issue Fix 与 Auto Research 映射到同一套收敛闭环；
-6. 判断 LoopX、领域 Capability、Provider、Evaluator 与现有 Agent Runner 分别必须提供什么。
+5. 解释 successor todo 怎样把局部完成接回 Goal，而不是制造无限任务链；
+6. 把 PR Issue Fix 与 Auto Research 映射到同一套收敛闭环；
+7. 判断 LoopX、领域 Capability、Provider、Evaluator 与现有 Agent Runner 分别必须提供什么。
 
 本讲不承诺：
 
@@ -47,7 +48,7 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 | --- | --- | --- |
 | 0-8 分钟 | 什么叫跑偏，什么叫局部循环？ | 四类运行状态与两个反例 |
 | 8-20 分钟 | 多个短 Turn 怎样构成一个长程闭环？ | 一张总图与六条不变量 |
-| 20-30 分钟 | 怎样约束方向而不冻结计划？ | Vision -> Goal -> Acceptance -> Frontier |
+| 20-30 分钟 | 怎样约束方向而不冻结计划？ | Vision -> Goal -> Acceptance -> Frontier / Successor |
 | 30-42 分钟 | 怎样识别空转并退出局部最优？ | Evidence Delta、Backoff、Replan、Self-Repair |
 | 42-52 分钟 | 同一机制怎样覆盖工程交付与研究探索？ | Issue Fix / Auto Research 并行回放 |
 | 52-60 分钟 | 怎样嵌入现有 Runner，哪些能力仍不成熟？ | 最小接入合同、能力边界与问答 |
@@ -540,6 +541,59 @@ Material closeout 后，系统需要回答三个问题之一：
 
 若三者都没有，Todo 即使完成，也可能只证明局部工作结束。Vision checkpoint 的作用是迫使
 系统比较“这轮实际推进”与“长期方向”，防止局部产物悄悄成为新目标。
+
+### Successor Todo：让局部完成留下可执行的下一段责任
+
+长程任务最常见的薄弱点，不是 Agent 做不完当前 Todo，而是它做完一个局部切片后，只留下
+“继续优化”“看看 CI”或“后续再处理”。这类自然语言意图没有稳定 identity、owner、触发
+条件和 lineage；session 或 Agent 一换，局部成果就很容易被误判成 Goal 已完成。
+
+Successor todo 把这段隐式意图改写成控制面事实：
+
+```text
+parent + material evidence
+  -> successor identity + remaining acceptance gap
+  -> owner / capability / resume condition
+  -> next runnable frontier
+```
+
+它在一定程度上替代了宿主 `/goal` 或 session plan 常承担的“跨 Turn 续航”职能：下一轮不必
+依赖模型回忆上一轮打算做什么，而是读取已经验证、可 claim 的 Frontier。但它**不替代**
+Vision、Goal 或 Acceptance。Successor 只能说明“接下来由谁在什么条件下做什么”，不能自行
+决定“为什么继续”“何时算完成”或“是否获得新的外部权限”。
+
+当前 Todo closeout 时，控制面必须得到下面三类结果之一：
+
+1. 创建并绑定 successor，当前局部证据明确说明它继续缩小哪个 Acceptance gap；
+2. 写入 gate、monitor、blocker 或 `resume_when`，说明后继为什么暂时不可运行；
+3. 用 terminal evidence 明确记录 `no_followup`，证明不是因为 Agent 没想到下一步。
+
+教学伪代码可以压成一个局部闭包合同：
+
+```python
+def close_todo(parent, evidence, result, acceptance):
+    if acceptance.is_satisfied_by(evidence):
+        return complete(parent, evidence=evidence, no_followup=True)
+    if result.next_work:
+        successor = add_todo(result.next_work, gap=result.remaining_gap)
+        link_successor(parent, successor.todo_id)
+        return complete(parent, evidence=evidence)
+    if result.wait_condition:
+        return defer(parent, evidence=evidence, resume_when=result.wait_condition)
+    raise SuccessionGap("acceptance remains open but no continuation was recorded")
+```
+
+有两个容易忽略的边界：
+
+- `successor_todo_ids` 只表达 lineage，不会自动暂停仍为 open 的 parent。若 parent 已无独立
+  immediate action，必须显式 complete 或 defer；否则两个 Todo 都可能继续进入 quota。
+- 不要为每个 shell command、Turn 或微小子步骤创建 successor。Successor 应出现在有
+  material closeout、owner/handoff 变化、外部等待或路线变化的语义边界；长链本身应触发
+  Vision/Acceptance checkpoint，而不是继续机械加节点。
+
+因此，successor 机制提升工程质量的方式并不是“让 Agent 多干活”，而是迫使每个局部交付
+同时交代证据、剩余缺口和下一段责任。它把“完成当前 PR”与“完成整个 Goal”之间原本容易
+丢失的推理，变成可验证、可恢复、可审计的状态转移。
 
 ### 两个 Showcase 的方向锚点
 
@@ -1107,6 +1161,7 @@ LoopX 已经提供的通用机制包括：
 | Agent-facing packet | `loopx/control_plane/work_items/interaction_contract.py::build_interaction_contract` | selected work、gate、replan、terminal 是否完整投影 |
 | Goal frontier replan | `loopx/control_plane/goals/goal_frontier_replan_rules.py::select_goal_frontier_replan_rule` | runnable、gate、succession gap、monitor exhaustion 的优先级 |
 | Vision checkpoint | `loopx/state_refresh.py::build_vision_checkpoint` | material closeout 后如何防止局部目标替代长期方向 |
+| Todo succession | `loopx/control_plane/todos/succession_warning.py::build_open_parent_successor_advisory`、`loopx/control_plane/todos/completion_policy.py::resolve_completion_policy` | successor 为什么只记录 lineage，open parent 为什么仍需显式 complete/defer |
 | Turn transaction | `loopx/control_plane/turn_driver/executor.py::run_loopx_turn_once` | phase failure 怎样恢复，何时允许 commit |
 | Domain State seam | `loopx/domain_state.py::default_domain_state_file_path`、`upsert_domain_state_jsonl` | goal/pack 分区、稳定 key、原子 upsert 和 unchanged observation |
 | Issue lifecycle | `loopx/capabilities/issue_fix/pr_lifecycle.py::build_issue_fix_pr_lifecycle_monitor_packet` | 外部 PR observation 怎样变成有限 proposal |
@@ -1160,3 +1215,4 @@ happy-path smoke。
 9. 自研 Runner 接入 LoopX 时，最小 Turn 合同包含哪四个稳定面？
 10. 哪些事实必须由领域 Capability、Provider 或 Evaluator 提供，LoopX Kernel 不能代替？
 11. Domain State 如何帮助垂域 Agent 防漂移，又为什么不能拥有 claim、quota 或外部写权限？
+12. Successor todo 替代了宿主 `/goal` 的哪部分职能，又有哪些 Goal/Acceptance 职能不能替代？
