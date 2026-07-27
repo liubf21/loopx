@@ -16,6 +16,12 @@ from .skillsbench_acp_failure_policy import (
 
 
 SKILLSBENCH_TYPED_REPAIR_POLICY_ID = "one_typed_repair_per_frontier_v0"
+SKILLSBENCH_TYPED_REPAIR_EXHAUSTED_REASONS = frozenset(
+    {
+        "turn_repair_round_without_todo_or_committed_validation_delta",
+        "unchanged_turn_recovery_frontier_already_repaired",
+    }
+)
 SKILLSBENCH_TYPED_REPAIR_SNAPSHOT_SCHEMA_VERSION = (
     "skillsbench_typed_repair_frontier_snapshot_v0"
 )
