@@ -800,7 +800,111 @@ new evidence + route delta       -> valid replan
 
 Replan 的价值不是“想一个新点子”，而是让下一轮看到不同的合法 Frontier。
 
-### 核心代码四：Frontier Replan 是有顺序的规则，不是自由发挥
+### Replan 的真实复杂度：不是一个 Selector，而是一条可恢复控制链
+
+如果只看下一段 ordered rules，容易把 Replan 理解成“检查若干布尔值，然后决定要不要重新
+规划”。真实实现更接近一个小型 policy compiler：
+
+```text
+Detect
+  读取 Todo、Vision、Gate、Monitor、Run History 与既有 ACK
+    -> Reduce
+       归一化成当前 Agent 可解释的 Frontier facts
+         -> Select
+            按 first-match policy 选择唯一拥有解释权的规则
+              -> Compile
+                 把规则编译成 typed Replan obligation
+                   -> Enforce
+                      Quota / interaction contract 把 obligation 变成 must-attempt
+                        -> Settle
+                           写回可追责 Delta，以 fresh ACK 关闭当前 Frontier
+```
+
+六层分别回答不同问题：
+
+| 层 | 核心问题 | 典型产物 |
+| --- | --- | --- |
+| Detect | 哪些权威状态发生了什么？ | Todo summary、Acceptance gap、monitor streak、run evidence |
+| Reduce | 这些状态对当前 Agent 的 Frontier 意味着什么？ | `GoalFrontierReplanFacts` |
+| Select | 多个信号冲突时，谁拥有本轮解释权？ | `GoalFrontierReplanRuleDecision` |
+| Compile | 该缺口允许怎样修，何时必须停？ | `autonomous_replan_obligation` |
+| Enforce | 这是建议、等待，还是必须执行的控制面动作？ | `interaction_contract.mode=autonomous_replan` |
+| Settle | 什么变化足以证明没有原地打转？ | Delta contract、frontier-scoped ACK、next Frontier |
+
+这条链刻意没有一个“万能 planner”。Detector、Frontier policy、obligation builder、Quota
+和 writeback 各自保留边界。复杂度来自这些合同的组合，而不是来自一个超长函数。
+
+一小时现场主讲只需保留这张六层链、ordered rules 的三组优先级和后面的端到端 trace，
+约 10 到 12 分钟。下面“之一”到“之六”是讲师备课与课后下钻材料，不要求逐行投屏；这样
+既能说明真实复杂度，也不会把专题变成模块目录巡礼。
+
+### 核心代码四之一：先从多个 Read Model 归一化 Facts
+
+入口
+`loopx/control_plane/goals/goal_frontier.py::derive_goal_frontier_replan_obligation_from_summaries`
+并不直接对原始 Markdown 或聊天做判断。它先消费已经归一化的 user/agent Todo summary、
+work lane、Vision/Acceptance gap、既有 obligation 与最新 ACK：
+
+```python
+agent_counts = summary_task_counts(agent_todo_summary)
+frontier_counts = frontier_advancement_counts(
+    agent_todo_summary,
+    agent_id=agent_id,
+)
+
+succession_gaps = succession_gap_items(
+    agent_todo_summary,
+    agent_id=agent_id,
+)
+acceptance_gaps = compact_acceptance_gaps(
+    raw_acceptance_gaps,
+    agent_id=agent_id,
+)
+monitor_trigger = monitor_no_change_streak_trigger(
+    agent_todo_summary,
+    agent_id=agent_id,
+)
+long_chain_trigger = long_todo_chain_trigger(
+    agent_todo_summary,
+    agent_id=agent_id,
+)
+
+facts = GoalFrontierReplanFacts(
+    existing_replan_required=is_required(existing_obligation),
+    blocking_handoff_gate_count=blocking_handoff_gates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    ),
+    ready_deferred_successor_count=ready_deferred_successors(
+        agent_todo_summary,
+        agent_id=agent_id,
+    ),
+    succession_gap_count=len(succession_gaps),
+    acceptance_gap_count=len(acceptance_gaps),
+    selectable_frontier_advancement=(
+        frontier_counts.current_agent + frontier_counts.unclaimed
+    ),
+    long_todo_chain_triggered=long_chain_trigger is not None,
+    monitor_no_change_streak_triggered=monitor_trigger is not None,
+    monitor_only_lane=is_monitor_only_lane(work_lane),
+    monitor_count=agent_counts.monitor,
+    ...
+)
+```
+
+这一层有三个容易漏掉的性质：
+
+1. **Agent scope**：其他 peer 已 claim 的 advancement 是诊断信息，不会自动变成当前 Agent
+   的 runnable Frontier；否则一个 peer 的工作会错误压住另一个 peer 的 Replan。
+2. **正负事实并存**：`acceptance_gap_count > 0` 还不够。若已有 selectable work 能满足它，
+   就不应 Replan；若 watch-lane continuation 得到 Acceptance 授权，也不应强行造工作。
+3. **历史只能经 ACK 进入当前判断**：长 Todo 链是否已经被审视、watch lane 是否已确认，
+   不能从自然语言推断，只能读取带 Delta contract 的 durable ACK。
+
+所以 `Facts` 不是原始状态的字段搬运，而是一个 agent-scoped、authority-aware 的语义
+reducer。Selector 的确定性依赖这一层先把“谁的工作”“哪种 gap”“哪个 Frontier”归一化。
+
+### 核心代码四之二：Frontier Replan 是有顺序的规则，不是自由发挥
 
 `select_goal_frontier_replan_rule` 使用 first-match policy。下面保留了与本专题相关的主要
 顺序：
@@ -872,6 +976,243 @@ def select_frontier_rule(facts):
 
 Ordered rule 让“为什么这轮没有 replan”也可解释、可测试。否则多个各自合理的 signal
 会在不同调用方里形成不一致优先级。
+
+### 核心代码四之三：Rule 会编译成不同的 Obligation
+
+`derives_obligation=True` 只表示发现了未被合法 Frontier 覆盖的 gap，还没有说明 Agent
+应该做什么。下一层按 rule 编译 typed obligation：
+
+```python
+decision = select_goal_frontier_replan_rule(facts)
+
+if not decision.derives_obligation:
+    return None
+
+if decision.rule is TODO_SUCCESSION_GAP:
+    return obligation(
+        triggers=succession_gap_items,
+        guidance=["create_successor", "link_successor", "record_no_followup"],
+        allowed_delta=[
+            "runnable_todo_set",
+            "successor_or_supersede",
+            "no_followup",
+        ],
+        priority="P0",
+    )
+
+if decision.rule is VISION_ACCEPTANCE_GAP:
+    return obligation(
+        triggers=acceptance_gaps,
+        guidance=[
+            "create_successor",
+            "update_agent_vision",
+            "record_evidence_gap",
+            "record_no_followup",
+        ],
+        allowed_delta=[
+            "runnable_todo_set",
+            "goal_vision_patch",
+            "no_followup",
+        ],
+        priority="P0",
+    )
+
+if decision.rule is LONG_TODO_CHAIN:
+    return obligation(
+        triggers=[long_chain_trigger],
+        guidance=[
+            "read_evidence_log",
+            "group_or_prune_todo_chain",
+            "update_agent_vision",
+            "create_successor",
+        ],
+        allowed_delta=[
+            "runnable_todo_set",
+            "successor_or_supersede",
+            "goal_vision_patch",
+        ],
+        priority="P1",
+    )
+
+if decision.rule in {MONITOR_NO_CHANGE_STREAK, MONITOR_FRONTIER_EXHAUSTED}:
+    return obligation(
+        triggers=[monitor_trigger_or_exhaustion],
+        guidance=[
+            "set_watch_expiry",
+            "write_blocker",
+            "supersede_monitor",
+            "create_successor",
+        ],
+        allowed_delta=[
+            "blocker",
+            "active_state_next_action",
+            "successor_or_supersede",
+            "watch_lane_continuation",
+        ],
+        priority="P1",
+    )
+```
+
+真实 payload 还携带：
+
+- `agent_id`：谁有义务处理；
+- `stall_threshold` 与 `trigger_count`：为什么现在触发；
+- `triggers`：可回读的证据，而不是一句“感觉卡住了”；
+- `todo_actions`：允许写回的最小动作；
+- `stop_condition`：遇到 private material、credential、destructive git、production
+  action 或 owner-only decision 时停止；
+- `frontier_identity`：需要精确关闭某个 blocked-successor Frontier 时的身份。
+
+不同 rule 不能压成一个“请重新规划”提示。Succession gap 要求补局部连续性；Vision gap
+要求重新对齐 Acceptance；long chain 要求压缩或重组候选；monitor exhaustion 要求结束
+无期限等待。它们共享 obligation envelope，但不共享领域决策。
+
+### 核心代码四之四：既有 Obligation 与 ACK 需要做 Scope 和 Freshness 校验
+
+`build_goal_frontier_projection_context_from_status` 负责把既有 obligation、最新 ACK、
+Vision gap 与新派生规则合成当前 read model。其骨架可以压成：
+
+```python
+obligation = select_existing_obligation(
+    item,
+    project_asset,
+    agent_id=agent_id,
+)
+scope = scope_decision(obligation, agent_id, registered_agents)
+if scope.required and not scope.applies:
+    obligation = None
+
+latest_ack = latest_replan_ack(
+    status_payload,
+    goal_id=goal_id,
+    agent_id=agent_id,
+)
+acceptance_gaps = derive_acceptance_gaps(
+    agent_profile,
+    latest_agent_vision,
+    latest_missing_vision_checkpoint,
+)
+
+if (
+    ack_satisfies_obligation(latest_ack, obligation, acceptance_gaps)
+    and ack_matches_agent(latest_ack, agent_id)
+    and ack_matches_frontier(latest_ack, obligation)
+):
+    obligation = None
+
+derived = derive_goal_frontier_replan_obligation_from_summaries(
+    ...,
+    existing_replan_obligation=obligation,
+    latest_replan_ack=latest_ack,
+    acceptance_gaps=acceptance_gaps,
+)
+return projection(replan_obligation=derived or obligation)
+```
+
+这里防止三种“伪完成”：
+
+1. **错 Agent ACK**：peer A 的 Replan 不能替 peer B 关闭 obligation；
+2. **旧 Frontier ACK**：相同文案再次出现，不代表仍是同一个 blocked successor；
+3. **过期 ACK**：ACK 早于最新 trigger evidence 时，不能证明新问题已处理。
+
+因此 `autonomous_replan_ack_matches_frontier` 除了比较 `frontier_identity`，还会比较 ACK
+时间和 trigger 时间。ACK 是当前 obligation 的结算凭证，不是“历史上曾经授权过”的通行证。
+
+### 核心代码四之五：Quota 把 Obligation 提升为 Must-Attempt
+
+Obligation 进入 Quota 后不能再被普通 `monitor_quiet_skip` 或 `agent_scope_wait` 吞掉。
+`interaction_contract` 将其投影为独立模式：
+
+```python
+if autonomous_replan_obligation.required:
+    contract = {
+        "mode": "autonomous_replan",
+        "agent_channel": {
+            "must_attempt": True,
+            "primary_action": "execute one bounded replan slice",
+        },
+        "cli_channel": {
+            "spend_allowed_now": False,
+            "spend_after_validation": True,
+        },
+    }
+```
+
+它表达的是一项机器执行义务，而不是用户提醒。即使用户当前没有待办，Agent 也必须先处理
+Replan，再回到 monitor 或普通 advancement。反过来，若真正缺少 owner-only authority，
+前面的 `open_user_todo` 或 gate rule 已经短路，不会把用户决策伪装成自主 Replan。
+
+### 核心代码四之六：只有 Accountable Delta 才能结算
+
+Agent 执行 bounded Replan 后，至少要写回一种能改变下一轮 Frontier 的 Delta：
+
+```text
+runnable_todo_set           新的可运行工作集合
+successor_or_supersede      successor 链接或旧工作退役
+goal_vision_patch           Vision / Acceptance 的可审计更新
+blocker                     具体 blocker 与恢复依据
+active_state_next_action    可回读的下一动作变化
+watch_lane_continuation     有边界、有 cadence 的继续观察合同
+no_followup                 带理由的局部终止
+```
+
+结算顺序仍遵守 Turn 的 writeback-before-spend 原则：
+
+```python
+result = execute_one_bounded_replan_slice(obligation)
+validate(result.delta_contract)
+
+refresh_state(
+    classification="autonomous_replan_recorded",
+    autonomous_replan_recorded=True,
+    repair_delta_kind=result.delta_kind,
+    frontier_identity=obligation.frontier_identity,
+)
+read_back_ack()
+spend_one_slot()
+```
+
+仅写 `autonomous_replan_recorded=True` 不够。`autonomous_replan_ack_recorded` 还要求
+`delta_contract.delta_present=True`；否则这是 `replan_noop`，下一轮 obligation 仍然成立。
+这条约束防止 Agent 用一篇新总结关闭旧循环。
+
+### 端到端 Trace：为什么一次 Replan 之后还可能继续 Replan
+
+假设当前状态同时包含：
+
+- Todo A 已完成，但没有 successor 或 `no_followup`；
+- Acceptance 仍有 gap；
+- 只剩一个 unchanged monitor；
+- 当前 Agent 没有 runnable advancement。
+
+因为 selector 是 first-match，系统不会一次把三个问题揉成一份大计划：
+
+| 轮次 | Reduce 后的关键事实 | 命中规则 | 必须写回的 Delta | 下一轮变化 |
+| --- | --- | --- | --- | --- |
+| T1 | succession gap + acceptance gap + monitor-only | `todo_succession_gap` | successor 或 `no_followup` | 先补局部连续性 |
+| T2a | successor 已 runnable | `ready_deferred_successor` 或 `advancement_remains` | 不派生新 obligation | 执行 successor |
+| T2b | 记录 `no_followup`，但 Acceptance gap 仍无 Frontier | `vision_acceptance_gap` | Vision patch、evidence gap 或新 successor | 重新对齐方向 |
+| T3 | Acceptance 已闭合，只剩有界 watch lane | `watch_lane_continuation_acknowledged` | 不派生新 obligation | 按 cadence quiet |
+| T3-alt | Monitor 无 expiry 且连续 unchanged | `monitor_no_change_streak` | expiry、blocker、supersede 或 successor | 结束热等待 |
+
+这个 trace 展示了 Replan 的两个关键特性：
+
+1. **最小闭包**：每次只修当前最高优先级 gap，不生成无法验证的全局大计划；
+2. **可重复收敛**：写回后重新 Reduce，下一条规则才有机会获得解释权，直到出现 runnable
+   Frontier、合法等待或显式终局。
+
+所以 Replan 的复杂性不应表现为“模型能想多少方案”，而应表现为：
+
+```text
+同一组 durable facts
+  -> 唯一可解释 decision
+  -> 有界 typed obligation
+  -> 可验证 state delta
+  -> 不同且合法的 next Frontier
+```
+
+这也是它能够对抗局部循环的根本原因：系统不奖励“又思考了一次”，只承认下一轮机器可见
+Frontier 的可追责变化。
 
 ### Self-Repair 与 Replan 修的不是同一层
 
