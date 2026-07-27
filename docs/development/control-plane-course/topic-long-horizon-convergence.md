@@ -66,6 +66,7 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 
 长期控制状态：
   Todo / Frontier -> Claim / Authority -> Evidence / Receipt
+  Domain State -> 某个 Capability Pack 的领域连续性
 
 本轮执行协议：
   Quota / Interaction Contract -> Turn -> Scheduler
@@ -77,7 +78,7 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 - Runner 用一段 prompt 同时保存目标、计划、权限和历史，session 一换就失去事实源；
 - Kernel 试图理解所有领域细节，最后既复制 evaluator，又难以支持新的项目。
 
-### 九个抽象的最小背景
+### 十个抽象的最小背景
 
 | 抽象 | 它拥有的事实 | 它不负责什么 |
 | --- | --- | --- |
@@ -87,6 +88,7 @@ Judge 可以判断“是否完成”，却未必能告诉下一轮“路线为�
 | Todo / Frontier | 当前工作身份、owner、gate、monitor、successor | 不自行修改 Goal |
 | Claim / Authority | 谁可处理工作，谁可执行哪类 effect | 不证明 effect 已发生 |
 | Evidence / Receipt | observation、revision、scope、effect 与 lineage | 不自动授予下一步权限 |
+| Domain State | 某个 pack 的紧凑领域 observation、判断与稳定 identity | 不拥有 quota、claim、permission 或外部真相 |
 | Capability / Provider | 领域事实归一化；外部 effect 与 readback | 不拥有通用 lifecycle |
 | Quota / Interaction Contract | 将当前状态编译为本轮 deliver、wait、ask、repair 或 quiet | 不执行 Agent runtime |
 | Turn / Scheduler | 一次有界执行；决定何时再次唤醒 | 不把“被唤醒”当成进展 |
@@ -105,6 +107,74 @@ Kernel:
   "谁能 claim，是否有 quota，是否需要 gate，
    transition 怎样 writeback，何时再唤醒，能否 terminal。"
 ```
+
+### Domain State：垂域里的语义锚点
+
+通用 Kernel 知道一个 Todo 是否 runnable、谁 claim、何时 monitor，却不应该硬编码
+`CHANGES_REQUESTED`、matched baseline、dev/holdout 或 promotion candidate 的领域含义。
+如果这些事实只留在 raw log 或上一轮对话里，下一位 Agent 很容易：
+
+- 忘记哪个 revision、window 或 evaluator 才是当前判断依据；
+- 重复已经失败的近邻方案；
+- 把“checks 变绿”或“dev lift”这类局部代理信号误当成最终 Acceptance；
+- 在 session 或 Agent handoff 后重新猜一遍领域阶段。
+
+Domain State 保存的正是这一段跨 Turn 的紧凑领域连续性：
+
+```text
+external source of truth
+  -> Provider observation
+  -> Capability normalization
+  -> Domain State: stable key + compact facts + fingerprint + lineage
+  -> typed transition proposal
+  -> Kernel authority / quota / todo / gate / scheduler
+```
+
+它对“防跑偏”的作用，与 Goal/Acceptance 不同：
+
+| 防漂移层 | 约束什么 | 缺失时的典型错误 |
+| --- | --- | --- |
+| Vision / Goal / Acceptance | 长期方向与完成标准 | Todo 或代理指标替代原目标 |
+| Domain State | 当前领域对象已被权威观察和判断成什么 | 忘记 PR/实验阶段，重复或错误解释 observation |
+| Kernel State | 谁能在什么边界内推进哪一步 | 越权执行、重复调度、丢失 successor |
+
+两个 Showcase 可以直接看到它的价值：
+
+| 场景 | 稳定 identity | Domain State 保存 | 防止的漂移 |
+| --- | --- | --- | --- |
+| PR Issue Fix | `repo + issue_ref`、`repo + pr_ref` | feasibility、exact-head checks、review/merge state、notification receipt | 把旧 head 的绿色结果用于新 commit；重复处理已覆盖 review |
+| Auto Research / ML Experiment | hypothesis/experiment、revision、window、evaluator contract | matched result、dev/holdout、guardrail、support/refute、promotion/retirement proposal | 只记当前最好分数；把 infra failure 当模型负证据；反复探索已证伪 family |
+
+Domain State 仍不是新的事实源、memory dump 或第二套 Kernel。GitHub、训练系统和 evaluator
+继续拥有外部真相；pack 只保存可重算、可比较、可幂等更新的紧凑 read model。下面的伪代码
+展示这条窄边界：
+
+```python
+def translate_domain_observation(kernel_snapshot, provider, pack):
+    observation = provider.observe()
+    domain_row = pack.normalize(observation)
+
+    write = upsert_domain_state_jsonl(
+        pack.ledger_path,
+        domain_row,
+        key=pack.stable_key(domain_row),
+        unchanged_fn=pack.same_material_observation,
+    )
+
+    proposal = pack.propose_transition(
+        domain_state=domain_row,
+        kernel_state=kernel_snapshot,
+    )
+    return validate_with_kernel_authority(proposal, writeback=write)
+```
+
+这里的 `upsert_domain_state_jsonl` 只提供稳定 key、文件锁、原子替换与幂等 upsert；领域
+schema 和 proposal 属于 pack，最终是否执行仍由 Kernel 判断。
+
+一小时分享讲到这条边界即可。需要设计新 pack 时，再深入
+[第 2 讲：Core State、Domain State 与 Runtime Artifact](02-state-substrate.md#core-statedomain-state-与-runtime-artifact)、
+[Domain Capability Packs](../../product/domain-capability-packs.md)和
+[Issue-Fix State Kernel × Domain State 案例](../../capabilities/issue-fix/state-kernel-domain-state-case-study.zh-CN.md)。
 
 所以 LoopX 不是一个包办所有推理的“大 Agent”。它更像一个长期控制内核：领域层提供
 可判定事实，host 执行 bounded Turn，Kernel 维护跨 Turn 仍需成立的身份、权限、证据和
@@ -1038,6 +1108,7 @@ LoopX 已经提供的通用机制包括：
 | Goal frontier replan | `loopx/control_plane/goals/goal_frontier_replan_rules.py::select_goal_frontier_replan_rule` | runnable、gate、succession gap、monitor exhaustion 的优先级 |
 | Vision checkpoint | `loopx/state_refresh.py::build_vision_checkpoint` | material closeout 后如何防止局部目标替代长期方向 |
 | Turn transaction | `loopx/control_plane/turn_driver/executor.py::run_loopx_turn_once` | phase failure 怎样恢复，何时允许 commit |
+| Domain State seam | `loopx/domain_state.py::default_domain_state_file_path`、`upsert_domain_state_jsonl` | goal/pack 分区、稳定 key、原子 upsert 和 unchanged observation |
 | Issue lifecycle | `loopx/capabilities/issue_fix/pr_lifecycle.py::build_issue_fix_pr_lifecycle_monitor_packet` | 外部 PR observation 怎样变成有限 proposal |
 | Explore result log | `loopx/capabilities/explore/result_log.py::append_explore_result_events` | finding/edge 怎样幂等保存且不获得执行权 |
 | Explore planning | `loopx/capabilities/explore/worker_branch_plan.py::build_explore_worker_branch_plan` | analysis-only 输出怎样受 scope/capacity/gate 限制 |
@@ -1073,6 +1144,8 @@ happy-path smoke。
 8. [Long-Horizon Agent State Protocol](../../reference/protocols/long-horizon-agent-state-protocol-v0.md)
 9. [Goal / Vision / Replan Contract](../../reference/protocols/goal-vision-replan-contract-v0.md)
 10. [Core Control-Plane State Machine](../../product/core-control-plane/state-machine.md)
+11. [Domain Capability Packs](../../product/domain-capability-packs.md)
+12. [Issue-Fix State Kernel × Domain State 案例](../../capabilities/issue-fix/state-kernel-domain-state-case-study.zh-CN.md)
 
 ## 课后检查
 
@@ -1086,3 +1159,4 @@ happy-path smoke。
 8. PR checks 绿色后，为什么 merge 仍需要 exact-head authority 与 readback？
 9. 自研 Runner 接入 LoopX 时，最小 Turn 合同包含哪四个稳定面？
 10. 哪些事实必须由领域 Capability、Provider 或 Evaluator 提供，LoopX Kernel 不能代替？
+11. Domain State 如何帮助垂域 Agent 防漂移，又为什么不能拥有 claim、quota 或外部写权限？
