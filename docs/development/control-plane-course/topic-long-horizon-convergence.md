@@ -350,7 +350,7 @@ def advance_one_turn(status, goal_id, agent_id, host):
     return execution
 ```
 
-真实 Turn transaction 使用固定 phase：
+真实 Turn transaction 使用预定义且顺序固定的可恢复事务阶段：
 
 ```text
 host_execute
@@ -362,7 +362,7 @@ host_execute
   -> scheduler_ack
 ```
 
-固定 phase 有两个作用：
+这组事务阶段有两个作用：
 
 1. **恢复**：journal 已经记录 `durable_writeback` 时，重启后不能再次执行外部 effect；
 2. **归因**：只有 validation 通过并写回成功，才允许 spend；scheduler apply 与 ACK 也有
@@ -811,20 +811,24 @@ def select_frontier_rule(facts):
         ("existing_obligation", facts.existing_replan_required, False),
         ("blocking_handoff_gate", facts.blocking_handoff_gate_count > 0, False),
         (
-            "ready_successor",
+            "ready_deferred_successor",
             facts.ready_deferred_successor_count > 0
             and not facts.successor_vision_required,
             False,
         ),
         ("open_user_todo", facts.blocking_user_open_count > 0, False),
-        ("succession_gap", facts.succession_gap_without_frontier, True),
+        ("todo_succession_gap", facts.succession_gap_without_frontier, True),
         ("vision_acceptance_gap", facts.unsatisfied_gap_without_frontier, True),
         ("long_todo_chain", facts.long_chain_without_ack, True),
         ("long_todo_chain_acknowledged", facts.long_chain_with_ack, False),
-        ("watch_lane_acknowledged", facts.watch_lane_continuation_acknowledged, False),
+        (
+            "watch_lane_continuation_acknowledged",
+            facts.watch_lane_continuation_acknowledged,
+            False,
+        ),
         ("current_agent_blocker", facts.current_agent_blocker_count > 0, False),
         (
-            "monitor_no_change",
+            "monitor_no_change_streak",
             facts.monitor_only_lane and facts.monitor_streak_triggered,
             True,
         ),
@@ -836,12 +840,35 @@ def select_frontier_rule(facts):
     return first_matching_rule(ordered_rules)
 ```
 
-第三列表示是否派生新的 Replan obligation。顺序很重要：
+第三列表示是否派生新的 Replan obligation。`False` 不表示规则“什么也没做”，而是说明已经
+找到一个足以解释当前 Frontier 的既有 authority、工作或等待状态，应短路后续 planner；
+`True` 才表示控制面发现了没有合法 Frontier 覆盖的 gap，需要产生新的显式义务。
 
-- 已存在的 obligation、gate 或 runnable successor 先拥有 Frontier，不能被新的 planner
-  建议覆盖；
-- 只有 succession、Vision/Acceptance 或 monitor exhaustion 真的留下 gap，才派生 Replan；
-- 仍有 advancement work 时，不应因为旁边有 unchanged monitor 就全局 replan。
+逐条读取时，每个 rule 可以压成下面一句：
+
+| 顺序 | Rule | 一句精讲 | 派生 obligation |
+| --- | --- | --- | --- |
+| 1 | `existing_obligation` | 已有 scoped Replan obligation 仍有效，继续履行它，不能重复生成另一份。 | 否 |
+| 2 | `blocking_handoff_gate` | Handoff、独立 review 等 gate 已拥有下一次状态转移；在 gate 解决前 planner 不得绕行。 | 否 |
+| 3 | `ready_deferred_successor` | 已有 deferred successor 满足恢复条件且不需要新的 Vision 判断，直接把它恢复为 Frontier。 | 否 |
+| 4 | `open_user_todo` | 存在真正阻塞当前路径的用户工作；系统应等待具体输入，不能把缺少 authority 误写成 Replan。 | 否 |
+| 5 | `todo_succession_gap` | Advancement 已完成，但没有 successor 或 `no_followup` 理由，且没有其他 advancement 接续；必须补上局部闭包。 | 是 |
+| 6 | `vision_acceptance_gap` | Acceptance 仍有缺口，但没有满足它的 selectable work，或 successor 需要 Vision 决策；必须重建方向与 Frontier。 | 是 |
+| 7 | `long_todo_chain` | 可选 Todo 链超过有界阈值且没有 Frontier Delta ACK；先做 Vision checkpoint、分组或裁剪，不能继续线性执行。 | 是 |
+| 8 | `long_todo_chain_acknowledged` | 长链仍存在，但已有明确 Frontier Delta ACK 证明它被审视和重组过；不要为同一事实重复 Replan。 | 否 |
+| 9 | `watch_lane_continuation_acknowledged` | 已显式确认空 advancement frontier 是有意的 watch lane，并有继续观察的合同；允许按 cadence 等待。 | 否 |
+| 10 | `current_agent_blocker` | 当前 Agent 已有具体 blocker 解释为什么不能推进；下一步由 blocker 的 resume route 决定，而不是再造计划。 | 否 |
+| 11 | `monitor_no_change_streak` | Monitor-only lane 连续 unchanged 达到阈值；必须用 expiry、blocker、supersede 或 successor 结束热等待。 | 是 |
+| 12 | `not_monitor_only` | 当前 lane 并非纯 monitor 等待；monitor exhaustion 规则不适用，交还普通 advancement 路径处理。 | 否 |
+| 13 | `no_open_monitor` | 根本没有 open monitor，不能以“monitor frontier 耗尽”为由派生 Replan；更早的 succession/Vision gap 已优先检查。 | 否 |
+| 14 | `advancement_remains` | 当前 Agent 或全局 Frontier 仍有 advancement work；旁边的 monitor 不能让整个 Goal 进入 Replan。 | 否 |
+| 15 | `monitor_frontier_exhausted` | 前述护栏均未命中，只剩 monitor、没有 advancement，也没有有效 ACK/blocker；必须明确 successor、expiry、supersede 或 `no_followup`。 | 是 |
+
+顺序因此分成三层：
+
+1. 先尊重已有 authority 与既有 Frontier：obligation、gate、successor、用户输入；
+2. 再修复真正的连续性或方向 gap：succession、Vision/Acceptance、长链；
+3. 最后审计 monitor-only 尾部：有 ACK/blocker/advancement 就短路，否则派生 Replan。
 
 Ordered rule 让“为什么这轮没有 replan”也可解释、可测试。否则多个各自合理的 signal
 会在不同调用方里形成不一致优先级。
