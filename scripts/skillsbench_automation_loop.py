@@ -8126,6 +8126,12 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
     )
     block = (
         f"{DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN}\n"
+        "ARG LOOPX_SKILLSBENCH_RUNTIME_UBUNTU_APT_MIRROR="
+        f"{dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_BASE}\n"
+        "ARG LOOPX_SKILLSBENCH_RUNTIME_DEBIAN_APT_MIRROR="
+        f"{dockerfile_runtime.DEFAULT_DEBIAN_APT_MIRROR_BASE}\n"
+        "ARG LOOPX_SKILLSBENCH_RUNTIME_DEBIAN_SECURITY_MIRROR="
+        f"{dockerfile_runtime.DEFAULT_DEBIAN_SECURITY_MIRROR_BASE}\n"
         "RUN set -eux; \\\n"
         "    if command -v curl >/dev/null 2>&1 && \\\n"
         "       command -v tar >/dev/null 2>&1 && \\\n"
@@ -8144,7 +8150,19 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
         "        'Acquire::https::No-Cache \"true\";' \\\n"
         "        'Acquire::Check-Valid-Until \"false\";' \\\n"
         "        > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
-        "      apt-get update -qq; \\\n"
+        "      if ! apt-get update -qq; then \\\n"
+        "        find /etc/apt -type f \\\n"
+        "          \\( -name '*.list' -o -name '*.sources' \\) \\\n"
+        "          -exec sed -i \\\n"
+        '            -e "s#https\\?://archive.ubuntu.com/ubuntu#${LOOPX_SKILLSBENCH_RUNTIME_UBUNTU_APT_MIRROR}#g" \\\n'
+        '            -e "s#https\\?://security.ubuntu.com/ubuntu#${LOOPX_SKILLSBENCH_RUNTIME_UBUNTU_APT_MIRROR}#g" \\\n'
+        '            -e "s#https\\?://deb.debian.org/debian-security#${LOOPX_SKILLSBENCH_RUNTIME_DEBIAN_SECURITY_MIRROR}#g" \\\n'
+        '            -e "s#https\\?://security.debian.org/debian-security#${LOOPX_SKILLSBENCH_RUNTIME_DEBIAN_SECURITY_MIRROR}#g" \\\n'
+        '            -e "s#https\\?://deb.debian.org/debian#${LOOPX_SKILLSBENCH_RUNTIME_DEBIAN_APT_MIRROR}#g" \\\n'
+        "            {} +; \\\n"
+        "        rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
+        "        apt-get update -qq; \\\n"
+        "      fi; \\\n"
         "      apt-get install -y -qq --no-install-recommends ca-certificates curl tar xz-utils; \\\n"
         "      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
         "    elif command -v apk >/dev/null 2>&1; then \\\n"
