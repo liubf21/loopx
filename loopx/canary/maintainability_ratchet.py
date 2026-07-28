@@ -60,9 +60,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
     "loopx.status:compact_active_user_assisted_pilot": (
         "Move assisted-pilot compaction into a bounded runtime read model."
     ),
-    "loopx.quota:build_quota_plan": (
-        "Move quota-plan policy selection behind focused control-plane rule helpers."
-    ),
     "loopx.quota:build_quota_should_run": (
         "Continue decomposing the public quota facade into bounded decision stages."
     ),
@@ -84,10 +81,6 @@ _OVERSIZED_DECISION_METRIC_CEILINGS = {
     "loopx.status:compact_active_user_assisted_pilot": {
         "statements": 124,
         "decision_points": 71,
-    },
-    "loopx.quota:build_quota_plan": {
-        "statements": 61,
-        "decision_points": 69,
     },
     "loopx.quota:build_quota_should_run": {
         "statements": 366,
