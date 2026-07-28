@@ -48,9 +48,6 @@ _EXISTING_DECISION_DEBT_REASON = (
     "Existing multi-branch control-plane decision owner predates the ratchet."
 )
 _OVERSIZED_DECISION_RETIREMENT_PLANS = {
-    "loopx.control_plane.turn_driver.executor:run_loopx_turn_once": (
-        "Split host execution, receipt validation, and transaction closeout stages."
-    ),
     "loopx.status:compact_benchmark_run": (
         "Move benchmark run compaction into bounded runtime read-model modules."
     ),
@@ -63,10 +60,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
 }
 
 _OVERSIZED_DECISION_METRIC_CEILINGS = {
-    "loopx.control_plane.turn_driver.executor:run_loopx_turn_once": {
-        "statements": 114,
-        "decision_points": 51,
-    },
     "loopx.status:compact_benchmark_run": {
         "statements": 271,
         "decision_points": 118,
