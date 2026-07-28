@@ -2049,9 +2049,19 @@ def install_benchflow_docker_exec_output_capture(
 
     prerequisites = plan.setdefault("runner_prerequisites", {})
     existing = getattr(env, "_loopx_output_capture_original_exec", None)
-    if existing is not None:
+    installed_exec = getattr(env, "_loopx_output_capture_exec", None)
+    current_exec = getattr(env, "exec", None)
+    if (
+        existing is not None
+        and installed_exec is not None
+        and current_exec is installed_exec
+    ):
+        prerequisites["host_local_acp_docker_exec_capture_status"] = (
+            "already_installed"
+        )
         return existing
-    original_exec = getattr(env, "exec", None)
+    reinstalling_after_rebind = existing is not None
+    original_exec = current_exec
     compose_fn = getattr(env, "_run_docker_compose_command", None)
     if not callable(original_exec) or not callable(compose_fn):
         prerequisites["host_local_acp_docker_exec_capture_status"] = "unsupported"
@@ -2093,8 +2103,16 @@ def install_benchflow_docker_exec_output_capture(
         )
 
     setattr(env, "_loopx_output_capture_original_exec", original_exec)
+    setattr(env, "_loopx_output_capture_exec", exec_with_output_capture)
     setattr(env, "exec", exec_with_output_capture)
-    prerequisites["host_local_acp_docker_exec_capture_status"] = "installed"
+    prerequisites["host_local_acp_docker_exec_capture_status"] = (
+        "reinstalled_after_exec_rebind"
+        if reinstalling_after_rebind
+        else "installed"
+    )
+    prerequisites["host_local_acp_docker_exec_capture_rebound"] = (
+        reinstalling_after_rebind
+    )
     prerequisites["host_local_acp_docker_exec_capture_required"] = True
     prerequisites["host_local_acp_docker_exec_capture_compose_copy"] = True
     prerequisites["host_local_acp_docker_exec_capture_raw_output_recorded"] = False
@@ -2802,6 +2820,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_sandbox_bridge_mode",
         "host_local_acp_session_adapter_status",
         "host_local_acp_docker_exec_capture_status",
+        "host_local_acp_docker_exec_capture_lifecycle_guard",
         "host_local_acp_pwd_probe_status",
         "host_local_acp_pwd_probe_exception_type",
         "host_local_acp_pwd_probe_stdout_type",
@@ -2852,6 +2871,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_docker_exec_capture_required",
         "host_local_acp_docker_exec_capture_compose_copy",
         "host_local_acp_docker_exec_capture_raw_output_recorded",
+        "host_local_acp_docker_exec_capture_rebound",
         "host_local_acp_docker_exec_capture_preflight",
         "host_local_acp_sandbox_bridge_configured",
         "host_local_acp_sandbox_bridge_path_recorded",
@@ -14885,6 +14905,10 @@ async def run_benchflow_case(
             host_local_acp_status="installing_sandbox",
         )
         try:
+            prerequisites["host_local_acp_docker_exec_capture_lifecycle_guard"] = (
+                "install_agent_boundary"
+            )
+            install_benchflow_docker_exec_output_capture(self._env, plan=plan)
             prerequisites["host_local_acp_install_stage"] = (
                 "docker_exec_capture_preflight"
             )
