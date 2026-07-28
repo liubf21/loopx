@@ -7,7 +7,6 @@ from ...feedback import validate_public_safe_text
 
 
 CHANGE_QUALITY_RESULT_SCHEMA_VERSION = "change_quality_agent_result_v2"
-LEGACY_CHANGE_QUALITY_RESULT_SCHEMA_VERSION = "change_quality_agent_result_v1"
 CHANGE_QUALITY_GUARDRAIL_SCHEMA_VERSION = "change_quality_guardrail_summary_v0"
 
 RISK_SEVERITIES = frozenset({"blocker", "warning", "advisory"})
@@ -491,86 +490,4 @@ def change_quality_result_decision(
 ) -> tuple[str, list[str]]:
     guardrails = derive_change_quality_guardrails(result)
     unresolved = list(guardrails["blocking_codes"])
-    return ("fail", unresolved) if unresolved else ("pass", [])
-
-
-def validate_legacy_change_quality_result_v1(
-    value: Any,
-    *,
-    expected_fingerprint: str,
-    safe_fix_allowed: bool,
-    expected_instruction_refs: list[str] | None = None,
-) -> tuple[str, list[str]]:
-    """Validate decision-critical v1 fields for read-only receipt compatibility."""
-    if not isinstance(value, dict):
-        raise ValueError("legacy result root must be an object")
-    if value.get("schema_version") != LEGACY_CHANGE_QUALITY_RESULT_SCHEMA_VERSION:
-        raise ValueError("legacy result schema_version is invalid")
-    if str(value.get("scope_fingerprint") or "").strip() != expected_fingerprint:
-        raise ValueError("legacy result scope fingerprint is stale")
-    if value.get("reviewed_final_scope") is not True:
-        raise ValueError("legacy result did not review the final scope")
-    if value.get("safe_fix_applied") is True and not safe_fix_allowed:
-        raise ValueError("legacy result reports a forbidden safe fix")
-
-    principles = value.get("repository_principles")
-    if not isinstance(principles, list):
-        raise ValueError("legacy repository_principles must be an array")
-    principle_sources = {
-        str(item.get("source") or "").strip()
-        for item in principles
-        if isinstance(item, dict)
-    }
-    if expected_instruction_refs is not None and principle_sources != set(
-        expected_instruction_refs
-    ):
-        raise ValueError("legacy repository principles are incomplete")
-
-    findings = value.get("findings")
-    lenses = value.get("lens_reviews")
-    decisions = value.get("simplification_decisions")
-    validation = value.get("validation_evidence")
-    if not isinstance(findings, list) or len(findings) > 20:
-        raise ValueError("legacy findings are invalid")
-    if not isinstance(lenses, list):
-        raise ValueError("legacy lens reviews are invalid")
-    lens_ids = {
-        str(item.get("lens_id") or "")
-        for item in lenses
-        if isinstance(item, dict)
-    }
-    if lens_ids != set(REVIEW_LENS_IDS):
-        raise ValueError("legacy lens coverage is incomplete")
-    if not isinstance(decisions, list) or not decisions:
-        raise ValueError("legacy simplification decisions are missing")
-    if not isinstance(validation, list) or not validation:
-        raise ValueError("legacy validation evidence is missing")
-
-    unresolved: list[str] = []
-    for index, finding in enumerate(findings):
-        if not isinstance(finding, dict):
-            raise ValueError(f"legacy findings[{index}] must be an object")
-        severity = str(finding.get("severity") or "").strip().lower()
-        code = _bounded_text(
-            finding.get("code"),
-            field=f"legacy findings[{index}].code",
-            limit=80,
-        )
-        if severity not in RISK_SEVERITIES or not code:
-            raise ValueError(f"legacy findings[{index}] is invalid")
-        if severity == "blocker" and finding.get("resolved") is not True:
-            unresolved.append(code)
-    for index, evidence in enumerate(validation):
-        if not isinstance(evidence, dict):
-            raise ValueError(f"legacy validation_evidence[{index}] must be an object")
-        status = str(evidence.get("status") or "").strip().lower()
-        validator = _bounded_text(
-            evidence.get("validator"),
-            field=f"legacy validation_evidence[{index}].validator",
-            limit=120,
-        )
-        if status not in VALIDATION_STATUSES or not validator:
-            raise ValueError(f"legacy validation_evidence[{index}] is invalid")
-        if status == "failed":
-            unresolved.append(f"validator:{validator}")
     return ("fail", unresolved) if unresolved else ("pass", [])

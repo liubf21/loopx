@@ -14,20 +14,17 @@ from .context import build_change_quality_repository_context
 from .policy import change_quality_goal_policy
 from .result import (
     CHANGE_QUALITY_RESULT_SCHEMA_VERSION,
-    LEGACY_CHANGE_QUALITY_RESULT_SCHEMA_VERSION,
     REVIEW_LENSES,
     SIMPLIFY_GUARDRAIL_LENS_IDS,
     change_quality_result_decision,
     derive_change_quality_guardrails,
     normalize_change_quality_result,
-    validate_legacy_change_quality_result_v1,
 )
 from .scope import build_change_quality_scope, resolve_git_root
 
 
 CHANGE_QUALITY_PREPARE_SCHEMA_VERSION = "change_quality_prepare_packet_v2"
 CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION = "change_quality_receipt_v2"
-LEGACY_CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION = "change_quality_receipt_v1"
 CHANGE_QUALITY_VERIFY_SCHEMA_VERSION = "change_quality_receipt_verification_v2"
 CHANGE_QUALITY_PR_EVIDENCE_SCHEMA_VERSION = "change_quality_pr_evidence_v0"
 
@@ -306,11 +303,7 @@ def _stored_receipt_is_valid(
 ) -> bool:
     if not (
         receipt
-        and receipt.get("schema_version")
-        in {
-            CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION,
-            LEGACY_CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION,
-        }
+        and receipt.get("schema_version") == CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION
         and receipt.get("decision") == "pass"
         and isinstance(receipt.get("result"), dict)
         and isinstance(receipt.get("scope"), dict)
@@ -319,34 +312,18 @@ def _stored_receipt_is_valid(
         return False
     result = receipt["result"]
     try:
-        if (
-            receipt.get("schema_version") == CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION
-            and result.get("schema_version") == CHANGE_QUALITY_RESULT_SCHEMA_VERSION
-        ):
-            normalized = normalize_change_quality_result(
-                result,
-                expected_fingerprint=scope_fingerprint,
-                safe_fix_allowed=safe_fix_allowed,
-                expected_changed_files=changed_files,
-                expected_instruction_refs=instruction_refs,
-            )
-            guardrails = derive_change_quality_guardrails(normalized)
-            decision, unresolved = change_quality_result_decision(normalized)
-            if receipt.get("guardrails") != guardrails:
-                return False
-        elif (
-            receipt.get("schema_version")
-            == LEGACY_CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION
-            and result.get("schema_version")
-            == LEGACY_CHANGE_QUALITY_RESULT_SCHEMA_VERSION
-        ):
-            decision, unresolved = validate_legacy_change_quality_result_v1(
-                result,
-                expected_fingerprint=scope_fingerprint,
-                safe_fix_allowed=safe_fix_allowed,
-                expected_instruction_refs=instruction_refs,
-            )
-        else:
+        if result.get("schema_version") != CHANGE_QUALITY_RESULT_SCHEMA_VERSION:
+            return False
+        normalized = normalize_change_quality_result(
+            result,
+            expected_fingerprint=scope_fingerprint,
+            safe_fix_allowed=safe_fix_allowed,
+            expected_changed_files=changed_files,
+            expected_instruction_refs=instruction_refs,
+        )
+        guardrails = derive_change_quality_guardrails(normalized)
+        decision, unresolved = change_quality_result_decision(normalized)
+        if receipt.get("guardrails") != guardrails:
             return False
     except (TypeError, ValueError):
         return False
@@ -376,12 +353,11 @@ def _build_pr_evidence(
         status,
         _PR_EVIDENCE_BY_STATUS["invalid_receipt"],
     )
-    previous_scope = (
-        previous_receipt.get("scope")
-        if isinstance(previous_receipt, dict)
-        and isinstance(previous_receipt.get("scope"), dict)
-        else {}
-    )
+    previous_scope: dict[str, Any] = {}
+    if isinstance(previous_receipt, dict):
+        candidate_scope = previous_receipt.get("scope")
+        if isinstance(candidate_scope, dict):
+            previous_scope = candidate_scope
     return {
         "schema_version": CHANGE_QUALITY_PR_EVIDENCE_SCHEMA_VERSION,
         "state": state,

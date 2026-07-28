@@ -171,8 +171,8 @@ loopx --format json change-quality verify \
 
 A receipt with an unresolved blocker, failed validator, or skipped required
 validator is not passing. A receipt for an earlier fingerprint does not
-qualify a later diff. Existing v1 receipts may be verified read-only for their
-exact scope; new writes use v2.
+qualify a later diff. Earlier experimental receipt schemas are invalid and
+must be requalified with the current protocol.
 
 ## Premerge Enforcement
 

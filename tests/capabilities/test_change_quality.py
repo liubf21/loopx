@@ -21,7 +21,6 @@ from loopx.capabilities.change_quality.receipt import (
     verify_change_quality_receipt,
 )
 from loopx.capabilities.change_quality.result import (
-    REVIEW_LENS_IDS,
     SIMPLIFY_GUARDRAIL_LENS_IDS,
     derive_change_quality_guardrails,
     normalize_change_quality_result,
@@ -122,44 +121,6 @@ def _result(path: Path, fingerprint: str, **overrides: object) -> Path:
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
-
-
-def _legacy_v1_result(fingerprint: str) -> dict[str, object]:
-    return {
-        "schema_version": "change_quality_agent_result_v1",
-        "scope_fingerprint": fingerprint,
-        "reviewed_final_scope": True,
-        "summary": "Legacy exact scope reviewed.",
-        "repository_principles": [],
-        "findings": [],
-        "lens_reviews": [
-            {
-                "lens_id": lens_id,
-                "status": "checked",
-                "summary": f"{lens_id} checked.",
-                "finding_codes": [],
-                "evidence_refs": ["path:app.py"],
-            }
-            for lens_id in REVIEW_LENS_IDS
-        ],
-        "simplification_decisions": [
-            {
-                "decision_id": "legacy",
-                "subject": "fixture",
-                "outcome": "retained",
-                "reason": "Already direct.",
-            }
-        ],
-        "safe_fix_applied": False,
-        "safe_fix_passes": 0,
-        "validation_evidence": [
-            {
-                "validator": "legacy-fixture",
-                "status": "passed",
-                "scope": "legacy receipt compatibility",
-            }
-        ],
-    }
 
 
 def test_policy_defaults_off_and_configures_independent_controls(
@@ -551,7 +512,7 @@ def test_verification_revalidates_stored_result_semantics(tmp_path: Path) -> Non
     assert verified["ok"] is False
 
 
-def test_verification_accepts_exact_v1_receipt_read_only(tmp_path: Path) -> None:
+def test_verification_rejects_v1_receipt(tmp_path: Path) -> None:
     repo, registry, runtime_root = _fixture(tmp_path)
     _enable(registry)
     (repo / "app.py").write_text("value = 2\n", encoding="utf-8")
@@ -576,10 +537,7 @@ def test_verification_accepts_exact_v1_receipt_read_only(tmp_path: Path) -> None
     )
     legacy_receipt = dict(recorded["receipt"])
     legacy_receipt["schema_version"] = "change_quality_receipt_v1"
-    legacy_receipt["result"] = _legacy_v1_result(
-        prepared["scope"]["scope_fingerprint"]
-    )
-    legacy_receipt.pop("guardrails")
+    legacy_receipt["result"]["schema_version"] = "change_quality_agent_result_v1"
     Path(recorded["receipt_path"]).write_text(
         json.dumps(legacy_receipt),
         encoding="utf-8",
@@ -593,8 +551,8 @@ def test_verification_accepts_exact_v1_receipt_read_only(tmp_path: Path) -> None
         base_ref="HEAD",
     )
 
-    assert verified["status"] == "valid"
-    assert verified["ok"] is True
+    assert verified["status"] == "invalid_receipt"
+    assert verified["ok"] is False
 
 
 def test_exact_scope_receipt_becomes_stale_after_any_diff_change(

@@ -70,8 +70,7 @@ Absence of this policy is equivalent to all three values being false.
    validation, skipped required validation, and unresolved blocker risks fail
    closed.
 6. `change-quality verify` checks the current exact scope and v2 protocol.
-   Existing v1 receipts remain read-only compatible for the exact scope they
-   already qualified.
+   Earlier experimental receipt schemas are invalid and must be requalified.
 7. `canary premerge --goal-id <goal-id>` enforces `strict_receipt`.
 
 ```bash
