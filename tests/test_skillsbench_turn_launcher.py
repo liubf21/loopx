@@ -240,6 +240,7 @@ def test_launcher_fails_before_batch_when_exact_host_sandbox_probe_fails(
     payload = json.loads(proc.stderr)
     assert payload == {
         "error": "skillsbench_exact_host_codex_sandbox_preflight_failed",
+        "failure_category": "transport_or_unknown",
         "ok": False,
         "raw_output_recorded": False,
         "remote_codex_bin_mode": "path_lookup",
@@ -247,9 +248,76 @@ def test_launcher_fails_before_batch_when_exact_host_sandbox_probe_fails(
         "sandbox_mode": "workspace-write",
         "schema_version": "skillsbench_exact_host_codex_sandbox_preflight_v0",
         "ssh_destination_recorded": False,
+        "timeout_seconds": 30,
     }
     assert call_count.read_text(encoding="utf-8") == "3"
     assert "pid=" not in proc.stdout
+
+
+def test_launcher_types_exact_host_sandbox_probe_timeout(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    call_count = tmp_path / "ssh-call-count"
+    fake_ssh = fake_bin / "ssh"
+    fake_ssh.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-G" ]; then exit 0; fi\n'
+        f"count_file={call_count!s}\n"
+        'count=0\n'
+        'if [ -f "$count_file" ]; then count=$(cat "$count_file"); fi\n'
+        'count=$((count + 1))\n'
+        'printf "%s" "$count" > "$count_file"\n'
+        'if [ "$count" -le 2 ]; then exit 0; fi\n'
+        'exit 124\n',
+        encoding="utf-8",
+    )
+    fake_ssh.chmod(0o755)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["SKILLSBENCH_EXACT_HOST_CODEX_SANDBOX_PREFLIGHT_TIMEOUT_SEC"] = "45"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "public-smoke-case", "exact-host-timeout"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 3, proc
+    payload = json.loads(proc.stderr)
+    assert payload["failure_category"] == "timeout"
+    assert payload["timeout_seconds"] == 45
+    assert payload["raw_output_recorded"] is False
+    assert payload["remote_path_recorded"] is False
+    assert payload["ssh_destination_recorded"] is False
+    assert call_count.read_text(encoding="utf-8") == "3"
+    assert "pid=" not in proc.stdout
+
+
+def test_launcher_rejects_invalid_exact_host_sandbox_probe_timeout(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_EXACT_HOST_CODEX_SANDBOX_PREFLIGHT_TIMEOUT_SEC"] = "0"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-timeout"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_EXACT_HOST_CODEX_SANDBOX_PREFLIGHT_TIMEOUT_SEC "
+        "must be a positive integer"
+    ) in proc.stderr
 
 
 def test_launcher_fails_before_supervisor_when_runner_connectivity_is_not_ready(
