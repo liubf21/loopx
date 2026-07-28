@@ -11,6 +11,9 @@ from loopx.benchmarks.read_models.benchmark_projection import (
 from loopx.benchmarks.read_models.benchmark_run_execution_contract import (
     compact_benchmark_run_execution_contract,
 )
+from loopx.benchmarks.read_models.benchmark_run_pre_execution import (
+    compact_benchmark_run_pre_execution_metadata,
+)
 from loopx.status import compact_benchmark_run
 
 
@@ -258,3 +261,142 @@ def test_status_facade_compacts_benchmark_execution_contract_metadata() -> None:
     assert (
         keys.index("claim_boundary") < keys.index("agent") < keys.index("model_control")
     )
+
+
+def test_status_facade_preserves_benchmark_pre_execution_metadata_order() -> None:
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_loop_contract": {"schema_version": "benchmark_loop_contract_v0"},
+        "official_score": 0.5,
+        "failure_attribution_labels": [f"failure-{index}" for index in range(6)],
+        "worker_startup_blockers": ["startup-blocker"],
+        "worker_setup_diagnostic_blockers": ["setup-blocker"],
+        "runner_warning_labels": ["runner-warning"],
+        "runner_prerequisites": {
+            "schema_version": "runner_prerequisites_v0",
+            "host_local_acp_launch": True,
+            "benchmark_live_worker_phase": {
+                "schema_version": "benchmark_live_worker_phase_v0",
+                "current_phase": "worker_running",
+                "next_required_phase": "agent_active",
+                "phase_ready": {
+                    "runtime_preparing": True,
+                    "worker_prepared": True,
+                    "worker_running": True,
+                    "agent_active": False,
+                },
+                "worker_live": True,
+                "agent_active_observed": False,
+                "terminal": False,
+                "terminal_disposition": "open",
+                "public_evidence_only": True,
+                "private_detail": "drop",
+            },
+            "private_detail": "drop",
+        },
+        "result_discovery": {
+            "schema_version": "result_discovery_v0",
+            "candidate_count": 2,
+            "selection_reasons": [f"reason-{index}" for index in range(6)],
+            "private_detail": "drop",
+        },
+        "task_setup_preflight": {
+            "schema_version": "task_setup_preflight_v0",
+            "status": "ready",
+            "raw_logs_read": False,
+            "nearest_canonical_task_ids": [f"task-{index}" for index in range(6)],
+            "private_detail": "drop",
+        },
+        "task_staging": {
+            "schema_version": "task_staging_v0",
+            "staged": True,
+            "resource_cap_patch": {
+                "schema_version": "resource_cap_patch_v0",
+                "applied": True,
+                "host_cpus": 8,
+                "private_detail": "drop",
+            },
+            "private_detail": "drop",
+        },
+        "attempt_accounting": {
+            "schema_version": "attempt_accounting_v0",
+            "lifecycle_phase": "solver",
+            "solver_attempt_countable": True,
+            "attempts": {
+                "solver": {"attempted": True, "countable": True, "private": True}
+            },
+            "private_detail": "drop",
+        },
+        "official_task_score": {
+            "kind": "pass",
+            "value": 1,
+            "passed": True,
+            "private_detail": "drop",
+        },
+        "claim_boundary": {"public_claim_allowed": "connectivity only"},
+    }
+
+    compact = compact_benchmark_run(source)
+    pre_execution = compact_benchmark_run_pre_execution_metadata(
+        source,
+        max_list_items=5,
+    )
+
+    assert compact is not None
+    assert {key: compact[key] for key in pre_execution} == pre_execution
+    assert compact["failure_attribution_labels"] == [
+        f"failure-{index}" for index in range(5)
+    ]
+    assert compact["runner_prerequisites"] == {
+        "schema_version": "runner_prerequisites_v0",
+        "host_local_acp_launch": True,
+    }
+    assert compact["result_discovery"] == {
+        "schema_version": "result_discovery_v0",
+        "candidate_count": 2,
+        "selection_reasons": [f"reason-{index}" for index in range(5)],
+    }
+    assert compact["task_setup_preflight"] == {
+        "schema_version": "task_setup_preflight_v0",
+        "status": "ready",
+        "raw_logs_read": False,
+        "nearest_canonical_task_ids": [f"task-{index}" for index in range(5)],
+    }
+    assert compact["task_staging"] == {
+        "schema_version": "task_staging_v0",
+        "staged": True,
+        "resource_cap_patch": {
+            "schema_version": "resource_cap_patch_v0",
+            "applied": True,
+            "host_cpus": 8,
+        },
+    }
+    assert compact["attempt_accounting"] == {
+        "schema_version": "attempt_accounting_v0",
+        "lifecycle_phase": "solver",
+        "solver_attempt_countable": True,
+        "attempts": {"solver": {"attempted": True, "countable": True}},
+    }
+    assert compact["official_task_score"] == {
+        "kind": "pass",
+        "value": 1,
+        "passed": True,
+    }
+    expected_order = [
+        "benchmark_loop_contract",
+        "official_score",
+        "failure_attribution_labels",
+        "worker_startup_blockers",
+        "worker_setup_diagnostic_blockers",
+        "runner_warning_labels",
+        "runner_prerequisites",
+        "benchmark_live_worker_phase",
+        "result_discovery",
+        "task_setup_preflight",
+        "task_staging",
+        "attempt_accounting",
+        "official_task_score",
+        "claim_boundary",
+    ]
+    keys = list(compact)
+    assert [key for key in keys if key in expected_order] == expected_order
