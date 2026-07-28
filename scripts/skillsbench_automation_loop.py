@@ -8669,10 +8669,6 @@ def stage_task_for_sandbox(
                 staged_path / "environment" / "Dockerfile"
             )
         )
-    dockerfile_proxy_metadata = patch_dockerfile_benchmark_egress_proxy_env(
-        staged_path / "environment" / "Dockerfile",
-        proxy_env=benchmark_egress_proxy_env,
-    )
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile",
         transport_mode=docker_apt_transport_mode,
@@ -8721,6 +8717,10 @@ def stage_task_for_sandbox(
     )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
+    )
+    dockerfile_proxy_metadata = patch_dockerfile_benchmark_egress_proxy_env(
+        staged_path / "environment" / "Dockerfile",
+        proxy_env=benchmark_egress_proxy_env,
     )
     staged_verifier_script = proxy_runtime.skillsbench_verifier_script(staged_path)
     uv_mirror_metadata = verifier_bootstrap.patch_verifier_uv_bootstrap_mirror(
