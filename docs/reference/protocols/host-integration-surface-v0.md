@@ -95,6 +95,11 @@ LoopX Turn driver is not required. Durable policy remains in current
 `quota should-run.interaction_contract`, active state, todos, vision, and
 writeback.
 
+Issue-fix qualification on this host uses a staged evidence contract. A
+validated patch proves the worker path, while Goal satisfaction must be read
+from the host separately. See
+[`ark-managed-agent-issue-fix-qualification-v0`](ark-managed-agent-issue-fix-qualification-v0.md).
+
 ## Lifecycle Reads
 
 Host integrations should expose read methods that map directly to CLI reads:
