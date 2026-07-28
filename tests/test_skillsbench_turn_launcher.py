@@ -397,6 +397,7 @@ def test_launcher_split_control_is_opt_in_and_redacts_provider_values(
     assert "local_codex_split_control=1" in output
     assert "local_codex_provider=reverse_channel" in output
     assert "local_codex_exec_timeout_sec=runner-default" in output
+    assert "host_local_acp_codex_exec_preflight_attempts=3" in output
     assert "outer_timeout_sec=runner-default" in output
     assert "remote_codex_bin_mode=split_control_client" in output
     assert (
@@ -420,6 +421,59 @@ def test_launcher_split_control_is_opt_in_and_redacts_provider_values(
     assert "codex_bridge_client" not in output
     assert "loopx-codex-" not in output
     assert "example.invalid" not in output
+
+
+def test_launcher_wires_explicit_host_local_preflight_attempts(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL": "1",
+            "SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS": "2",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "preflight-attempts"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "host_local_acp_codex_exec_preflight_attempts=2" in proc.stdout
+    assert "--host-local-acp-codex-exec-preflight-attempts" in proc.stdout
+
+
+def test_launcher_rejects_invalid_host_local_preflight_attempts(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL": "1",
+            "SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS": "0",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "preflight-attempts"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS must be "
+        "a positive integer"
+    ) in proc.stderr
 
 
 def test_launcher_wires_explicit_local_codex_exec_timeout(

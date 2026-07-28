@@ -73,6 +73,9 @@ Optional env:
                                        Optional positive per-prompt timeout for
                                        host-local Codex; unset preserves the
                                        runner default
+  SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS
+                                       Positive startup preflight attempts for
+                                       split-control Codex; default 3
   SKILLSBENCH_OUTER_TIMEOUT_SEC         Optional positive runner-wide timeout;
                                        unset preserves the runner default
   SKILLSBENCH_CLI_GOAL_THREAD_PREWARM  Set to 1 to prewarm the persisted Codex
@@ -242,6 +245,7 @@ local_codex_bin="${SKILLSBENCH_LOCAL_CODEX_BIN:-codex}"
 local_codex_sandbox="${SKILLSBENCH_LOCAL_CODEX_SANDBOX:-workspace-write}"
 exact_host_codex_sandbox_preflight_timeout="${SKILLSBENCH_EXACT_HOST_CODEX_SANDBOX_PREFLIGHT_TIMEOUT_SEC:-30}"
 local_codex_exec_timeout="${SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC:-}"
+host_local_acp_codex_exec_preflight_attempts="${SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS:-3}"
 outer_timeout="${SKILLSBENCH_OUTER_TIMEOUT_SEC:-}"
 codex_cli_goal_thread_prewarm="${SKILLSBENCH_CLI_GOAL_THREAD_PREWARM:-0}"
 if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm" != "1" ]]; then
@@ -251,6 +255,10 @@ fi
 if [[ -n "$local_codex_exec_timeout" ]] &&
   [[ ! "$local_codex_exec_timeout" =~ ^[1-9][0-9]*$ ]]; then
   echo "SKILLSBENCH_LOCAL_CODEX_EXEC_TIMEOUT_SEC must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$host_local_acp_codex_exec_preflight_attempts" =~ ^[1-9][0-9]*$ ]]; then
+  echo "SKILLSBENCH_HOST_LOCAL_ACP_CODEX_EXEC_PREFLIGHT_ATTEMPTS must be a positive integer" >&2
   exit 2
 fi
 if [[ ! "$exact_host_codex_sandbox_preflight_timeout" =~ ^[1-9][0-9]*$ ]]; then
@@ -658,7 +666,8 @@ if [[ "$local_codex_split_control" == "1" ]]; then
   extra_runner_args+=(
     --local-codex-provider reverse-channel
     --host-local-acp-codex-exec-preflight
-    --host-local-acp-codex-exec-preflight-attempts 1
+    --host-local-acp-codex-exec-preflight-attempts
+    "$host_local_acp_codex_exec_preflight_attempts"
   )
 fi
 if [[ -n "$local_codex_exec_timeout" ]]; then
@@ -923,6 +932,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'local_codex_exec_timeout_sec=%s\n' \
     "${local_codex_exec_timeout:-runner-default}"
+  printf 'host_local_acp_codex_exec_preflight_attempts=%s\n' \
+    "$host_local_acp_codex_exec_preflight_attempts"
   printf 'outer_timeout_sec=%s\n' "${outer_timeout:-runner-default}"
   printf 'exact_host_codex_sandbox_preflight=%s\n' \
     "$exact_host_codex_sandbox_preflight"
