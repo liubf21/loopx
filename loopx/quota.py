@@ -42,9 +42,7 @@ from .control_plane.work_items.primary_action import (
 )
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
-    autonomous_replan_decision_allowed,
     build_goal_frontier_projection_context_from_status,
-    goal_frontier_is_terminal_no_followup,
 )
 from .control_plane.quota.heartbeat_recommendation import (
     HEARTBEAT_HANDOFF_READINESS_COMPACT_FIELDS as HANDOFF_READINESS_COMPACT_FIELDS,
@@ -68,6 +66,7 @@ from .control_plane.quota.stall_repair import (
 from .control_plane.quota.decision_summary import (
     goal_status_health_ok as _goal_status_health_ok,
     quota_decision_agent_id,
+    resolve_quota_run_decision,
 )
 from .control_plane.quota.goal_boundary import effective_available_capabilities as _effective_available_capabilities, goal_boundary as _goal_boundary, quota_execution_profile_summary as _quota_execution_profile_summary
 from .control_plane.quota.monitor_poll import (
@@ -98,7 +97,6 @@ from .control_plane.quota.task_orchestration import (
     build_quota_work_lane_contract,
     payload_work_lane_contract as _payload_work_lane_contract,
     task_goal_route_hint,
-    task_orchestration_effective_action,
     task_selected_recommended_action,
 )
 from .control_plane.quota.slot_accounting import (
@@ -1189,45 +1187,6 @@ def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     )
 
 
-def _effective_action(
-    *,
-    normal_delivery_allowed: bool,
-    recovery_delivery_allowed: bool,
-    self_repair_allowed: bool,
-    capability_repair_allowed: bool = False,
-    workspace_repair_allowed: bool = False,
-    stall_self_repair: dict[str, Any] | None,
-    state: str,
-    quota: dict[str, Any],
-) -> str:
-    if normal_delivery_allowed:
-        return "normal_run"
-    if recovery_delivery_allowed:
-        return "outcome_floor_recovery"
-    if workspace_repair_allowed:
-        return "agent_workspace_repair"
-    if self_repair_allowed:
-        repair_action = (
-            stall_self_repair.get("effective_action")
-            if isinstance(stall_self_repair, dict)
-            else None
-        )
-        return str(repair_action or "control_plane_repair")
-    if capability_repair_allowed:
-        return "capability_bridge_repair"
-    if state == "operator_gate":
-        return "operator_gate_notify"
-    if state == "blocked_health":
-        return "blocked_health"
-    if state == "throttled":
-        return "throttled_skip"
-    if state in {"focus_wait", "waiting"}:
-        return "blocked_wait"
-    if quota.get("focus_wait"):
-        return "blocked_wait"
-    return "quota_skip"
-
-
 def _quota_agent_profile(agent_identity: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
@@ -1691,8 +1650,6 @@ def build_quota_should_run(
             if isinstance(goal_frontier_context.get("goal_frontier_projection"), dict)
             else {}
         )
-        capability_repair_allowed = False
-        workspace_repair_allowed = False
         projection_gap = build_state_projection_gap(item, project_asset)
         projection_gap_repair = build_state_projection_gap_repair_hint(
             projection_gap,
@@ -1723,81 +1680,38 @@ def build_quota_should_run(
             normal_delivery_allowed = False
             recovery_allowed = False
             reason = str(boundary_projection_repair.get("reason") or reason)
-        if capability_gate and capability_gate.get("action") != "run" and not capability_monitor_fallback:
-            normal_delivery_allowed = False
-            recovery_allowed = False
-            if capability_gate.get("action") == "repair_bridge":
-                capability_repair_allowed = True
-                reason = str(capability_gate.get("reason") or "capability bridge repair required")
-            else:
-                reason = str(capability_gate.get("reason") or "selected todo capability is unavailable")
-        if workspace_guard:
-            normal_delivery_allowed = False
-            recovery_allowed = False
-            self_repair_allowed = False
-            capability_repair_allowed = False
-            workspace_repair_allowed = True
-            reason = str(workspace_guard.get("reason") or "agent workspace guard blocks delivery")
-        if automation_prompt_upgrade_required:
-            normal_delivery_allowed = False
-            recovery_allowed = False
-            self_repair_allowed = False
-            capability_repair_allowed = False
-            workspace_repair_allowed = False
-            reason = str(
-                automation_prompt_upgrade.get("reason")
-                or "identity-aware automation prompt upgrade is required"
-            )
-        should_run = bool(normal_delivery_allowed or recovery_allowed or self_repair_allowed
-                          or capability_repair_allowed or workspace_repair_allowed)
-        effective_action = _effective_action(
-            normal_delivery_allowed=normal_delivery_allowed, recovery_delivery_allowed=recovery_allowed,
-            self_repair_allowed=self_repair_allowed, capability_repair_allowed=capability_repair_allowed,
-            workspace_repair_allowed=workspace_repair_allowed, stall_self_repair=stall_self_repair,
-            state=state, quota=quota,
-        )
-        replan_decision_allowed = not inbox_reply_due and autonomous_replan_decision_allowed(
-            replan_obligation=replan_obligation, plan_ok=goal_health_ok,
-            workspace_blocked=bool(workspace_guard),
-            automation_prompt_upgrade_required=automation_prompt_upgrade_required,
-            agent_id=agent_frontier_id, registered_agent_ids=registered_agent_ids,
-        )
-        if replan_decision_allowed:
-            normal_delivery_allowed = False
-            recovery_allowed = False
-            should_run = True
-            effective_action = AUTONOMOUS_REPLAN_REQUIRED_MODE
-            reason = (
-                "autonomous replan obligation is selected before monitor quiet "
-                "or agent-scope wait classification"
-            )
-        terminal_no_followup = goal_frontier_is_terminal_no_followup(projection=goal_frontier_projection)
-        if terminal_no_followup and not inbox_reply_due:
-            quota = {**quota, "state": "terminal_no_followup", "reason": (
-                "derived terminal no-follow-up is confirmed by complete todo sources and an empty frontier")}
-            state = "terminal_no_followup"
-            normal_delivery_allowed = recovery_allowed = self_repair_allowed = False
-            capability_repair_allowed = workspace_repair_allowed = should_run = False
-            effective_action = "terminal_no_followup"
-            reason = ("validated closure evidence derives terminal no-follow-up from complete todo sources "
-                      "and an empty frontier; stop recurring automation until an explicit resume")
-        if automation_prompt_upgrade_required and not terminal_no_followup:
-            should_run = False
-            effective_action = "automation_prompt_upgrade_required"
-        elif inbox_reply_due:
-            should_run, normal_delivery_allowed = True, True
-            recovery_allowed = self_repair_allowed = capability_repair_allowed = workspace_repair_allowed = False
-            effective_action, reason = "lark_inbox_reply_due", (
-                "a direct Lark question, bot mention, or verified reply to the bot "
-                "is pending reply"
-            )
-        effective_action, reason = task_orchestration_effective_action(
-            task_orchestration_contract,
-            should_run=should_run,
+        run_decision = resolve_quota_run_decision(
             normal_delivery_allowed=normal_delivery_allowed,
-            effective_action=effective_action,
+            recovery_delivery_allowed=recovery_allowed,
+            self_repair_allowed=self_repair_allowed,
+            stall_self_repair=stall_self_repair,
+            state=state,
+            quota=quota,
             reason=reason,
+            capability_gate=capability_gate,
+            capability_monitor_fallback=capability_monitor_fallback,
+            workspace_guard=workspace_guard,
+            automation_prompt_upgrade=automation_prompt_upgrade,
+            automation_prompt_upgrade_required=automation_prompt_upgrade_required,
+            replan_obligation=replan_obligation,
+            goal_health_ok=goal_health_ok,
+            inbox_reply_due=inbox_reply_due,
+            agent_frontier_id=agent_frontier_id,
+            registered_agent_ids=registered_agent_ids,
+            goal_frontier_projection=goal_frontier_projection,
+            task_orchestration_contract=task_orchestration_contract,
         )
+        normal_delivery_allowed = run_decision.normal_delivery_allowed
+        recovery_allowed = run_decision.recovery_delivery_allowed
+        self_repair_allowed = run_decision.self_repair_allowed
+        capability_repair_allowed = run_decision.capability_repair_allowed
+        workspace_repair_allowed = run_decision.workspace_repair_allowed
+        should_run = run_decision.should_run
+        effective_action = run_decision.effective_action
+        reason = run_decision.reason
+        state = run_decision.state
+        quota = run_decision.quota
+        replan_decision_allowed = run_decision.replan_decision_allowed
         recommendation_item = {**item, "quota": quota}
         heartbeat_recommendation = build_heartbeat_recommendation(
             recommendation_item,
