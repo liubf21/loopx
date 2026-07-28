@@ -47,6 +47,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
 @pytest.mark.parametrize(
     ("agent_type", "runtime_profile"),
     (
+        ("ark-managed-agent", "ark_managed_agent_goal"),
         ("codex-app", "codex_app_heartbeat"),
         ("codex-app-ssh", "codex_app_ssh_goal"),
         ("codex-cli", "codex_cli"),

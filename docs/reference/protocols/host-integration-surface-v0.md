@@ -51,6 +51,50 @@ copyable bootstrap message, but it must not silently switch to hidden
 `codex exec`, read session transcripts, or claim same-TUI automation without
 the visible proof and idle-detection contracts.
 
+## Ark Managed Agent host
+
+`ark-managed-agent` is a one-shot goal host, not a LoopX Turn driver. LoopX
+generates one short, transport-neutral goal prompt; the Managed Agent goal
+runtime owns all inner iteration and continuation.
+
+The prompt uses the same 4,000-character interface budget and the same guarded
+goal policy as the Codex App/CLI visible-goal hosts; only the host ownership
+preamble differs.
+
+Generate the prompt with:
+
+```bash
+loopx heartbeat-prompt --thin --goal-id <GOAL_ID> --agent-id <AGENT_ID> \
+  --runtime-profile ark_managed_agent_goal
+```
+
+The same contract is available through first-class onboarding with
+`--agent-type ark-managed-agent`. Because this host does not use a
+Codex-specific skill directory, onboarding requires host-managed delivery and
+readback of the LoopX workflow skills from the same LoopX revision as the CLI.
+The fixed installer is shared with Codex; only its target root changes:
+
+```bash
+LOOPX_SKILLS_DIR=<PROJECT_WORKSPACE>/.agents/skills \
+  LOOPX_INSTALL_SLASH_COMMANDS=0 \
+  <LOOPX_CHECKOUT>/scripts/install-local.sh
+```
+
+The installer owns filesystem mutation. Onboarding and doctor only report the
+required skill ids and require a host loaded-skill readback.
+
+Local-development and cloud transports must send the exact same `task_body` as
+their goal prompt. They may differ in endpoint, authentication, session id, or
+wire envelope, but those fields do not change the prompt or become LoopX
+policy. The host has no automation mode, and it must not wrap every inner goal
+iteration in `loopx turn run-once`.
+
+The generated `host_contract` states that activation happens once, the goal
+runtime owns continuation, host session state is non-authoritative, and the
+LoopX Turn driver is not required. Durable policy remains in current
+`quota should-run.interaction_contract`, active state, todos, vision, and
+writeback.
+
 ## Lifecycle Reads
 
 Host integrations should expose read methods that map directly to CLI reads:

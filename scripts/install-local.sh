@@ -15,7 +15,8 @@ Common environment variables:
   LOOPX_PYTHON=/path/to/python3.11  Use this supported Python for the release.
   LOOPX_PROMOTE_DEFAULT=1          Promote this checkout as the default loopx.
   LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
-  LOOPX_INSTALL_SKILL=0            Skip packaged Codex workflow skills.
+  LOOPX_INSTALL_SKILL=0            Skip packaged workflow skills.
+  LOOPX_SKILLS_DIR=/path           Install workflow skills into this host-native root.
   LOOPX_INSTALL_SLASH_COMMANDS=0   Skip Codex and Claude command skills.
   LOOPX_INSTALL_OPENCODE=0         Install the OpenCode goal bridge surface.
   CODEX_HOME=/path                 Override the Codex home directory.

@@ -272,13 +272,27 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument(
         "-H",
         "--host-surface",
-        choices=["codex_app", "codex_app_ssh", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
+        choices=[
+            "ark_managed_agent",
+            "codex_app",
+            "codex_app_ssh",
+            "codex_cli",
+            "generic_cli",
+            "claude_code",
+            "local_scheduler",
+        ],
         help="Host surface that will consume this scheduler projection.",
     )
     quota_parser.add_argument(
         "-O",
         "--scheduler-owner",
-        choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
+        choices=[
+            "host_automation",
+            "agent_cli_loop",
+            "goal_runtime",
+            "outer_controller",
+            "none",
+        ],
         help="Runtime that owns the next cadence decision.",
     )
     quota_parser.add_argument(
