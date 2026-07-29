@@ -369,6 +369,15 @@ def _benchflow_rollout_planes_class(module: Any) -> type[Any] | None:
     return klass if isinstance(klass, type) else None
 
 
+def _benchflow_environment_name(
+    call_args: tuple[Any, ...],
+    call_kwargs: dict[str, Any],
+) -> str:
+    if call_args:
+        return str(call_args[0])
+    return str(call_kwargs.get("environment") or "")
+
+
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_KEEP_FILE = "loopx_app_skills_keep"
@@ -14862,7 +14871,7 @@ async def run_benchflow_case(
         if original_create_environment is None:
             raise RuntimeError("BenchFlow rollout planes create_environment missing")
         env = original_create_environment(self, *call_args, **call_kwargs)
-        environment = str(call_args[0]) if call_args else ""
+        environment = _benchflow_environment_name(call_args, call_kwargs)
         return _record_container_mount_injection(env, environment)
 
     def _record_container_mount_injection(env: Any, environment: str) -> Any:

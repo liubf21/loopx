@@ -45,6 +45,7 @@ from loopx.benchmark_core.lifecycle import (  # noqa: E402
 SCHEMA_VERSION = "skillsbench_reverse_tunnel_supervisor_v0"
 PUBLIC_LIVENESS_SCHEMA_VERSION = "skillsbench_supervisor_public_liveness_v0"
 ACTIVE_PHASE_SCHEMA_VERSION = "skillsbench_supervisor_active_phase_v0"
+TERMINAL_CLOSEOUT_SCHEMA_VERSION = "skillsbench_supervisor_terminal_closeout_v0"
 PUBLIC_LIVENESS_INTERVAL_SEC = 30.0
 DEFAULT_REMOTE_FORWARD = "127.0.0.1:18180:127.0.0.1:18180"
 DEFAULT_TEST_HOST = "chatgpt.com"
@@ -1093,6 +1094,20 @@ def _write_public_checkpoint(
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
+    closeout = payload.get("terminal_closeout")
+    if isinstance(closeout, Mapping):
+        closeout_target = target.with_name("supervisor_closeout.compact.json")
+        closeout_temporary = closeout_target.with_name(
+            f".{closeout_target.name}.{os.getpid()}.tmp"
+        )
+        try:
+            closeout_temporary.write_text(
+                json.dumps(closeout, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            closeout_temporary.replace(closeout_target)
+        finally:
+            closeout_temporary.unlink(missing_ok=True)
 
 
 def _public_artifact_sync_requested(args: argparse.Namespace) -> bool:
@@ -1554,6 +1569,101 @@ def _last_public_liveness_contract(path: str | None) -> dict[str, Any]:
     return contract
 
 
+def _last_public_checkpoint(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        loaded = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(loaded, Mapping):
+        return {}
+    if loaded.get("schema_version") != SCHEMA_VERSION:
+        return {}
+    return dict(loaded)
+
+
+def _terminal_artifact_presence(args: argparse.Namespace) -> dict[str, Any]:
+    contract = {
+        "status": "unavailable",
+        "benchmark_compact_present": False,
+        "controller_trace_present": False,
+        "public_artifact_read": False,
+        "raw_artifacts_read": False,
+        "local_paths_recorded": False,
+    }
+    if not args.local_public_artifact_dir:
+        return contract
+    root = Path(args.local_public_artifact_dir).expanduser()
+    if not root.is_dir() or root.is_symlink():
+        return contract
+    basenames: set[str] = set()
+    for path in root.rglob("*.json"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        basenames.add(path.name)
+    contract.update(
+        status="observed",
+        benchmark_compact_present="benchmark_run.compact.json" in basenames,
+        controller_trace_present="loopx_controller_trace.public.json" in basenames,
+        public_artifact_read=True,
+    )
+    return contract
+
+
+def _terminal_closeout_contract(
+    args: argparse.Namespace,
+    *,
+    trigger: str,
+    signal_name: str = "",
+) -> dict[str, Any]:
+    artifacts = _terminal_artifact_presence(args)
+    benchmark_compact_present = bool(artifacts["benchmark_compact_present"])
+    contract = {
+        "schema_version": TERMINAL_CLOSEOUT_SCHEMA_VERSION,
+        "status": "complete",
+        "disposition": (
+            "defer_to_benchmark_compact"
+            if benchmark_compact_present
+            else "typed_exclusion"
+        ),
+        "reason_code": trigger,
+        "benchmark_compact_present": benchmark_compact_present,
+        "controller_trace_present": bool(artifacts["controller_trace_present"]),
+        "official_score_countable": None if benchmark_compact_present else False,
+        "retry_recommended": False,
+        "rotation_allowed": True,
+        "public_artifact_read": bool(artifacts["public_artifact_read"]),
+        "raw_artifacts_read": False,
+        "raw_task_text_read": False,
+        "raw_logs_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+        "local_paths_recorded": False,
+    }
+    if signal_name:
+        contract["signal_name"] = signal_name
+    return contract
+
+
+def _termination_public_artifact_sync(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    if not _public_artifact_sync_requested(args):
+        return _public_artifact_sync_contract(args)
+    try:
+        return _sync_remote_public_artifacts(args)
+    except Exception as exc:
+        contract = _public_artifact_sync_contract(args)
+        contract.update(
+            attempted=True,
+            ok=False,
+            first_blocker="termination_public_artifact_sync_failed",
+            error_type=type(exc).__name__[:80],
+        )
+        return contract
+
+
 def _finalize_unhandled_supervisor_failure(
     args: argparse.Namespace,
     exc: Exception,
@@ -1561,22 +1671,25 @@ def _finalize_unhandled_supervisor_failure(
     previous = _last_public_liveness_contract(args.public_output_path)
     now = time.time()
     started_at = now - float(previous["elapsed_sec"])
-    try:
-        payload = _initial_public_payload(args)
-    except Exception as payload_exc:
-        payload = {
-            "schema_version": SCHEMA_VERSION,
-            "ok": False,
-            "tunnel_started": False,
-            "tunnel_ready": False,
-            "remote_command_requested": bool(args.remote_command),
-            "raw_ssh_destination_recorded": False,
-            "raw_remote_command_recorded": False,
-            "raw_probe_output_recorded": False,
-            "raw_remote_output_recorded": False,
-            "private_log_written": False,
-            "fallback_payload_error_type": type(payload_exc).__name__[:80],
-        }
+    payload = _last_public_checkpoint(args.public_output_path)
+    if not payload:
+        try:
+            payload = _initial_public_payload(args)
+        except Exception as payload_exc:
+            payload = {
+                "schema_version": SCHEMA_VERSION,
+                "ok": False,
+                "tunnel_started": False,
+                "tunnel_ready": False,
+                "remote_command_requested": bool(args.remote_command),
+                "raw_ssh_destination_recorded": False,
+                "raw_remote_command_recorded": False,
+                "raw_probe_output_recorded": False,
+                "raw_remote_output_recorded": False,
+                "private_log_written": False,
+                "fallback_payload_error_type": type(payload_exc).__name__[:80],
+            }
+    payload["ok"] = False
     termination_signal = (
         exc.signum if isinstance(exc, _SupervisorTerminationSignal) else None
     )
@@ -1599,9 +1712,10 @@ def _finalize_unhandled_supervisor_failure(
         "local_paths_recorded": False,
     }
     if termination_signal is not None:
-        payload["public_terminal_fallback"]["signal_name"] = signal.Signals(
-            termination_signal
-        ).name
+        signal_name = signal.Signals(termination_signal).name
+        payload["public_terminal_fallback"]["signal_name"] = signal_name
+    else:
+        signal_name = ""
     try:
         payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
             args,
@@ -1613,6 +1727,12 @@ def _finalize_unhandled_supervisor_failure(
         cleanup["first_blocker"] = "remote_failure_cleanup_failed"
         cleanup["error_type"] = type(cleanup_exc).__name__[:80]
         payload["remote_failure_cleanup"] = cleanup
+    payload["public_artifact_sync"] = _termination_public_artifact_sync(args)
+    payload["terminal_closeout"] = _terminal_closeout_contract(
+        args,
+        trigger=str(payload["first_blocker"]),
+        signal_name=signal_name,
+    )
     _write_public_checkpoint(
         args.public_output_path,
         payload,
@@ -2217,6 +2337,42 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             if remote_proc.returncode == 0 and sync_ok
             else remote_proc.returncode or 3
         )
+    except _SupervisorTerminationSignal as exc:
+        if remote_proc is not None:
+            _stop_process_group(remote_proc, grace_sec=1.0)
+        payload["ok"] = False
+        payload["first_blocker"] = "supervisor_termination_signal"
+        payload["supervisor_error_type"] = type(exc).__name__[:80]
+        try:
+            payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
+                args,
+                trigger="supervisor_termination_signal",
+            )
+        except Exception as cleanup_exc:
+            cleanup = _remote_failure_cleanup_public_contract(args)
+            cleanup["trigger"] = "supervisor_termination_signal"
+            cleanup["first_blocker"] = "remote_failure_cleanup_failed"
+            cleanup["error_type"] = type(cleanup_exc).__name__[:80]
+            payload["remote_failure_cleanup"] = cleanup
+        payload["public_artifact_sync"] = _termination_public_artifact_sync(args)
+        payload["terminal_closeout"] = _terminal_closeout_contract(
+            args,
+            trigger="supervisor_termination_signal",
+            signal_name=signal.Signals(exc.signum).name,
+        )
+        payload["public_terminal_fallback"] = {
+            "schema_version": "skillsbench_supervisor_terminal_fallback_v0",
+            "triggered": True,
+            "trigger": "supervisor_termination_signal",
+            "signal_name": signal.Signals(exc.signum).name,
+            "exception_message_recorded": False,
+            "raw_task_text_recorded": False,
+            "raw_logs_recorded": False,
+            "raw_trajectory_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "local_paths_recorded": False,
+        }
+        return finish(128 + exc.signum)
     except (OSError, subprocess.TimeoutExpired) as exc:
         if remote_proc is not None:
             _stop_process_group(remote_proc, grace_sec=1.0)
