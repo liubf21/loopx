@@ -60,20 +60,19 @@ successful patch alone cannot close that requirement.
 
 ## Current live finding
 
-A local Goal-host parity replay submitted one generated task body and reached
-the real issue-fix worker. The worker reproduced the calculator defect,
-applied the one-line repair, validated it, inspected the diff, and marked its
-LoopX todo closed. The model exchanges used by the repair completed
-successfully.
+A fresh Goal-host parity replay installed the CLI and workflow skills from one
+clean revision, then submitted one generated task body. The real issue-fix
+worker reproduced the retry-delay defect, applied the one-line repair, passed
+all four focused tests, wrote the review handoff, and closed its LoopX todo
+with explicit `no_followup`.
 
-The host-side writeback did not preserve the requested explicit
-`no_followup`, so the next quota read rejected the closure as unhealthy. The
-later Goal evaluator also failed at the provider protocol boundary before a
-satisfied terminal event was emitted. The correct classification is therefore
-`repair=pass, durable_closure=fail, goal_host=fail`, not a worker-qualified or
-end-to-end pass. This finding validates the staged model and leaves both an
-exact-version writeback readback and an authenticated terminal-readback case
-open.
+The next quota read returned `terminal_no_followup` with complete user and
+agent todo sources and no acceptance gaps. A state-aware Goal evaluator then
+observed that durable terminal state, emitted a satisfied evaluation, and the
+session returned idle. The run completed 14 authenticated provider exchanges.
+The correct classification is therefore
+`repair=pass, durable_closure=pass, goal_host=pass`; publication remains a
+separate gated handoff.
 
 Private prompts, credentials, provider payloads, local paths, and raw traces
 are intentionally excluded from this public protocol.
