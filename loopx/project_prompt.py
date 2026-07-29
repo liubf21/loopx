@@ -170,15 +170,18 @@ def render_accountable_progress_refresh_command(
     cli_bin: str = "loopx",
     agent_id: str | None = None,
     progress_scope: str | None = None,
+    classification: str = "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
+    delivery_batch_scale: str = "<ACTUAL_DELIVERY_BATCH_SCALE>",
+    delivery_outcome: str = "<ACTUAL_DELIVERY_OUTCOME>",
 ) -> str:
     return render_refresh_state_command(
         goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
         progress_scope=progress_scope,
-        classification="<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
-        delivery_batch_scale="multi_surface",
-        delivery_outcome="outcome_progress",
+        classification=classification,
+        delivery_batch_scale=delivery_batch_scale,
+        delivery_outcome=delivery_outcome,
     )
 
 
@@ -739,8 +742,10 @@ production artifacts in public docs or LoopX state.
 8. After setup writeback, refresh state if needed. Do not spend quota for a
 setup-only turn. The configured thin loop spends only after a later validated
 delivery writeback. If I explicitly asked you to do delivery in this same turn
-and you completed a validated delivery segment, first write one accountable
-progress refresh, then spend exactly once against that record:
+and you completed a validated delivery segment, replace all three placeholders
+with this turn's actual validated classification, batch scale, and outcome.
+Never default or upgrade them to `multi_surface` / `outcome_progress`. Then write
+one accountable progress refresh and spend exactly once against that record:
 
 ```bash
 {progress_refresh_command}
@@ -942,7 +947,9 @@ def render_prompt_text(
    - `{cli_bin} status`（在没有项目局部 registry 的目录里也应自动读共享全局 registry）
    - `{cli_bin} check --scan-path <PUBLIC_SAFE_FILE_OR_DIR>`
 11. 如果本轮实际花了 automatic delivery compute（例如 read-only map、adapter
-   tick、实现推进或验证推进），在 validation / writeback 完成后，先记录本轮
+   tick、实现推进或验证推进），在 validation / writeback 完成后，把命令中的
+   三个 placeholder 替换为本轮实际验证过的 classification、batch scale 和
+   outcome；不要默认或拔高成 `multi_surface` / `outcome_progress`。然后记录本轮
    accountable delivery：
 
 ```bash

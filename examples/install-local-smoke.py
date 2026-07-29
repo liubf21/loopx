@@ -340,8 +340,9 @@ def main() -> int:
             "This command is read-only",
             "JSON output returns a minimized handoff payload with `handoff_text` instead of the full operator packet",
             "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
-            "--delivery-batch-scale multi_surface",
-            "--delivery-outcome outcome_progress",
+            "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>",
+            "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>",
+            "Never default or upgrade a smaller/preparatory turn",
             "do not infer scale/outcome from the classification name",
         ):
             assert phrase in compact_skill_text, phrase
@@ -713,13 +714,15 @@ def main() -> int:
         assert payload["thin"] is True, payload
         assert payload["interface_budget"]["mode"] == "thin", payload
         assert payload["interface_budget"]["within_budget"] is True, payload
-        assert "--delivery-batch-scale multi_surface" in payload["progress_refresh_state_command"], payload
-        assert "--delivery-outcome outcome_progress" in payload["progress_refresh_state_command"], payload
+        assert "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>" in payload["progress_refresh_state_command"], payload
+        assert "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>" in payload["progress_refresh_state_command"], payload
+        assert "--delivery-batch-scale multi_surface" not in payload["progress_refresh_state_command"], payload
+        assert "--delivery-outcome outcome_progress" not in payload["progress_refresh_state_command"], payload
         assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["progress_refresh_state_command"], payload
         assert "follow `interaction_contract`" in payload["task_body"], payload
         assert "`LOOPX_TURN=<current_time_iso>`; reuse." in payload["task_body"], payload
         assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
-        assert "accountable refresh->spend" in payload["task_body"], payload
+        assert "actual class/scale/outcome accountable refresh->spend" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload
 
         canary_cli = subprocess.run(

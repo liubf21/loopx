@@ -65,7 +65,9 @@ MUST_HAVE = (
 )
 SPEND_MUST_HAVE = (
     "validation / writeback 完成后",
-    "先记录本轮 accountable delivery",
+    "三个 placeholder",
+    "`multi_surface` / `outcome_progress`",
+    "accountable delivery",
     "普通 state-only refresh 不能替代它",
     "然后只 append 一次 quota spend",
     'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id',
@@ -173,8 +175,8 @@ def main() -> int:
     assert payload["progress_refresh_command"] == (
         "loopx refresh-state --goal-id new-project-main-control "
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> "
-        "--delivery-batch-scale multi_surface "
-        "--delivery-outcome outcome_progress"
+        "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE> "
+        "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>"
     ), payload
     prompt = str(payload["prompt"])
     progress_refresh = str(payload["progress_refresh_command"])
@@ -182,6 +184,7 @@ def main() -> int:
     state_only_refresh = str(payload["refresh_command"])
     assert prompt.index(progress_refresh) < prompt.index(quota_spend), prompt
     assert prompt.index(quota_spend) < prompt.rindex(state_only_refresh), prompt
+    assert "不要默认或拔高成 `multi_surface` / `outcome_progress`" in prompt, prompt
     assert_quota_guard(payload["prompt"])
     assert_quota_guard(DOC.read_text(encoding="utf-8"))
 

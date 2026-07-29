@@ -234,10 +234,12 @@ loopx new-project-prompt \
    ```bash
    loopx refresh-state --goal-id <STABLE_GOAL_ID> \
      --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
-     --delivery-batch-scale multi_surface \
-     --delivery-outcome outcome_progress
+     --delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE> \
+     --delivery-outcome <ACTUAL_DELIVERY_OUTCOME>
    ```
 
+   三个 placeholder 都必须替换为本轮实际验证过的值；不要把较小或仅准备性的
+   turn 默认、拔高成 `multi_surface` / `outcome_progress`。
    这是 `spend-slot` 将消费的因果记录；普通 state-only refresh 不能替代它。
    然后只 append 一次 quota spend：
 

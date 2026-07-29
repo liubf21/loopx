@@ -238,7 +238,7 @@ def main() -> int:
         "loopx todo add --goal-id public-heartbeat-goal --role user --task-class user_gate|user_action",
         "owner todos and `--role agent` for agent todos, not prose",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
-        "Accountable refresh, then spend",
+        "Account actual validated class/scale/outcome",
         "Optional state-only post-spend",
         "No spend for quiet skips",
     ):
@@ -335,7 +335,7 @@ def main() -> int:
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
-        "writeback: accountable refresh->spend; optional state-only after",
+        "writeback: actual class/scale/outcome accountable refresh->spend; no upgrade",
         "guard receipt; 2 stalls->replan",
         "`lark_event_inbox`: reply_due",
         "drain_command/reply-readback/ACK",
@@ -401,7 +401,7 @@ def main() -> int:
         "goal_boundary",
         "bounded segment/batch",
         "validate/writeback/todos",
-        "Progress refresh",
+        "Progress (actual values; no upgrade)",
         "Optional state-only post-spend",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "No spend for quiet skips",
@@ -432,7 +432,7 @@ def main() -> int:
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
-        "writeback: accountable refresh->spend; optional state-only after",
+        "writeback: actual class/scale/outcome accountable refresh->spend; no upgrade",
         "guard receipt; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
         "monitor quiet/no-spend",
@@ -568,8 +568,9 @@ def main() -> int:
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
         "loopx refresh-state --goal-id <GOAL_ID>",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
-        "--delivery-batch-scale multi_surface",
-        "--delivery-outcome outcome_progress",
+        "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>",
+        "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>",
+        "Never default or upgrade smaller/preparatory work",
         "append exactly one",
         "Do not append spend for quiet should_run=false skips, preflight failures, pure dry-run previews, or duplicate accounting attempts",
         "safe_bypass_allowed=true and you actually completed a bounded safe-bypass step",
@@ -673,8 +674,9 @@ def main() -> int:
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "loopx refresh-state --goal-id public-heartbeat-goal",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
-        "--delivery-batch-scale multi_surface",
-        "--delivery-outcome outcome_progress",
+        "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>",
+        "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>",
+        "never default or upgrade to `multi_surface` / `outcome_progress`",
         "Spend consumes this causal record",
         "Do not append spend for quiet `should_run=false` skips",
         "safe_bypass_kind=outcome_floor_recovery",
@@ -796,8 +798,9 @@ def main() -> int:
     assert "visible goal text short" in project_skill, project_skill
     assert "--source heartbeat --execute" in project_skill, project_skill
     assert "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in project_skill, project_skill
-    assert "--delivery-batch-scale multi_surface" in project_skill, project_skill
-    assert "--delivery-outcome outcome_progress" in project_skill, project_skill
+    assert "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>" in project_skill, project_skill
+    assert "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>" in project_skill, project_skill
+    assert "Never default or upgrade a smaller/preparatory turn" in normalized(project_skill), project_skill
     assert "do not infer scale/outcome from the classification name" in normalized(project_skill), project_skill
     assert "no-progress self-repair guard" in project_skill, project_skill
     assert "2 consecutive stalled turns" in normalized(project_skill), project_skill

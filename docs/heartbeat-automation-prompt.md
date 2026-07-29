@@ -473,9 +473,12 @@ If the result says should_run=true:
 
    loopx refresh-state --goal-id <GOAL_ID> \
      --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
-     --delivery-batch-scale multi_surface \
-     --delivery-outcome outcome_progress
+     --delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE> \
+     --delivery-outcome <ACTUAL_DELIVERY_OUTCOME>
 
+   Replace all three placeholders with values proven by this validated turn.
+   Never default or upgrade smaller/preparatory work to
+   `multi_surface` / `outcome_progress`.
    This refresh is the causal delivery record consumed by `quota spend-slot`.
    A plain state-only refresh is quota-neutral and cannot replace it. Then, for
    a minute-based heartbeat, spend one slot:

@@ -830,7 +830,8 @@ If the result says `should_run=true`:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
-8. After validation/writeback, record accountable delivery:
+8. After validation/writeback, use actual class/scale/outcome; never default or
+   upgrade to `multi_surface` / `outcome_progress`. Record accountable delivery:
 
    ```bash
    {progress_refresh_state_command}
@@ -922,7 +923,7 @@ Blocker-push first; obey
 `execution_obligation.must_attempt_work=true`; if recovery, run
 ranker/cross-domain evidence recovery or blocker writeback;
 validate/writeback/todos; done->successor/rationale.
-Progress refresh:
+Progress (actual values; no upgrade):
 `{progress_refresh_state_command}`
 Spend once:
 `{quota_spend_command}`
@@ -1030,7 +1031,8 @@ If `should_run=true`:
    use `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate|user_action`
    for owner todos and `--role agent` for agent todos, not prose. Nontrivial done ->
    successor todo or no-follow-up rationale.
-9. Accountable refresh, then spend:
+9. Account actual validated class/scale/outcome; never default/upgrade. Then
+   refresh and spend:
 
 ```bash
 {progress_refresh_state_command}
@@ -1129,8 +1131,11 @@ If `should_run=true`, choose the highest-priority in-scope unblocked agent todo.
 Honor claims/leases, blocker-push and recovery obligations. Complete one bounded,
 coherent delivery segment; validate it; write public-safe evidence, critic, and
 next action back to LoopX. A non-trivial completion needs a successor todo or an
-explicit no-follow-up rationale. After validated writeback, refresh the
-accountable progress record before spending:
+explicit no-follow-up rationale. After validated writeback, replace all three
+accountable-refresh placeholders with this turn's actual classification, batch
+scale, and outcome; never default or upgrade them to
+`multi_surface` / `outcome_progress`. Then refresh the accountable progress
+record before spending:
 `{progress_refresh_state_command}`. Then spend exactly once against that refresh:
 `{quota_spend_command}`.
 
@@ -1249,7 +1254,7 @@ missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
 DONT_NOTIFY+false/0 only: quiet.
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
-writeback: accountable refresh->spend; optional state-only after.
+writeback: actual class/scale/outcome accountable refresh->spend; no upgrade.
 Done->todo/rationale; guard receipt; 2 stalls->replan.
 `lark_event_inbox`: reply_due; drain_command/reply-readback/ACK.
 

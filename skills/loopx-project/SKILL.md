@@ -784,11 +784,15 @@ from the classification name:
 loopx refresh-state \
   --goal-id <STABLE_GOAL_ID> \
   --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
-  --delivery-batch-scale multi_surface \
-  --delivery-outcome outcome_progress \
+  --delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE> \
+  --delivery-outcome <ACTUAL_DELIVERY_OUTCOME> \
   --agent-id <REGISTERED_AGENT_ID> \
   --progress-scope goal
 ```
+
+Replace all three placeholders from the current validated turn. Never default
+or upgrade a smaller/preparatory turn to `multi_surface` / `outcome_progress`
+just because those values would satisfy a delivery floor.
 
 If the current run may write local LoopX state but its runtime boundary forbids
 configured external sink writes, keep `explore_graph.enabled` unchanged and add
