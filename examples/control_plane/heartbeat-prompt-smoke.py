@@ -93,8 +93,9 @@ def main() -> int:
             "schema_version": "agent_profile_v1",
             "agent_id": "codex-product-capability",
             "scope_summary": (
-                "Peer task claims, task leases, agent profile routing, and related "
-                "control-plane correctness."
+                "Agent-facing CLI output budgets, deterministic control-plane "
+                "qualification, model-behavior shadow evaluation, and release "
+                "outcome baseline correctness."
             ),
         },
         registered_agents=["codex-main-control", "codex-product-capability"],
@@ -313,21 +314,25 @@ def main() -> int:
     assert live_peer_budget["budget_char_count"] <= live_peer_budget["max_chars"], live_peer_budget
     assert live_peer_budget["within_budget"] is True, live_peer_budget
     assert len(str(live_peer_payload["task_body"])) <= int(live_peer_budget["max_chars"]), live_peer_budget
-    assert "control-plane correctness.." not in live_peer_task, live_peer_task
+    assert "correctness.." not in live_peer_task, live_peer_task
+    assert live_peer_task.index("`LOOPX_TURN=<current_time_iso>`") < live_peer_task.index(
+        "quota should-run"
+    ), live_peer_task
     for phrase in (
         "Equal peer `codex-product-capability` (peer_v1)",
-        "Peer task claims, task leases, agent profile routing, and related control-plane correctness",
+        "Agent-facing CLI output budgets, deterministic control-plane qualification, "
+        "model-behavior shadow evaluation, and release outcome baseline correctness",
         "Claim/lease first",
         "independent repo worktree",
         "todo continuation",
         "no cross-agent authority",
         "no scope in todo metadata",
-        "Normal: CLI contract; lifecycle/registry: `loopx-project`; drift: `loopx-self-repair`",
+        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift",
         "heartbeat-prequota",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run '
         "--goal-id loopx-meta --agent-id codex-product-capability --available-capability network "
         "--available-capability external_evidence_poll",
-        "follow `interaction_contract`",
         "NOTIFY Chinese actions incl. non_blocking false/0",
         'not only "owner gate"',
         "具体 user todo 未投影，需修复 LoopX 状态投影",
@@ -421,9 +426,10 @@ def main() -> int:
     thin_task = normalized(str(thin_payload["task_body"]))
     for phrase in (
         "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Normal: CLI contract; lifecycle/registry: `loopx-project`; drift: `loopx-self-repair`",
+        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift",
         "state/status/repo",
-        "`quota should-run`; follow `interaction_contract`",
+        "`quota should-run`",
         "NOTIFY Chinese actions incl. non_blocking false/0",
         'not only "owner gate"',
         "DONT_NOTIFY+false/0 only: quiet",

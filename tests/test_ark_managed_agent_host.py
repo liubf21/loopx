@@ -45,8 +45,8 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "goal loop, not automation" in normalized
     assert "invoke LoopX Turn" in normalized
     assert (
-        "Normal: CLI contract; lifecycle/registry: `loopx-project`; "
-        "drift: `loopx-self-repair`."
+        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
         in normalized
     )
     assert "choose the highest-priority in-scope unblocked agent todo" in normalized

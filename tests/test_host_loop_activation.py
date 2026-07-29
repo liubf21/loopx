@@ -111,8 +111,8 @@ def test_goal_hosts_share_narrow_runtime_skill_routing(
     task_body = " ".join(payload["task_body"].split())
 
     assert (
-        "Normal: CLI contract; lifecycle/registry: `loopx-project`; "
-        "drift: `loopx-self-repair`."
+        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
         in task_body
     )
 

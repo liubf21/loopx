@@ -33,12 +33,11 @@ two separate layers:
   --thin`, preferred as the local machine default when the target Codex agent is
   trusted to inspect LoopX registry/global quota truth, active state,
   status/run history, repo state, and project signals at wakeup time. It does
-  not paste command branches into the automation prompt. Normal execution uses
-  the LoopX CLI `interaction_contract`; use `loopx-project` only for project
-  lifecycle or registry diagnostics, and `loopx-self-repair` for runtime or
-  projection drift. The CLI payload remains the runtime source of truth. This
-  makes the Codex thread a replaceable worker and leaves durable task truth in
-  LoopX.
+  not paste command branches into the automation prompt. Normal turns use CLI
+  `interaction_contract`; use `loopx-project` for lifecycle/registry and
+  `loopx-self-repair` for runtime/projection drift. The CLI payload remains the
+  runtime source of truth. This makes the Codex thread a replaceable worker and
+  leaves durable task truth in LoopX.
 
 Do not paste the full lifecycle protocol into the visible goal text, and do not
 use a short goal text such as "advance TODO" as the recurring automation body.
