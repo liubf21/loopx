@@ -61,14 +61,14 @@ RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."
 )
 RUNTIME_EXECUTION_ROUTING_RULE = (
-    "Normal: CLI contract; lifecycle/registry: `loopx-project`; "
-    "drift: `loopx-self-repair`."
+    "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+    "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
 )
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
     "compact": 6_200,
     "brief": 3_500,
-    "thin": 1_570,
+    "thin": 1_750,
     "visible_goal": 4_000,
 }
 CODEX_VISIBLE_GOAL_MAX_CHARS = INTERFACE_BUDGET_CHARS["visible_goal"]
@@ -1243,7 +1243,7 @@ def render_thin_heartbeat_task_body(
         else "`quota should-run`"
     )
     pr_review_pre_quota_instruction = (
-        f"Pre: `{pr_review_pre_quota_command}`\n"
+        f"`{pr_review_pre_quota_command}`\n"
         if pr_review_pre_quota_command
         else ""
     )
@@ -1252,9 +1252,9 @@ def render_thin_heartbeat_task_body(
 {RUNTIME_EXECUTION_ROUTING_RULE}
 {scope_sentence}
 
-Inspect state/status/repo; run
-{pr_review_pre_quota_instruction}{quota_guard_instruction}; follow `interaction_contract`.
+Inspect state/status/repo.
 `LOOPX_TURN=<current_time_iso>`; reuse.
+{pr_review_pre_quota_instruction}{quota_guard_instruction}.
 NOTIFY Chinese actions incl. non_blocking false/0; not only "owner gate";
 missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
 DONT_NOTIFY+false/0 only: quiet.
