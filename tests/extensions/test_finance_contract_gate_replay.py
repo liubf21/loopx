@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+import json
+import sys
+from copy import deepcopy
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
+EXTENSION_SRC = EXTENSION_ROOT / "src"
+EXAMPLE = EXTENSION_ROOT / "examples" / "finance-case-gates-v1.json"
+sys.path.insert(0, str(EXTENSION_SRC))
+
+from loopx_finance_value_discovery.cli import run  # noqa: E402
+from loopx_finance_value_discovery.replay import (  # noqa: E402
+    build_finance_case_evaluation,
+    canonical_json_bytes,
+    replay_finance_case_evaluation,
+)
+
+
+def _example() -> dict[str, object]:
+    return json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+
+def test_missing_gate_short_circuits_to_insufficient_evidence() -> None:
+    payload = _example()
+    evaluation = build_finance_case_evaluation(payload)
+
+    assert evaluation["schema_version"] == "finance_case_gate_evaluation_v1"
+    assert evaluation["disposition"] == "insufficient_evidence"
+    assert evaluation["first_blocking_gate"] == {
+        "gate_id": "terminal_risk",
+        "state": "missing",
+        "reason": "A complete terminal-loss path is not yet supported.",
+    }
+    assert evaluation["boundary"] == {
+        "public_evidence_only": True,
+        "outcome_blind": True,
+        "investment_advice": False,
+        "trading_allowed": False,
+        "automatic_promotion_allowed": False,
+        "human_decision_owner": True,
+    }
+
+
+def test_all_passed_only_allows_a_research_successor() -> None:
+    payload = _example()
+    payload["observations"][-1] = {
+        "gate_id": "terminal_risk",
+        "observation_state": "observed",
+        "value": True,
+        "evidence_refs": ["terminal-risk-bridge"],
+        "reason": "The terminal-loss path is bounded by frozen evidence.",
+    }
+
+    evaluation = build_finance_case_evaluation(payload)
+
+    assert evaluation["disposition"] == "eligible_for_research_successor"
+    assert evaluation["first_blocking_gate"] is None
+    assert evaluation["boundary"]["automatic_promotion_allowed"] is False
+    assert evaluation["boundary"]["trading_allowed"] is False
+
+
+@pytest.mark.parametrize("state", ["failed", "missing", "conflict"])
+def test_first_blocker_controls_disposition_and_later_gates_do_not_run(
+    state: str,
+) -> None:
+    payload = _example()
+    observation_state = "observed" if state == "failed" else state
+    payload["observations"][2] = {
+        "gate_id": "evidence_quality",
+        "observation_state": observation_state,
+        "value": 1 if state == "failed" else None,
+        "evidence_refs": (
+            []
+            if state == "missing"
+            else ["filing-primary", "market-independent"]
+            if state == "conflict"
+            else ["filing-primary"]
+        ),
+        "reason": "The evidence-quality gate blocks this case.",
+    }
+    for observation in payload["observations"][3:]:
+        observation["observation_state"] = "not_run"
+        observation["value"] = None
+        observation["evidence_refs"] = []
+        observation["reason"] = "Not run after the evidence-quality blocker."
+
+    evaluation = build_finance_case_evaluation(payload)
+
+    assert evaluation["disposition"] == (
+        "rejected" if state == "failed" else "insufficient_evidence"
+    )
+    assert evaluation["first_blocking_gate"]["gate_id"] == "evidence_quality"
+    assert evaluation["first_blocking_gate"]["state"] == state
+
+
+def test_gate_order_and_short_circuit_are_enforced() -> None:
+    out_of_order = _example()
+    out_of_order["observations"][0], out_of_order["observations"][1] = (
+        out_of_order["observations"][1],
+        out_of_order["observations"][0],
+    )
+    with pytest.raises(ValueError, match="exactly match"):
+        build_finance_case_evaluation(out_of_order)
+
+    post_blocker_execution = _example()
+    post_blocker_execution["observations"][2]["observation_state"] = "missing"
+    post_blocker_execution["observations"][2]["value"] = None
+    post_blocker_execution["observations"][2]["evidence_refs"] = []
+    with pytest.raises(ValueError, match="after the first blocking gate"):
+        build_finance_case_evaluation(post_blocker_execution)
+
+    premature_not_run = _example()
+    premature_not_run["observations"][0]["observation_state"] = "not_run"
+    premature_not_run["observations"][0]["value"] = None
+    premature_not_run["observations"][0]["evidence_refs"] = []
+    with pytest.raises(ValueError, match="requires an earlier blocking gate"):
+        build_finance_case_evaluation(premature_not_run)
+
+
+def test_provider_cannot_declare_pass_fail_or_change_value_type() -> None:
+    declared_result = _example()
+    declared_result["observations"][0]["state"] = "passed"
+    with pytest.raises(ValueError, match="unsupported fields"):
+        build_finance_case_evaluation(declared_result)
+
+    wrong_type = _example()
+    wrong_type["observations"][2]["value"] = "two"
+    with pytest.raises(ValueError, match="must be a number"):
+        build_finance_case_evaluation(wrong_type)
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda payload: payload["contract"].update(
+            {"thresholds_frozen": False}
+        ),
+        lambda payload: payload["contract"].update(
+            {"point_in_time": "2026-07-24"}
+        ),
+        lambda payload: payload["observations"][0].update(
+            {"reason": "Mutated after the original evaluation."}
+        ),
+    ],
+)
+def test_replay_rejects_contract_or_input_mutation(mutator) -> None:
+    payload = _example()
+    expected = build_finance_case_evaluation(payload)
+    mutated = deepcopy(payload)
+    mutator(mutated)
+
+    with pytest.raises(ValueError):
+        replay_finance_case_evaluation(mutated, expected)
+
+
+def test_replay_requires_byte_identical_evaluation() -> None:
+    payload = _example()
+    expected = build_finance_case_evaluation(payload)
+    verified = replay_finance_case_evaluation(payload, expected)
+    assert verified["replay_verified"] is True
+
+    tampered = deepcopy(expected)
+    tampered["first_blocking_gate"]["reason"] = "Changed result text."
+    with pytest.raises(ValueError, match="bytes mismatch"):
+        replay_finance_case_evaluation(payload, tampered)
+
+    reordered = json.loads(
+        json.dumps(expected, sort_keys=False),
+        object_pairs_hook=dict,
+    )
+    assert canonical_json_bytes(reordered) == canonical_json_bytes(expected)
+
+
+def test_direct_cli_evaluate_and_replay(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert run(["evaluate", "--input-json", str(EXAMPLE)]) == 0
+    evaluation = json.loads(capsys.readouterr().out)
+    assert evaluation["disposition"] == "insufficient_evidence"
+
+    expected = tmp_path / "evaluation.json"
+    expected.write_text(json.dumps(evaluation), encoding="utf-8")
+    assert (
+        run(
+            [
+                "replay",
+                "--input-json",
+                str(EXAMPLE),
+                "--expected-json",
+                str(expected),
+            ]
+        )
+        == 0
+    )
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["replay_verified"] is True

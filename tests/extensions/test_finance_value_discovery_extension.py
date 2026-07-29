@@ -22,6 +22,7 @@ EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
 MANIFEST = EXTENSION_ROOT / "extension.toml"
 EXAMPLE = EXTENSION_ROOT / "examples" / "paypal-debeta-discovery.json"
+CASE_EXAMPLE = EXTENSION_ROOT / "examples" / "finance-case-gates-v1.json"
 sys.path.insert(0, str(EXTENSION_SRC))
 
 from loopx_finance_value_discovery.cli import run  # noqa: E402
@@ -255,3 +256,34 @@ def test_standalone_extension_runs_through_verified_runtime(
     packet = receipt["provider_result"]
     assert packet["schema_version"] == "finance_value_discovery_packet_v0"
     assert packet["projection"]["next_targets"] == ["PYPL"]
+
+
+def test_unified_gate_contract_runs_through_verified_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, runtime_root = _installed_manifest(tmp_path, monkeypatch)
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "loopx-finance-value-discovery",
+                "--input-json",
+                str(CASE_EXAMPLE),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == "succeeded"
+    evaluation = receipt["provider_result"]
+    assert evaluation["schema_version"] == "finance_case_gate_evaluation_v1"
+    assert evaluation["disposition"] == "insufficient_evidence"
+    assert evaluation["replay"]["evaluation_sha256"]
