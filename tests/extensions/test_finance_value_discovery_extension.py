@@ -16,13 +16,14 @@ from loopx.extensions.runtime import (
     install_extension,
 )
 
-
 ROOT = Path(__file__).resolve().parents[2]
 EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
 MANIFEST = EXTENSION_ROOT / "extension.toml"
 EXAMPLE = EXTENSION_ROOT / "examples" / "paypal-debeta-discovery.json"
 CASE_EXAMPLE = EXTENSION_ROOT / "examples" / "finance-case-gates-v1.json"
+BETA_EXAMPLE = EXTENSION_ROOT / "examples" / "beta-attribution-v1.json"
+PACK_EXAMPLE = EXTENSION_ROOT / "examples" / "software-metric-pack-v1.json"
 sys.path.insert(0, str(EXTENSION_SRC))
 
 from loopx_finance_value_discovery.cli import run  # noqa: E402
@@ -287,3 +288,41 @@ def test_unified_gate_contract_runs_through_verified_runtime(
     assert evaluation["schema_version"] == "finance_case_gate_evaluation_v1"
     assert evaluation["disposition"] == "insufficient_evidence"
     assert evaluation["replay"]["evaluation_sha256"]
+
+
+@pytest.mark.parametrize(
+    ("example", "schema_version"),
+    [
+        (BETA_EXAMPLE, "finance_beta_attribution_v1"),
+        (PACK_EXAMPLE, "finance_metric_pack_evaluation_v1"),
+    ],
+)
+def test_p1_finance_layers_run_through_verified_runtime(
+    example: Path,
+    schema_version: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, runtime_root = _installed_manifest(tmp_path, monkeypatch)
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "loopx-finance-value-discovery",
+                "--input-json",
+                str(example),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == "succeeded"
+    assert receipt["provider_result"]["schema_version"] == schema_version
+    assert receipt["provider_result"]["boundary"]["trading_allowed"] is False
