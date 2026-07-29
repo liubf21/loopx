@@ -73,6 +73,37 @@ def _finding(*, finding_class: str, path: str, code: str = "known-complexity") -
     }
 
 
+def _passing_runs(matrix: dict) -> list[dict]:
+    runs = []
+    for case in matrix["cases"]:
+        expected_count = len(case["gold"]["findings"])
+        for version in ("v0", "v1"):
+            runs.append(
+                {
+                    "case_id": case["case_id"],
+                    "contract_version": version,
+                    "valid": True,
+                    "expected_finding_count": expected_count,
+                    "predicted_finding_count": expected_count,
+                    "matched_finding_count": expected_count,
+                    "false_positive_count": 0,
+                    "false_negative_count": 0,
+                    "lens_coverage_count": (
+                        len(SIMPLIFY_PRIMARY_LENS_IDS) if version == "v1" else 1
+                    ),
+                    "lens_required_count": len(SIMPLIFY_PRIMARY_LENS_IDS),
+                    "safe_fix_match": True,
+                    "simplification_match": True,
+                    "tracked_files_modified": False,
+                    "input_tokens": 100,
+                    "output_tokens": 100 if version == "v0" else 120,
+                    "latency_ms": 1000 if version == "v0" else 1100,
+                    "result_digest": f"sha256:{case['case_id']}-{version}",
+                }
+            )
+    return runs
+
+
 def test_shadow_matrix_covers_clean_and_adversarial_prs_and_three_languages() -> None:
     matrix = _matrix()
 
@@ -226,37 +257,11 @@ def test_normalizer_rejects_local_paths_and_mismatched_identity() -> None:
 
 def test_receipt_promotes_only_complete_accurate_bounded_v1() -> None:
     matrix = _matrix()
-    runs = []
-    for case in matrix["cases"]:
-        expected_count = len(case["gold"]["findings"])
-        for version in ("v0", "v1"):
-            runs.append(
-                {
-                    "case_id": case["case_id"],
-                    "contract_version": version,
-                    "valid": True,
-                    "expected_finding_count": expected_count,
-                    "predicted_finding_count": expected_count,
-                    "matched_finding_count": expected_count,
-                    "false_positive_count": 0,
-                    "false_negative_count": 0,
-                    "lens_coverage_count": (
-                        len(SIMPLIFY_PRIMARY_LENS_IDS) if version == "v1" else 1
-                    ),
-                    "lens_required_count": len(SIMPLIFY_PRIMARY_LENS_IDS),
-                    "safe_fix_match": True,
-                    "simplification_match": True,
-                    "tracked_files_modified": False,
-                    "input_tokens": 100,
-                    "output_tokens": 100 if version == "v0" else 120,
-                    "latency_ms": 1000 if version == "v0" else 1100,
-                    "result_digest": f"sha256:{case['case_id']}-{version}",
-                }
-            )
 
     receipt = build_change_quality_shadow_receipt(
         matrix=matrix,
-        runs=runs,
+        declared_matrix=matrix,
+        runs=_passing_runs(matrix),
         model_ref="test-model:medium",
         source_commit="a" * 40,
     )
@@ -270,6 +275,58 @@ def test_receipt_promotes_only_complete_accurate_bounded_v1() -> None:
         "raw_model_responses_persisted": False,
         "stderr_persisted": False,
     }
+
+
+@pytest.mark.parametrize("evaluated_case_count", [1, 8])
+def test_partial_or_stale_matrix_cannot_recommend_strict_promotion(
+    evaluated_case_count: int,
+) -> None:
+    declared_matrix = _matrix()
+    evaluated_matrix = {
+        **declared_matrix,
+        "cases": declared_matrix["cases"][:evaluated_case_count],
+    }
+
+    receipt = build_change_quality_shadow_receipt(
+        matrix=evaluated_matrix,
+        declared_matrix=declared_matrix,
+        runs=_passing_runs(evaluated_matrix),
+        model_ref="test-model:medium",
+        source_commit="c" * 40,
+    )
+
+    assert receipt["case_count"] == evaluated_case_count
+    assert receipt["declared_case_count"] == len(declared_matrix["cases"])
+    assert receipt["matrix_digest"] != receipt["declared_matrix_digest"]
+    assert receipt["acceptance"]["full_declared_matrix_evaluated"] is False
+    assert receipt["strict_receipt_promotion_recommended"] is False
+
+
+def test_duplicate_valid_run_cannot_hide_a_missing_case() -> None:
+    matrix = _matrix()
+    runs = _passing_runs(matrix)
+    missing_case_id = matrix["cases"][-1]["case_id"]
+    runs = [
+        run
+        for run in runs
+        if not (
+            run["case_id"] == missing_case_id and run["contract_version"] == "v1"
+        )
+    ]
+    duplicate = next(run for run in runs if run["contract_version"] == "v1")
+    runs.append(dict(duplicate))
+
+    receipt = build_change_quality_shadow_receipt(
+        matrix=matrix,
+        declared_matrix=matrix,
+        runs=runs,
+        model_ref="test-model:medium",
+        source_commit="d" * 40,
+    )
+
+    assert receipt["arms"]["v1"]["valid_count"] == len(matrix["cases"])
+    assert receipt["acceptance"]["all_v1_runs_valid"] is False
+    assert receipt["strict_receipt_promotion_recommended"] is False
 
 
 def test_receipt_fails_promotion_below_precision_floor() -> None:
@@ -306,6 +363,7 @@ def test_receipt_fails_promotion_below_precision_floor() -> None:
 
     receipt = build_change_quality_shadow_receipt(
         matrix=matrix,
+        declared_matrix=matrix,
         runs=runs,
         model_ref="test-model:medium",
         source_commit="b" * 40,
