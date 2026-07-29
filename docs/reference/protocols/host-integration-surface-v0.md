@@ -80,8 +80,18 @@ LOOPX_SKILLS_DIR=<PROJECT_WORKSPACE>/.agents/skills \
   <LOOPX_CHECKOUT>/scripts/install-local.sh
 ```
 
-The installer owns filesystem mutation. Onboarding and doctor only report the
-required skill ids and require a host loaded-skill readback.
+This is also the supported canary path for an untrusted or dirty checkout.
+With an explicit `LOOPX_SKILLS_DIR`, the script materializes the release-owned
+workflow skills and writes `.loopx-skill-install.json` without promoting the
+checkout as the default `loopx` executable. Without that explicit target, a
+canary-only install leaves the existing default skill root unchanged.
+
+The installer is the sole owner of filesystem mutation. The manifest records
+the materialized skill ids, source revision, and per-skill content digests so
+read-only host checks can verify delivery without becoming a second installer.
+Filesystem materialization is distinct from the host's runtime loaded-skill
+readback; the latter is still required before claiming that the skills were
+injected into an active agent context.
 
 Local-development and cloud transports must send the exact same `task_body` as
 their goal prompt. They may differ in endpoint, authentication, session id, or
