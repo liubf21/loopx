@@ -1126,9 +1126,10 @@ If `should_run=true`, choose the highest-priority in-scope unblocked agent todo.
 Honor claims/leases, blocker-push and recovery obligations. Complete one bounded,
 coherent delivery segment; validate it; write public-safe evidence, critic, and
 next action back to LoopX. A non-trivial completion needs a successor todo or an
-explicit no-follow-up rationale. Spend exactly once after validated writeback:
-`{quota_spend_command}`. Then refresh progress with
-`{progress_refresh_state_command}`.
+explicit no-follow-up rationale. After validated writeback, refresh the
+accountable progress record before spending:
+`{progress_refresh_state_command}`. Then spend exactly once against that refresh:
+`{quota_spend_command}`.
 
 Do not spend for gates, waits, dry runs, failed preflight, no-op inspection, or
 duplicate accounting. Stop for private/company material, credentials, destructive

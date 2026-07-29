@@ -95,7 +95,11 @@ def test_one_shot_host_contract_keeps_goal_closure_with_the_host() -> None:
     assert prompt["host_contract"]["loopx_turn_driver_required"] is False
     assert prompt["host_contract"]["session_state_authoritative"] is False
     assert len(prompt["task_body"]) <= 4_000
-    assert "Spend exactly once after validated writeback" in prompt["task_body"]
+    task_body = prompt["task_body"]
+    normalized = " ".join(task_body.split())
+    assert "refresh the accountable progress record before spending" in normalized
+    assert "Then spend exactly once against that refresh" in normalized
+    assert task_body.index("loopx refresh-state") < task_body.index("quota spend-slot")
 
     assert activation["activation_method"] == "submit_goal_once"
     assert activation["host_mutation"]["prompt_field"] == "task_body"

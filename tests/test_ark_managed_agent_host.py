@@ -45,7 +45,7 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "invoke LoopX Turn" in normalized
     assert "choose the highest-priority in-scope unblocked agent todo" in normalized
     assert "Honor claims/leases, blocker-push and recovery obligations" in normalized
-    assert "Spend exactly once after validated writeback" in normalized
+    assert "refresh the accountable progress record before spending" in normalized
 
 
 def test_goal_prompt_projects_goal_only_host_contract() -> None:
