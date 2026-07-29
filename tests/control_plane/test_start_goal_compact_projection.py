@@ -308,10 +308,51 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
         "codex-cli-tui",
         "claude-code",
         "opencode",
+        "ark-managed-agent",
         "shell",
+        "other-agent",
     ]
     ide = next(choice for choice in choices if choice["host_surface"] == "codex-ide-plugin")
     assert "--host-surface codex-ide-plugin" in ide["rerun_command"]
+
+
+def test_ark_managed_agent_plans_todos_before_one_shot_goal_activation(
+    tmp_path: Path,
+) -> None:
+    project = _write_connected_project(tmp_path)
+    payload = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text=GOAL_TEXT,
+        available_capabilities=["network"],
+    )
+
+    ordered_step_ids = [
+        step["id"] for step in payload["guided_transaction"]["ordered_steps"]
+    ]
+    activation = payload["command_pack"]["host_loop_activation"]
+    inspect_step = payload["guided_transaction"]["ordered_steps"][0]
+
+    assert ordered_step_ids.index("write_ordered_todos") < ordered_step_ids.index(
+        "activate_host_loop"
+    )
+    assert inspect_step["command_source"] == "#/command_pack/canonical_cli_command"
+    inspect_command = payload["command_pack"]["canonical_cli_command"]
+    assert "--host-surface ark-managed-agent" in inspect_command
+    assert "--available-capability network" in inspect_command
+    assert f"--goal-text '{GOAL_TEXT}'" in inspect_command
+    assert "preview the issue-fix route before todo writeback" not in payload["message"]
+    assert activation["agent_type"] == "ark-managed-agent"
+    assert activation["host_surface"] == "ark_managed_agent_goal_mode"
+    assert activation["activation_method"] == "submit_goal_once"
+    assert activation["host_mutation"]["transport_contract"] == "goal_prompt_v0"
+    assert activation["host_mutation"]["prompt_field"] == "task_body"
+    assert "--runtime-profile ark_managed_agent_goal" in (
+        activation["commands"]["heartbeat_prompt"]
+    )
 
 
 def test_codex_ide_plugin_uses_visible_goal_and_preserves_compact_parity(

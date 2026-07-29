@@ -243,7 +243,10 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "--progress-scope agent_lane" in refresh_command
         assert "--health-check" not in refresh_command
         assert "Same-priority items use that write order as the tie-breaker" in str(payload["message"])
-        assert "preview the issue-fix route before todo writeback" in str(payload["message"])
+        assert "preview the issue-fix route:" in str(payload["message"])
+        assert "preview the issue-fix route before todo writeback" not in str(
+            payload["message"]
+        )
         assert "PR lifecycle monitor" in str(payload["message"])
         assert "default top requestable non-author reviewer" in str(payload["message"])
         domain_routes = goal_start["domain_route_hints"]

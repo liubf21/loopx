@@ -23,6 +23,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
     assert normalize_agent_type("Open Code") == "opencode"
     assert agent_type_for_host_surface("opencode") == "opencode"
+    assert agent_type_for_host_surface("ark-managed-agent") == "ark-managed-agent"
 
     packet = build_host_loop_activation_packet(
         agent_type="codex-ide-plugin",

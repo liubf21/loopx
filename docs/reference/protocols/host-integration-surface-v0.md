@@ -76,15 +76,22 @@ The fixed installer is shared with Codex; only its target root changes:
 
 ```bash
 LOOPX_SKILLS_DIR=<PROJECT_WORKSPACE>/.agents/skills \
+  LOOPX_ENTRY_HOST_SURFACE=ark-managed-agent \
   LOOPX_INSTALL_SLASH_COMMANDS=0 \
   <LOOPX_CHECKOUT>/scripts/install-local.sh
 ```
 
 This is also the supported canary path for an untrusted or dirty checkout.
 With an explicit `LOOPX_SKILLS_DIR`, the script materializes the release-owned
-workflow skills and writes `.loopx-skill-install.json` without promoting the
-checkout as the default `loopx` executable. Without that explicit target, a
-canary-only install leaves the existing default skill root unchanged.
+workflow skills, including the generated `$loopx` task-entry skill, and writes
+`.loopx-skill-install.json` without promoting the checkout as the default
+`loopx` executable. The Managed Agent's ordinary task turn starts with
+`$loopx <task>`; that skill writes the business todo before the host submits the
+generated Goal task body exactly once. The controller must not pre-seed that
+business todo. The generated entry skill binds the exact Managed Agent host at
+install time, and its start-goal transaction preserves that host, task text,
+and declared capabilities across bootstrap inspection. Without an explicit
+target, a canary-only install leaves the existing default skill root unchanged.
 
 The installer is the sole owner of filesystem mutation. The manifest records
 the materialized skill ids, source revision, and per-skill content digests so
@@ -104,6 +111,11 @@ runtime owns continuation, host session state is non-authoritative, and the
 LoopX Turn driver is not required. Durable policy remains in current
 `quota should-run.interaction_contract`, active state, todos, vision, and
 writeback.
+
+A dependent work step may begin only after material upstream results have
+crossed the durable boundary: update the current todo evidence and the next
+executable todo with any scope, acceptance, or non-goal delta, then refresh
+state and read back quota. Chat/model summaries are not durable state.
 
 Runtime capabilities discovered after activation do not regenerate the Goal
 prompt. `quota should-run` returns the existing

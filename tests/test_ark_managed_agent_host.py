@@ -5,6 +5,7 @@ from pathlib import Path
 from loopx.agent_onboarding import (
     REQUIRED_HOST_SKILL_IDS,
     _skill_delivery_contract,
+    build_agent_onboarding_packet,
 )
 from loopx.control_plane.testing.canary_harness import (
     run_json_cli,
@@ -45,6 +46,10 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "invoke LoopX Turn" in normalized
     assert "choose the highest-priority in-scope unblocked agent todo" in normalized
     assert "Honor claims/leases, blocker-push and recovery obligations" in normalized
+    assert (
+        "Before dependent work, persist material scope/acceptance/non-goal changes "
+        "in current evidence and the next todo"
+    ) in normalized
     assert "refresh the accountable progress record before spending" in normalized
 
 
@@ -115,8 +120,22 @@ def test_host_requires_host_managed_loopx_skill_delivery() -> None:
     assert contract["preferred_delivery"] == "fixed_install_script"
     assert contract["install_script"] == "scripts/install-local.sh"
     assert contract["skills_dir_env"] == "LOOPX_SKILLS_DIR"
+    assert contract["entry_host_surface_env"] == "LOOPX_ENTRY_HOST_SURFACE"
+    assert contract["entry_host_surface"] == "ark-managed-agent"
     assert contract["target_layout"] == "./.agents/skills"
+    assert contract["generated_skill_ids"] == ["loopx"]
+    assert "skills/loopx" not in contract["source_directories"]
     assert agent_type_uses_host_managed_skills("ark-managed-agent") is True
+
+
+def test_host_onboarding_starts_from_loopx_skill_before_goal_submission() -> None:
+    from loopx.agent_onboarding import _start_instruction
+
+    instruction = _start_instruction("ark-managed-agent")
+
+    assert instruction.startswith("Use `$loopx <task>` as the ordinary task entry")
+    assert "todo writeback" in instruction
+    assert "submit the generated Goal task body exactly once" in instruction
 
 
 def test_doctor_checks_host_readback_instead_of_codex_skill_root() -> None:
@@ -180,6 +199,22 @@ def _write_continuity_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         quota_allowed_slots=None,
     )
     return project, runtime, registry
+
+
+def test_host_onboarding_replays_the_managed_agent_surface(tmp_path: Path) -> None:
+    project, _runtime, _registry = _write_continuity_fixture(tmp_path)
+
+    payload = build_agent_onboarding_packet(
+        project=project,
+        agent_type="ark-managed-agent",
+        goal_id=CONTINUITY_GOAL_ID,
+        agent_id=CONTINUITY_AGENT_ID,
+        task_text="Continue the public qualification.",
+    )
+
+    command = payload["commands"]["bootstrap_command_pack"]
+    assert "--host-surface ark-managed-agent" in command
+    assert "worker-bridge" not in command
 
 
 def _fresh_host_quota_read(

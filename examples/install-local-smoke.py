@@ -309,6 +309,7 @@ def main() -> int:
         assert skill_readback["integration_mode"] == "fixed_install_script"
         assert skill_readback["source"]["revision"] == source_commit
         assert set(skill_readback["materialized_skill_ids"]) == {
+            "loopx",
             "loopx-doc-registry",
             "loopx-pr-review",
             "loopx-project",
@@ -378,6 +379,7 @@ def main() -> int:
         loopx_command_skill = codex_home / "skills" / "loopx" / "SKILL.md"
         loopx_command_skill_text = loopx_command_skill.read_text(encoding="utf-8")
         assert "surface=codex-skills" in loopx_command_skill_text, loopx_command_skill_text
+        assert "`ark-managed-agent` for Ark Managed Agent" in loopx_command_skill_text
         loopx_openai_metadata = loopx_command_skill.parent / "agents" / "openai.yaml"
         loopx_openai_metadata_text = loopx_openai_metadata.read_text(encoding="utf-8")
         assert 'display_name: "LoopX"' in loopx_openai_metadata_text, loopx_openai_metadata_text

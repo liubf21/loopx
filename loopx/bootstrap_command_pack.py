@@ -42,7 +42,9 @@ START_GOAL_HOST_SURFACES = (
     "codex-cli-tui",
     "claude-code",
     "opencode",
+    "ark-managed-agent",
     "shell",
+    "other-agent",
 )
 
 
@@ -208,7 +210,7 @@ def _guided_command_pack_projection(
         "goal_id": command_pack.get("goal_id"),
         "agent_id": command_pack.get("agent_id"),
         "host_surface": command_pack.get("host_surface"),
-        "goal_text": command_pack.get("goal_text"),
+        "canonical_cli_command": command_pack.get("canonical_cli_command"),
         "goal_start_contract": command_pack.get("goal_start_contract"),
         "commands": command_pack.get("commands"),
         "host_loop_activation": command_pack.get("host_loop_activation"),
@@ -252,7 +254,9 @@ def build_start_goal_host_surface_selection_packet(
         "codex-cli-tui": "terminal Codex TUI with visible /goal support",
         "claude-code": "Claude Code with native /loop",
         "opencode": "OpenCode LoopX goal bridge",
+        "ark-managed-agent": "Ark Managed Agent with one-shot Goal submission",
         "shell": "manual shell or an explicitly configured external scheduler",
+        "other-agent": "custom agent host using the returned activation contract",
     }
     choices: list[dict[str, Any]] = []
     for host_surface in START_GOAL_HOST_SURFACES:
@@ -275,7 +279,7 @@ def build_start_goal_host_surface_selection_packet(
         )
     reason = (
         "host surface is required because Codex App automation, Codex App over SSH, "
-        "the Codex IDE plugin, and Codex CLI "
+        "the Codex IDE plugin, Codex CLI, and Ark Managed Agent "
         "have different continuation contracts"
     )
     gate = {
@@ -612,6 +616,7 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "codex-cli": "visible Codex CLI `/goal <task_body>`",
                 "claude-code": "Claude Code native `/loop` after `/loopx <task>` arms LoopX",
                 "opencode": "OpenCode `loopx_goal_activate`",
+                "ark-managed-agent": "one-shot Goal",
                 "manual": "external scheduler or manual quota/status loop",
                 "other-agent": "custom host loop driver using the returned task body and quota guard",
             },
@@ -686,12 +691,12 @@ Goal id: {goal_id}.{agent_clause}
 
 Planning rules:
 1. Choose the planning profile: broad or fuzzy product direction uses 2-5 public-safe todos; clear bounded problems use a planner-sized ordered todo plan with enough steps to make the approach explicit.
-2. Plan before any `loopx todo add`; keep each item concise and avoid management-only filler.
+2. Before substantive work, plan then write concise todos; avoid management-only filler.
 3. Every new todo starts with `[P0]`, `[P1]`, or `[P2]`; include at least one `[P0]` unless the first useful step is blocked by a user gate.
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, OpenCode bridge, or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
-7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; it should try the formal request first and, only on confirmed permission denial, post one reviewer-tagging fallback comment. Do not mark notification complete until the request or fallback comment is visible on the PR. Then call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json`; use `grouped_monitor_projection` for one monitor per nonempty state bucket. Never create one monitor per PR. Keep PR actions one-shot and messages at one PR per message.
+7. If the goal is a GitHub issue/PR fix, preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; keep only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; it should try the formal request first and, only on confirmed permission denial, post one reviewer-tagging fallback comment. Do not mark notification complete until the request or fallback comment is visible on the PR. Then call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json`; use `grouped_monitor_projection` for one monitor per nonempty state bucket. Never create one monitor per PR. Keep PR actions one-shot and messages at one PR per message.
 """
 
 
@@ -836,6 +841,13 @@ def build_loopx_bootstrap_command_pack(
             + (
                 f" --agent-id {shell_arg(str(selected_agent_id))}"
                 if selected_agent_id
+                else ""
+            )
+            + f" --host-surface {shell_arg(host_surface)}"
+            + render_available_capability_args(available_capabilities)
+            + (
+                f" --goal-text {shell_arg(normalized_goal_text)}"
+                if normalized_goal_text
                 else ""
             )
         ),
@@ -1230,12 +1242,11 @@ def build_start_goal_guided_packet(
         "mode": "dry_run_preview",
         "writes_now": False,
         "spends_quota_now": False,
-        "goal_text": command_pack.get("goal_text"),
         "ordered_steps": [
             {
                 "id": "inspect_connection",
                 "kind": "read_only",
-                "command": command_pack.get("canonical_cli_command"),
+                "command_source": "#/command_pack/canonical_cli_command",
                 "purpose": "resolve canonical project, goal id, registry, and active state before any mutation",
             },
             {
@@ -1530,7 +1541,7 @@ Then plan before writing todos. Preserve relative priority by write order:
 
 Write the planned todos with `loopx todo add` in the exact planned order. Same-priority items use that write order as the tie-breaker.
 
-For GitHub issue/PR fix goals, preview the issue-fix route before todo writeback:
+For GitHub issue/PR fix goals, preview the issue-fix route:
 
 ```bash
 {commands.get("issue_fix_workflow_plan_template", "")}
@@ -1606,7 +1617,6 @@ Only after I ask for a recurring loop surface, generate the heartbeat body:
 
 Project: `{project}`
 Goal id: `{goal_id}`
-Goal text: `{goal_text or ""}`
 Detected state: `{state}` ({reason})
 {alias_note}
 

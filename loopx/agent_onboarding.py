@@ -25,6 +25,7 @@ from .registry import read_json, registry_goals
 SCHEMA_VERSION = "loopx_agent_onboarding_v0"
 HOST_SKILL_DELIVERY_SCHEMA_VERSION = "loopx_host_skill_delivery_v0"
 REQUIRED_HOST_SKILL_IDS = [
+    "loopx",
     "loopx-project",
     "loopx-pr-review",
     "loopx-doc-registry",
@@ -161,6 +162,8 @@ def _skill_delivery_contract(
                 "preferred_delivery": "fixed_install_script",
                 "install_script": "scripts/install-local.sh",
                 "skills_dir_env": "LOOPX_SKILLS_DIR",
+                "entry_host_surface_env": "LOOPX_ENTRY_HOST_SURFACE",
+                "entry_host_surface": "ark-managed-agent",
                 "target_layout": f"{project}/.agents/skills",
             }
             if ark_managed_agent
@@ -168,8 +171,11 @@ def _skill_delivery_contract(
         ),
         "source_repository": "https://github.com/huangruiteng/loopx",
         "source_directories": [
-            f"skills/{skill_id}" for skill_id in required_skill_ids
+            f"skills/{skill_id}"
+            for skill_id in required_skill_ids
+            if skill_id != "loopx"
         ],
+        "generated_skill_ids": ["loopx"],
         "source_contract": (
             "Use the same LoopX release or repository revision as the CLI when "
             "materializing skills or injecting equivalent SKILL.md instructions "
@@ -208,8 +214,9 @@ def _bootstrap_pack_command(
         "codex-cli": "codex-cli-tui",
         "claude-code": "claude-code",
         "opencode": "opencode",
+        "ark-managed-agent": "ark-managed-agent",
         "manual": "shell",
-        "other-agent": "worker-bridge",
+        "other-agent": "other-agent",
     }
     parts = [
         shell_arg(cli_bin),
@@ -219,7 +226,7 @@ def _bootstrap_pack_command(
         "--goal-id",
         shell_arg(goal_id),
         "--host-surface",
-        shell_arg(surface_by_type.get(agent_type, "worker-bridge")),
+        shell_arg(surface_by_type[agent_type]),
     ]
     if agent_id:
         parts.extend(["--agent-id", shell_arg(agent_id)])
@@ -243,6 +250,11 @@ def _start_instruction(agent_type: str) -> str:
         return "Run `/loopx <task>` to arm LoopX, then run native `/loop`."
     if agent_type == "opencode":
         return "Run `/loopx <task>`; after todo writeback, call `loopx_goal_activate` with the generated heartbeat task body."
+    if agent_type == "ark-managed-agent":
+        return (
+            "Use `$loopx <task>` as the ordinary task entry; after its todo "
+            "writeback, submit the generated Goal task body exactly once."
+        )
     if agent_type == "manual":
         return "Use the CLI packet and wire an external scheduler, or run quota/status/todo commands manually."
     return (
