@@ -719,7 +719,7 @@ def main() -> int:
         assert "follow `interaction_contract`" in payload["task_body"], payload
         assert "`LOOPX_TURN=<current_time_iso>`; reuse." in payload["task_body"], payload
         assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
-        assert "spend post-writeback" in payload["task_body"], payload
+        assert "accountable refresh->spend" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload
 
         canary_cli = subprocess.run(
@@ -747,8 +747,14 @@ def main() -> int:
         assert "loopx-canary doctor" in canary_payload["cli_preflight"], canary_payload
         assert "loopx-canary --format json" in canary_payload["quota_guard_command"], canary_payload
         assert "loopx-canary heartbeat-prompt --compact" in canary_payload["task_body"], canary_payload
-        assert "refresh with explicit delivery" in canary_payload["task_body"], canary_payload
-        assert "scale/outcome for progress artifacts" in canary_payload["task_body"], canary_payload
+        canary_task_body = canary_payload["task_body"]
+        progress_command = canary_payload["progress_refresh_state_command"]
+        spend_command = canary_payload["quota_spend_command"]
+        assert progress_command in canary_task_body, canary_payload
+        assert spend_command in canary_task_body, canary_payload
+        assert canary_task_body.index(progress_command) < canary_task_body.index(
+            spend_command
+        ), canary_payload
 
         fresh_install = run_install(env, "install-smoke-fresh")
         assert "loopx installed locally" in fresh_install.stdout, fresh_install.stdout

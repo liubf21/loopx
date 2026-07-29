@@ -189,6 +189,17 @@ def main() -> int:
     assert payload["resolved_active_state"] == str(ACTIVE_STATE), payload
     assert compact_payload["quota_guard_command"] == payload["quota_guard_command"], compact_payload
     assert compact_payload["quota_spend_command"] == payload["quota_spend_command"], compact_payload
+    for prompt_label, prompt_payload in (
+        ("full", payload),
+        ("compact", compact_payload),
+        ("brief", brief_payload),
+    ):
+        task_body = str(prompt_payload["task_body"])
+        progress_refresh = str(prompt_payload["progress_refresh_state_command"])
+        quota_spend = str(prompt_payload["quota_spend_command"])
+        state_only_refresh = str(prompt_payload["refresh_state_command"])
+        assert task_body.index(progress_refresh) < task_body.index(quota_spend), prompt_label
+        assert task_body.index(quota_spend) < task_body.rindex(state_only_refresh), prompt_label
     assert len(str(compact_payload["task_body"])) < len(str(payload["task_body"])) * 0.47, (
         len(str(compact_payload["task_body"])),
         len(str(payload["task_body"])),
@@ -227,7 +238,8 @@ def main() -> int:
         "loopx todo add --goal-id public-heartbeat-goal --role user --task-class user_gate|user_action",
         "owner todos and `--role agent` for agent todos, not prose",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
-        "progress: `loopx refresh-state --goal-id public-heartbeat-goal",
+        "Accountable refresh, then spend",
+        "Optional state-only post-spend",
         "No spend for quiet skips",
     ):
         assert phrase in compact_task, phrase
@@ -323,7 +335,7 @@ def main() -> int:
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
-        "spend post-writeback",
+        "writeback: accountable refresh->spend; optional state-only after",
         "guard receipt; 2 stalls->replan",
         "`lark_event_inbox`: reply_due",
         "drain_command/reply-readback/ACK",
@@ -389,7 +401,8 @@ def main() -> int:
         "goal_boundary",
         "bounded segment/batch",
         "validate/writeback/todos",
-        "explicit delivery scale/outcome for progress artifacts",
+        "Progress refresh",
+        "Optional state-only post-spend",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "No spend for quiet skips",
     ):
@@ -419,7 +432,7 @@ def main() -> int:
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
-        "Batch/no-op; spend post-writeback",
+        "writeback: accountable refresh->spend; optional state-only after",
         "guard receipt; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
         "monitor quiet/no-spend",
@@ -662,7 +675,7 @@ def main() -> int:
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
         "--delivery-batch-scale multi_surface",
         "--delivery-outcome outcome_progress",
-        "readiness does not infer from classification names",
+        "Spend consumes this causal record",
         "Do not append spend for quiet `should_run=false` skips",
         "safe_bypass_kind=outcome_floor_recovery",
         "ranker/cross-domain evidence artifact",
@@ -708,8 +721,9 @@ def main() -> int:
             "Choose one bounded, verifiable progress segment from that audit",
             "Public-safe repo publication is not an operator gate by itself",
             "Run the smallest useful validation",
-            'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
             "loopx refresh-state --goal-id <GOAL_ID>",
+            'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
+            "If the dashboard or controller needs a state-only update after spend",
             "Return a compact final report",
         ),
     )
