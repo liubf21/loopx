@@ -48,19 +48,12 @@ _EXISTING_DECISION_DEBT_REASON = (
     "Existing multi-branch control-plane decision owner predates the ratchet."
 )
 _OVERSIZED_DECISION_RETIREMENT_PLANS = {
-    "loopx.status:compact_benchmark_run": (
-        "Move benchmark run compaction into bounded runtime read-model modules."
-    ),
     "loopx.quota:build_quota_should_run": (
         "Continue decomposing the public quota facade into bounded decision stages."
     ),
 }
 
 _OVERSIZED_DECISION_METRIC_CEILINGS = {
-    "loopx.status:compact_benchmark_run": {
-        "statements": 116,
-        "decision_points": 40,
-    },
     "loopx.quota:build_quota_should_run": {
         "statements": 366,
         "decision_points": 264,
