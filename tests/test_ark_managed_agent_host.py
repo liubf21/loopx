@@ -6,12 +6,21 @@ from loopx.agent_onboarding import (
     REQUIRED_HOST_SKILL_IDS,
     _skill_delivery_contract,
 )
+from loopx.control_plane.testing.canary_harness import (
+    run_json_cli,
+    write_fixture_registry,
+)
 from loopx.doctor import collect_doctor
 from loopx.heartbeat_prompt import build_heartbeat_prompt
 from loopx.host_loop_activation import (
     agent_type_uses_host_managed_skills,
     build_host_loop_activation_packet,
 )
+
+
+CONTINUITY_GOAL_ID = "managed-agent-continuity-fixture"
+CONTINUITY_AGENT_ID = "managed-agent"
+CONTINUITY_TODO_ID = "todo_aaaaaaaaaaaa"
 
 
 def _goal_prompt() -> dict:
@@ -102,3 +111,132 @@ def test_doctor_checks_host_readback_instead_of_codex_skill_root() -> None:
     }
     assert skill_checks
     assert all(item["applicable"] is False for item in skill_checks.values())
+
+
+def _write_continuity_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
+    project = tmp_path / "project"
+    runtime = tmp_path / "runtime"
+    state = (
+        project
+        / ".codex"
+        / "goals"
+        / CONTINUITY_GOAL_ID
+        / "ACTIVE_GOAL_STATE.md"
+    )
+    state.parent.mkdir(parents=True)
+    state.write_text(
+        "\n".join(
+            [
+                "---",
+                "status: active",
+                "updated_at: 2026-07-29T00:00:00+00:00",
+                "---",
+                "",
+                "# Managed Agent continuity fixture",
+                "",
+                "## Agent Todo",
+                "",
+                "- [ ] [P0] Continue the public continuity qualification.",
+                (
+                    "  <!-- loopx:todo "
+                    f"todo_id={CONTINUITY_TODO_ID} "
+                    "status=open task_class=advancement_task "
+                    "action_kind=qualification "
+                    f"claimed_by={CONTINUITY_AGENT_ID} priority=P0 -->"
+                ),
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = project / ".loopx" / "registry.json"
+    write_fixture_registry(
+        project=project,
+        runtime_root=runtime,
+        registry_path=registry,
+        goal_id=CONTINUITY_GOAL_ID,
+        domain="managed-agent-continuity",
+        adapter_kind="harness_self_improvement",
+        registered_agents=[CONTINUITY_AGENT_ID],
+        quota_allowed_slots=None,
+    )
+    return project, runtime, registry
+
+
+def _fresh_host_quota_read(
+    *,
+    project: Path,
+    runtime: Path,
+    registry: Path,
+) -> dict:
+    return run_json_cli(
+        "quota",
+        "should-run",
+        "--goal-id",
+        CONTINUITY_GOAL_ID,
+        "--agent-id",
+        CONTINUITY_AGENT_ID,
+        "--runtime-profile",
+        "ark_managed_agent_goal",
+        "--scan-root",
+        str(project),
+        registry_path=registry,
+        runtime_root=runtime,
+    )
+
+
+def test_fresh_host_reconstructs_frontier_from_durable_loopx_state(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_continuity_fixture(tmp_path)
+
+    first_host = _fresh_host_quota_read(
+        project=project,
+        runtime=runtime,
+        registry=registry,
+    )
+    assert first_host["should_run"] is True
+    assert first_host["selected_todo"]["todo_id"] == CONTINUITY_TODO_ID
+
+    run_json_cli(
+        "todo",
+        "update",
+        "--goal-id",
+        CONTINUITY_GOAL_ID,
+        "--todo-id",
+        CONTINUITY_TODO_ID,
+        "--agent-id",
+        CONTINUITY_AGENT_ID,
+        "--note",
+        "phase A validated; resume from the durable frontier",
+        registry_path=registry,
+        runtime_root=runtime,
+    )
+
+    # run_json_cli launches a fresh Python process for each read. This models a
+    # replacement host session: only the shared registry/runtime/state paths
+    # survive, while no in-memory host object or opaque session handle does.
+    replacement_host = _fresh_host_quota_read(
+        project=project,
+        runtime=runtime,
+        registry=registry,
+    )
+    todo_readback = run_json_cli(
+        "todo",
+        "list",
+        "--goal-id",
+        CONTINUITY_GOAL_ID,
+        "--agent-id",
+        CONTINUITY_AGENT_ID,
+        registry_path=registry,
+        runtime_root=runtime,
+    )
+
+    assert replacement_host["should_run"] is True
+    assert replacement_host["selected_todo"]["todo_id"] == CONTINUITY_TODO_ID
+    selected = next(
+        item
+        for item in todo_readback["agent_todos"]["items"]
+        if item["todo_id"] == CONTINUITY_TODO_ID
+    )
+    assert selected["note"] == "phase A validated; resume from the durable frontier"

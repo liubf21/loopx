@@ -110,6 +110,12 @@ validated patch proves the worker path, while Goal satisfaction must be read
 from the host separately. See
 [`ark-managed-agent-issue-fix-qualification-v0`](ark-managed-agent-issue-fix-qualification-v0.md).
 
+Pause, replacement-session, and ambiguous-failure qualification is defined in
+[`ark-managed-agent-goal-continuity-qualification-v0`](ark-managed-agent-goal-continuity-qualification-v0.md).
+In particular, a surviving session id or a present Goal journal is not enough
+to claim recovery; the replacement host must reconstruct the LoopX frontier
+and the Goal runtime must prove journal rehydration without duplicate effects.
+
 ## Lifecycle Reads
 
 Host integrations should expose read methods that map directly to CLI reads:
