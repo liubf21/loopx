@@ -55,8 +55,8 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
 
 _OVERSIZED_DECISION_METRIC_CEILINGS = {
     "loopx.quota:build_quota_should_run": {
-        "statements": 366,
-        "decision_points": 264,
+        "statements": 329,
+        "decision_points": 241,
     },
 }
 
