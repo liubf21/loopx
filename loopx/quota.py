@@ -48,7 +48,6 @@ from .control_plane.quota.heartbeat_recommendation import (
     HEARTBEAT_HANDOFF_READINESS_COMPACT_FIELDS as HANDOFF_READINESS_COMPACT_FIELDS,
     HEARTBEAT_POST_HANDOFF_RUN_COMPACT_FIELDS as POST_HANDOFF_RUN_COMPACT_FIELDS,
     build_heartbeat_recommendation,
-    open_todo_notify_reason,
     refine_heartbeat_recommendation,
 )
 from .control_plane.quota.projection_repair import (
@@ -175,10 +174,8 @@ from .control_plane.todos.quota_summary import (
 )
 from .control_plane.todos.user_gate import (
     build_gate_prompt as _build_gate_prompt,
-    has_open_user_gate_todo as _has_open_user_gate_todo,
+    build_user_todo_notification as _build_user_todo_notification,
     open_todo_count as _open_todo_count,
-    should_notify_user_on_open_todo as _should_notify_user_on_open_todo,
-    user_gate_todo_notify_reason as _user_gate_todo_notify_reason,
 )
 from .control_plane.todos.write_hint import build_todo_write_hint
 
@@ -2061,32 +2058,18 @@ def build_quota_should_run(
             payload["missing_gates"] = item.get("missing_gates")
         if user_todo_summary:
             payload["user_todo_summary"] = compact_quota_todo_summary_for_payload(user_todo_summary)
-            repeat_open_todo_notification = (
-                heartbeat_recommendation.get("repeat_notification_required") is True
-            )
-            user_gate_todo_open = _has_open_user_gate_todo(user_todo_summary)
-            if user_gate_todo_open:
-                payload["notify_user_on_gate"] = True
-                payload["open_todo_notify_reason"] = _user_gate_todo_notify_reason(
-                    user_todo_summary
-                )
-                payload["open_todo_notification_policy"] = "repeat_until_resolved"
-            elif _should_notify_user_on_open_todo(
-                state=state,
-                waiting_on=str(item.get("waiting_on") or ""),
-                user_todo_summary=user_todo_summary,
-            ) or repeat_open_todo_notification:
-                payload["notify_user_on_open_todo"] = True
-                payload["open_todo_notify_reason"] = open_todo_notify_reason(
+            payload.update(
+                _build_user_todo_notification(
+                    user_todo_summary,
                     state=state,
                     waiting_on=str(item.get("waiting_on") or ""),
+                    repeat_notification_required=(
+                        heartbeat_recommendation.get("repeat_notification_required")
+                        is True
+                    ),
+                    repeat_notification_reason=heartbeat_recommendation.get("reason"),
                 )
-                if repeat_open_todo_notification:
-                    payload["open_todo_notify_reason"] = (
-                        heartbeat_recommendation.get("reason")
-                        or "no-work polling should ask the current open user todo"
-                    )
-                    payload["open_todo_notification_policy"] = "repeat_until_resolved"
+            )
         if scoped_user_gate_fallback and not replan_decision_allowed:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True

@@ -14,7 +14,10 @@ from ..work_items.work_lane_context import (
     build_work_lane_context_contract,
     latest_run_progress_scope,
 )
-from ..todos.user_gate import open_todo_count as _open_todo_count
+from ..todos.user_gate import (
+    open_todo_count as _open_todo_count,
+    open_todo_notify_reason,
+)
 
 
 HEARTBEAT_READ_ONLY_MAP_ADAPTER_SUFFIX = "_read_only_map_v0"
@@ -40,16 +43,6 @@ HEARTBEAT_POST_HANDOFF_RUN_COMPACT_FIELDS = (
     "json_exists",
     "markdown_exists",
 )
-
-
-def open_todo_notify_reason(*, state: str, waiting_on: str) -> str:
-    if state == "focus_wait":
-        return "open user todo can unblock focus_wait after owner evidence, external eval, or a clean baseline changes"
-    if waiting_on == "external_evidence":
-        return "open user todo can provide or defer the external-evidence checkpoint"
-    if waiting_on in {"user_or_controller", "controller"}:
-        return "open user todo can resolve the user/controller blocker"
-    return "open user todo can resolve the current waiting lane"
 
 
 def _supports_read_only_project_map(adapter_kind: Any) -> bool:
