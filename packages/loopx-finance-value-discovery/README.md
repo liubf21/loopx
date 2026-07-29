@@ -27,6 +27,17 @@ harness binds the contract, input, and result with canonical SHA-256 receipts.
 Passing every gate means only that a case is eligible for a bounded research
 successor; it cannot promote a revision, advise, or trade.
 
+Two P1 overlays reuse that contract without weakening it:
+
+- `finance_beta_attribution_input_v1` decomposes a frozen total move into
+  market, rate, sector, narrow-peer, cycle, event, and computed residual
+  layers. If any explained component is missing or conflicting, the residual
+  is not computed.
+- `finance_metric_pack_input_v1` selects a bundled industry metric vocabulary.
+  Packs define required metric ids, value types, and allowed comparison
+  directions. They do not contain thresholds or evaluate provider-declared
+  pass/fail states.
+
 The packet enforces:
 
 - a cross-sectional screen before a named candidate is selected;
@@ -110,6 +121,19 @@ loopx extension run loopx-finance-value-discovery \
   --format json
 ```
 
+Layered attribution and industry packs use the same managed entrypoint:
+
+```bash
+loopx extension run loopx-finance-value-discovery \
+  --input-json packages/loopx-finance-value-discovery/examples/beta-attribution-v1.json \
+  --execute \
+  --format json
+loopx extension run loopx-finance-value-discovery \
+  --input-json packages/loopx-finance-value-discovery/examples/software-metric-pack-v1.json \
+  --execute \
+  --format json
+```
+
 Developers can inspect or replay a frozen evaluation directly:
 
 ```bash
@@ -118,6 +142,11 @@ loopx-finance-value-discovery evaluate \
 loopx-finance-value-discovery replay \
   --input-json packages/loopx-finance-value-discovery/examples/finance-case-gates-v1.json \
   --expected-json evaluation.json
+loopx-finance-value-discovery list-packs
+loopx-finance-value-discovery attribute-beta \
+  --input-json packages/loopx-finance-value-discovery/examples/beta-attribution-v1.json
+loopx-finance-value-discovery evaluate-pack \
+  --input-json packages/loopx-finance-value-discovery/examples/software-metric-pack-v1.json
 ```
 
 The manifest declares no permissions: this workflow is a deterministic reducer

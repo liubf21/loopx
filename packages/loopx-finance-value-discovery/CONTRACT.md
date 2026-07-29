@@ -22,6 +22,21 @@ all must use the same typed comparisons and transition rules. Boolean and
 string gates support equality. Numeric gates support equality and ordered
 comparisons. Providers cannot declare their own pass or fail result.
 
+## Attribution And Industry Overlays
+
+Layered beta attribution is deterministic arithmetic over caller-supplied,
+point-in-time observations. The explained order is frozen as market, rate,
+sector, narrow peer, cycle, and event. Residual is computed as total move minus
+all six explained components only when every component is observed. Attribution
+does not estimate a factor, select a source, or execute a gate.
+
+Industry metric packs are semantic overlays on the same case contract. A pack
+may require metric ids, value types, and allowed operator directions. It cannot
+provide a threshold, reorder common source or cutoff gates, reinterpret missing
+or conflicting evidence, or alter promotion authority. Thresholds remain
+inside the frozen case contract, and observations still pass through the common
+gate engine.
+
 ## Gate States
 
 | Result state | Meaning | Disposition |
