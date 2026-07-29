@@ -325,6 +325,8 @@ def _base_result(
         "environment_ready_hook_requested": False,
         "environment_ready_hook_invoked": False,
         "environment_ready_hook_status": "not_requested",
+        "agent_install_canary_requested": False,
+        "agent_install_canary_status": "not_requested",
         "agent_install_invoked": False,
         "agent_execution_invoked": False,
         "verifier_invoked": False,
@@ -382,8 +384,9 @@ async def run_setup_only_public_preflight(
     cleanup_timeout_sec: float = 30.0,
     progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
     environment_ready_hook: Callable[[Any], Awaitable[None]] | None = None,
+    agent_install_canary: bool = False,
 ) -> dict[str, Any]:
-    """Materialize a BenchFlow environment without installing or running an agent."""
+    """Materialize a BenchFlow environment and optionally canary agent install."""
 
     result = _base_result(
         task_staging=task_staging,
@@ -397,6 +400,9 @@ async def run_setup_only_public_preflight(
     if environment_ready_hook is not None:
         result["environment_ready_hook_requested"] = True
         result["environment_ready_hook_status"] = "pending"
+    if agent_install_canary:
+        result["agent_install_canary_requested"] = True
+        result["agent_install_canary_status"] = "pending"
     _emit_progress(progress_callback, result)
     try:
         rollout = await asyncio.wait_for(
@@ -434,13 +440,29 @@ async def run_setup_only_public_preflight(
                 timeout=stage_timeout_sec,
             )
             result["environment_ready_hook_status"] = "passed"
+        if agent_install_canary:
+            result["stage"] = "agent_install_canary"
+            result["agent_install_invoked"] = True
+            result["agent_install_canary_status"] = "running"
+            _emit_progress(progress_callback, result)
+            await asyncio.wait_for(
+                rollout.install_agent(),
+                timeout=stage_timeout_sec,
+            )
+            result["agent_install_canary_status"] = "passed"
         result["status"] = "passed"
-        result["stage"] = "environment_ready_before_agent"
+        result["stage"] = (
+            "agent_install_ready_before_execution"
+            if agent_install_canary
+            else "environment_ready_before_agent"
+        )
         result["exit_category"] = "passed"
     except Exception as exc:
         failed = True
         if result["environment_ready_hook_status"] == "running":
             result["environment_ready_hook_status"] = "failed"
+        if result["agent_install_canary_status"] == "running":
+            result["agent_install_canary_status"] = "failed"
         if rollout is not None:
             result["job_root_materialized"] = (
                 getattr(rollout, "_rollout_dir", None) is not None

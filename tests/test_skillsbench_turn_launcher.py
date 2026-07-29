@@ -941,6 +941,7 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
 ) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT"] = "1"
+    env["SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY"] = "1"
     env["SKILLSBENCH_APPEND_HISTORY"] = "1"
 
     proc = subprocess.run(
@@ -957,7 +958,32 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
     assert "exact_host_codex_sandbox_preflight=not_required" in proc.stdout
     assert "--public-artifact-sync-interval-sec 30" in proc.stdout
     assert "--setup-only-public-preflight" in proc.stdout
+    assert "--setup-only-agent-install-canary" in proc.stdout
+    assert "setup_only_agent_install_canary=1" in proc.stdout
     assert "--append-history" not in proc.stdout
+
+
+def test_launcher_rejects_agent_install_canary_without_setup_only(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY"] = "1"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-canary"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY requires "
+        "SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT=1"
+    ) in proc.stderr
 
 
 def test_formal_launcher_enables_incremental_public_artifact_sync(

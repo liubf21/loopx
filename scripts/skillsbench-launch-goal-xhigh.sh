@@ -88,6 +88,10 @@ Optional env:
                                        Set to 1 to stop after real job-root and
                                        environment materialization, before any
                                        agent or verifier lifecycle
+  SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY
+                                       With setup-only preflight, set to 1 to
+                                       exercise agent install and stop before
+                                       agent execution or verification
   SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY
                                        Optional product-mode intermediate
                                        verifier policy: every-round or
@@ -274,6 +278,7 @@ skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
+setup_only_agent_install_canary="${SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 benchmark_egress_no_proxy="${SKILLSBENCH_BENCHMARK_EGRESS_NO_PROXY:-}"
 docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-}"
@@ -325,6 +330,13 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+validate_bool_toggle \
+  SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY "$setup_only_agent_install_canary"
+if [[ "$setup_only_agent_install_canary" == "1" ]] &&
+  [[ "$setup_only_public_preflight" != "1" ]]; then
+  echo "SKILLSBENCH_SETUP_ONLY_AGENT_INSTALL_CANARY requires SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT=1" >&2
+  exit 2
+fi
 validate_bool_toggle \
   SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL "$local_codex_split_control"
 if [[ "$local_codex_split_control" == "1" ]] &&
@@ -689,6 +701,9 @@ fi
 if [[ "$setup_only_public_preflight" == "1" ]]; then
   extra_runner_args+=(--setup-only-public-preflight)
 fi
+if [[ "$setup_only_agent_install_canary" == "1" ]]; then
+  extra_runner_args+=(--setup-only-agent-install-canary)
+fi
 if [[ -n "$benchmark_egress_no_proxy" ]]; then
   extra_runner_args+=(
     --benchmark-egress-no-proxy "$benchmark_egress_no_proxy"
@@ -942,6 +957,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
+  printf 'setup_only_agent_install_canary=%s\n' \
+    "$setup_only_agent_install_canary"
   printf 'public_artifact_sync_interval_sec=%s\n' \
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
@@ -1073,6 +1090,7 @@ local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 setup_only_public_preflight=${setup_only_public_preflight}
+setup_only_agent_install_canary=${setup_only_agent_install_canary}
 exact_host_codex_sandbox_preflight=${exact_host_codex_sandbox_preflight}
 exact_host_codex_sandbox_preflight_timeout_sec=${exact_host_codex_sandbox_preflight_timeout}
 public_artifact_sync_interval_sec=${public_artifact_sync_interval}

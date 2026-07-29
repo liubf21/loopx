@@ -62,6 +62,11 @@ class FakeRollout:
         if self.failure_stage == "environment_start" and self.failure is not None:
             raise self.failure
 
+    async def install_agent(self) -> None:
+        self.events.append("install_agent")
+        if self.failure_stage == "agent_install" and self.failure is not None:
+            raise self.failure
+
     async def cleanup(self) -> None:
         self.events.append("cleanup")
         if self.failure_stage == "cleanup" and self.failure is not None:
@@ -216,6 +221,54 @@ def test_setup_only_preflight_cleans_up_after_environment_hook_failure() -> None
     assert "private callback detail" not in json.dumps(result, sort_keys=True)
 
 
+def test_setup_only_preflight_canaries_agent_install_without_execution() -> None:
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+            agent_install_canary=True,
+        )
+    )
+
+    assert result["status"] == "passed"
+    assert result["stage"] == "agent_install_ready_before_execution"
+    assert result["agent_install_canary_requested"] is True
+    assert result["agent_install_canary_status"] == "passed"
+    assert result["agent_install_invoked"] is True
+    assert result["agent_execution_invoked"] is False
+    assert result["verifier_invoked"] is False
+    assert FakeRollout.events == [
+        "create",
+        "setup",
+        "start",
+        "install_agent",
+        "cleanup",
+    ]
+
+
+def test_setup_only_preflight_classifies_agent_install_canary_failure() -> None:
+    FakeRollout.failure_stage = "agent_install"
+    FakeRollout.failure = RuntimeError("private provider install detail")
+
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+            agent_install_canary=True,
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert result["failure_stage"] == "agent_install_canary"
+    assert result["agent_install_canary_status"] == "failed"
+    assert result["cleanup_status"] == "completed"
+    assert result["agent_execution_invoked"] is False
+    assert result["verifier_invoked"] is False
+    assert "private provider install detail" not in json.dumps(result, sort_keys=True)
+
+
 def test_formal_run_lifecycle_receipt_projects_live_worker_without_private_logs(
     tmp_path: Path,
 ) -> None:
@@ -340,6 +393,35 @@ def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     assert plan["setup_only_public_preflight_json"].endswith(
         "setup_only_preflight.public.json"
     )
+
+
+def test_setup_only_agent_install_canary_is_publicly_projected() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--route",
+            "loopx-goal-start-product-mode",
+            "--setup-only-public-preflight",
+            "--setup-only-agent-install-canary",
+        ]
+    )
+
+    plan = build_plan(args)
+    assert args.setup_only_agent_install_canary is True
+    assert plan["setup_only_agent_install_canary"] is True
+    assert _public_runner_config(plan)["setup_only_agent_install_canary"] is True
+
+
+def test_setup_only_agent_install_canary_requires_setup_only_mode() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--task-id",
+                "flink-query",
+                "--setup-only-agent-install-canary",
+            ]
+        )
 
 
 def test_primary_pip_index_mode_is_publicly_attributable() -> None:

@@ -2793,6 +2793,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_launch_status",
         "host_local_acp_install_stage",
         "host_local_acp_install_failed_stage",
+        "host_local_acp_install_failure_exception_type",
         "codex_acp_runtime_launch_preflight_stage",
         "codex_acp_runtime_launch_preflight_status",
         "benchflow_agent_runtime_layer_status",
@@ -4768,6 +4769,19 @@ def _runner_prerequisite_failure_attribution(
             label = f"{label}_{category}"
         return label, label, [label, "skillsbench_runner_setup_error"]
 
+    if value.get("host_local_acp_launch_status") == "sandbox_install_failed":
+        label = "skillsbench_host_local_acp_sandbox_install_failed"
+        labels = [label]
+        failed_stage = re.sub(
+            r"[^a-z0-9]+",
+            "_",
+            str(value.get("host_local_acp_install_failed_stage") or "").lower(),
+        ).strip("_")
+        if failed_stage:
+            labels.append(f"{label}_{failed_stage[:80]}")
+        labels.append("skillsbench_runner_setup_error")
+        return label, label, labels
+
     if (
         value.get("remote_command_file_bridge_agent_operation_trace_required") is True
         and not orchestrated_driver_counts_as_product_mode
@@ -4856,10 +4870,6 @@ def _runner_prerequisite_failure_attribution(
                 "skillsbench_runner_setup_error",
             ],
         )
-
-    if value.get("host_local_acp_launch_status") == "sandbox_install_failed":
-        label = "skillsbench_host_local_acp_sandbox_install_failed"
-        return label, label, [label, "skillsbench_runner_setup_error"]
 
     if value.get("host_local_acp_launch_status") == "installing_sandbox":
         label = "skillsbench_host_local_acp_sandbox_install_incomplete"
@@ -9224,6 +9234,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "setup_only_public_preflight": bool(
             getattr(args, "setup_only_public_preflight", False)
         ),
+        "setup_only_agent_install_canary": bool(
+            getattr(args, "setup_only_agent_install_canary", False)
+        ),
         "setup_only_stage_timeout_sec": (
             _effective_setup_only_stage_timeout_sec(args)
         ),
@@ -9780,6 +9793,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "verifier_bootstrap_fail_fast_defaulted",
         "bootstrap_light_fail_fast_defaulted",
         "setup_only_public_preflight",
+        "setup_only_agent_install_canary",
         "global_ledger_sync_enabled",
         "ledger_inherit_enabled",
     ):
@@ -15080,10 +15094,13 @@ async def run_benchflow_case(
                         "host_local_acp_after_sandbox_install"
                     )
                 await seed_product_mode_case_state(self._env)
-        except Exception:
+        except Exception as exc:
             prerequisites["host_local_acp_install_failed_stage"] = str(
                 prerequisites.get("host_local_acp_install_stage") or "unknown"
             )
+            prerequisites["host_local_acp_install_failure_exception_type"] = type(
+                exc
+            ).__name__
             _write_public_runner_lifecycle_receipt(
                 plan,
                 worker_status="sandbox_install_failed",
@@ -15417,6 +15434,9 @@ async def run_benchflow_case(
                     run_host_local_acp_codex_exec_preflight_after_environment
                     if _host_local_acp_codex_exec_preflight_should_run(args)
                     else None
+                ),
+                agent_install_canary=bool(
+                    getattr(args, "setup_only_agent_install_canary", False)
                 ),
             )
             plan["setup_only_public_preflight_result"] = setup_only_result
@@ -17142,8 +17162,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Materialize the BenchFlow job root and environment, then stop "
-            "before agent install, agent execution, and verification. Emit only "
-            "a compact public-safe setup classification."
+            "before agent execution and verification. By default this also "
+            "stops before agent install. Emit only a compact public-safe setup "
+            "classification."
+        ),
+    )
+    parser.add_argument(
+        "--setup-only-agent-install-canary",
+        action="store_true",
+        help=(
+            "With --setup-only-public-preflight, exercise the configured agent "
+            "install path and stop before agent execution and verification."
         ),
     )
     parser.add_argument(
@@ -17589,6 +17618,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error(
             "--setup-only-public-preflight is incompatible with --plan-only "
             "and --reduce-only"
+        )
+    if (
+        args.setup_only_agent_install_canary
+        and not args.setup_only_public_preflight
+    ):
+        parser.error(
+            "--setup-only-agent-install-canary requires "
+            "--setup-only-public-preflight"
         )
     if args.setup_only_public_preflight and (args.append_history or args.update_ledger):
         parser.error(
