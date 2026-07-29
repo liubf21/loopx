@@ -177,6 +177,45 @@ def test_replay_requires_byte_identical_evaluation() -> None:
     assert canonical_json_bytes(reordered) == canonical_json_bytes(expected)
 
 
+def test_historical_positive_and_rejection_replay_under_one_contract() -> None:
+    positive = _example()
+    positive["case_id"] = "historical-paypal-bounded-successor"
+    positive["contract"]["point_in_time"] = "2026-07-06"
+    positive["contract"]["universe_id"] = "historical-legacy-payments-screen"
+    positive["contract"]["gates"] = positive["contract"]["gates"][:4]
+    positive["observations"] = positive["observations"][:4]
+    positive["observations"][2]["evidence_refs"] = [
+        "pypl-filing-facts",
+        "pypl-adjusted-history",
+    ]
+    positive["observations"][3]["evidence_refs"] = [
+        "pypl-adjusted-history",
+        "legacy-payments-controls",
+    ]
+
+    positive_evaluation = build_finance_case_evaluation(positive)
+    assert positive_evaluation["disposition"] == "eligible_for_research_successor"
+    assert replay_finance_case_evaluation(
+        positive, positive_evaluation
+    )["replay_verified"]
+
+    rejected = deepcopy(positive)
+    rejected["case_id"] = "historical-groupwide-derating-rejection"
+    rejected["observations"][3]["value"] = -0.12
+    rejected["observations"][3]["reason"] = (
+        "The residual does not clear the frozen idiosyncratic threshold."
+    )
+
+    rejected_evaluation = build_finance_case_evaluation(rejected)
+    assert rejected_evaluation["disposition"] == "rejected"
+    assert rejected_evaluation["first_blocking_gate"]["gate_id"] == (
+        "de_beta_residual"
+    )
+    assert replay_finance_case_evaluation(
+        rejected, rejected_evaluation
+    )["replay_verified"]
+
+
 def test_direct_cli_evaluate_and_replay(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
