@@ -63,6 +63,7 @@ VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "retired_or_superseded",
     "unchanged_with_reason",
 }
+VISION_CHECKPOINT_NO_FOLLOWUP_RESOLUTION = "record_no_followup"
 
 
 def safe_non_negative_int(value: Any) -> int:
@@ -98,7 +99,7 @@ def _terminal_todo_source_state(
     deferred = summary.get("deferred_count")
     if not (
         type(total) is int
-        and total > 0
+        and total >= 0
         and type(done) is int
         and done == total
         and _strict_zero(summary.get("open_count"))
@@ -171,16 +172,12 @@ def derive_goal_terminal_state(
     agent_todo_summary: dict[str, Any] | None,
     projection: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    user_status, user_intent = _terminal_todo_source_state(user_todo_summary, role="user")
-    agent_status, agent_intent = _terminal_todo_source_state(agent_todo_summary, role="agent")
-    source_completeness = {
-        "schema_version": GOAL_TERMINAL_SOURCE_COMPLETENESS_SCHEMA_VERSION,
-        "user_todos": user_status,
-        "agent_todos": agent_status,
-    }
+    source_completeness, source_closure_confirmed = _terminal_todo_source_contract(
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+    )
     if not (
-        user_status == agent_status == "valid"
-        and (user_intent or agent_intent)
+        source_closure_confirmed
         and _projection_has_empty_terminal_frontier(projection)
     ):
         return source_completeness, None
@@ -190,6 +187,45 @@ def derive_goal_terminal_state(
         "derived": True,
         "source": "validated_goal_closure",
     }
+
+
+def _terminal_todo_source_contract(
+    *,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+) -> tuple[dict[str, Any], bool]:
+    user_status, user_intent = _terminal_todo_source_state(user_todo_summary, role="user")
+    agent_status, agent_intent = _terminal_todo_source_state(agent_todo_summary, role="agent")
+    source_completeness = {
+        "schema_version": GOAL_TERMINAL_SOURCE_COMPLETENESS_SCHEMA_VERSION,
+        "user_todos": user_status,
+        "agent_todos": agent_status,
+    }
+    return (
+        source_completeness,
+        user_status == agent_status == "valid" and (user_intent or agent_intent),
+    )
+
+
+def _terminal_no_followup_resolves_vision_checkpoint(
+    *,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    checkpoint: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(checkpoint, dict):
+        return False
+    required_resolution = checkpoint.get("required_resolution")
+    if not (
+        isinstance(required_resolution, list)
+        and VISION_CHECKPOINT_NO_FOLLOWUP_RESOLUTION in required_resolution
+    ):
+        return False
+    _, source_closure_confirmed = _terminal_todo_source_contract(
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+    )
+    return source_closure_confirmed
 
 
 def goal_frontier_is_terminal_no_followup(*, projection: dict[str, Any] | None) -> bool:
@@ -1896,6 +1932,16 @@ def build_goal_frontier_projection_context_from_status(
         )
         + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
     )
+    if _terminal_no_followup_resolves_vision_checkpoint(
+        user_todo_summary=user_todo_summary,
+        agent_todo_summary=agent_todo_summary,
+        checkpoint=latest_missing_vision_checkpoint,
+    ):
+        source_acceptance_gaps = [
+            gap
+            for gap in source_acceptance_gaps
+            if gap.get("kind") != VISION_CHECKPOINT_MISSING_TRIGGER
+        ]
     replan_obligation = align_autonomous_replan_guidance_with_acceptance_policy(
         replan_obligation,
         acceptance_gaps=source_acceptance_gaps,
