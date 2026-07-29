@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+
+from loopx.control_plane.quota.cli_projection import (
+    compact_quota_should_run_cli_payload,
+)
 from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
 )
@@ -144,3 +149,54 @@ def test_owner_capability_never_becomes_runtime_reentry_candidate() -> None:
     )
 
     assert "runtime_capability_reentry" not in contract["cli_channel"]
+
+
+def test_quota_cli_promotes_reentry_before_large_diagnostics() -> None:
+    contract = build_interaction_contract(
+        _blocked_payload(missing=["network"]),
+        available_capabilities=["shell"],
+        scheduler_execution_context=MANAGED_AGENT_CONTEXT,
+    )
+    packet = contract["cli_channel"]["runtime_capability_reentry"]
+    payload = {
+        "ok": True,
+        "status_health_ok": True,
+        "mode": "should-run",
+        "goal_id": GOAL_ID,
+        "decision": "run",
+        "should_run": True,
+        "large_diagnostic": "x" * 20_000,
+        "interaction_contract": contract,
+    }
+
+    projected = compact_quota_should_run_cli_payload(payload)
+    rendered = json.dumps(projected, indent=2)
+
+    assert projected["runtime_capability_reentry"] == packet
+    assert rendered.index('"runtime_capability_reentry"') < 512
+    assert rendered.index('"schema_version": "runtime_capability_reentry_v0"') < 1_024
+    assert rendered.index('"large_diagnostic"') > rendered.index(
+        '"runtime_capability_reentry"'
+    )
+
+
+def test_quota_cli_omits_reentry_projection_when_not_requested() -> None:
+    contract = build_interaction_contract(
+        {
+            **_blocked_payload(missing=[]),
+            "effective_action": "bounded_delivery",
+        },
+        available_capabilities=["network"],
+        scheduler_execution_context=MANAGED_AGENT_CONTEXT,
+    )
+
+    projected = compact_quota_should_run_cli_payload(
+        {
+            "ok": True,
+            "mode": "should-run",
+            "goal_id": GOAL_ID,
+            "interaction_contract": contract,
+        }
+    )
+
+    assert "runtime_capability_reentry" not in projected
