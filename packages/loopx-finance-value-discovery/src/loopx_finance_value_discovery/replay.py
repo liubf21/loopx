@@ -7,13 +7,13 @@ from typing import Any
 
 from .gates import evaluate_finance_case_gates
 
-
 FINANCE_CASE_REPLAY_RECEIPT_SCHEMA_VERSION = "finance_case_replay_receipt_v1"
 
 
 def canonical_json_bytes(value: object) -> bytes:
     return json.dumps(
         value,
+        allow_nan=False,
         ensure_ascii=True,
         separators=(",", ":"),
         sort_keys=True,

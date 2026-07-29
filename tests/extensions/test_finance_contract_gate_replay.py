@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
@@ -133,6 +132,21 @@ def test_provider_cannot_declare_pass_fail_or_change_value_type() -> None:
     wrong_type["observations"][2]["value"] = "two"
     with pytest.raises(ValueError, match="must be a number"):
         build_finance_case_evaluation(wrong_type)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_numeric_gate_rejects_non_finite_thresholds_and_observations(
+    invalid: float,
+) -> None:
+    invalid_threshold = _example()
+    invalid_threshold["contract"]["gates"][2]["reference_value"] = invalid
+    with pytest.raises(ValueError, match="finite number"):
+        build_finance_case_evaluation(invalid_threshold)
+
+    invalid_observation = _example()
+    invalid_observation["observations"][2]["value"] = invalid
+    with pytest.raises(ValueError, match="finite number"):
+        build_finance_case_evaluation(invalid_observation)
 
 
 @pytest.mark.parametrize(

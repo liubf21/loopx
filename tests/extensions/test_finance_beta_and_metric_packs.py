@@ -165,6 +165,24 @@ def test_metric_pack_rejects_contract_drift(mutator, message: str) -> None:
         build_finance_metric_pack_evaluation(payload)
 
 
+def test_metric_pack_requires_frozen_source_and_cutoff_prefix() -> None:
+    missing_source = _json(PACK_EXAMPLE)
+    missing_source["case_input"]["contract"]["gates"].pop(0)
+    missing_source["case_input"]["observations"].pop(0)
+    with pytest.raises(ValueError, match="must begin with source_lineage"):
+        build_finance_metric_pack_evaluation(missing_source)
+
+    reordered = _json(PACK_EXAMPLE)
+    reordered["case_input"]["contract"]["gates"][0:2] = reversed(
+        reordered["case_input"]["contract"]["gates"][0:2]
+    )
+    reordered["case_input"]["observations"][0:2] = reversed(
+        reordered["case_input"]["observations"][0:2]
+    )
+    with pytest.raises(ValueError, match="must begin with source_lineage"):
+        build_finance_metric_pack_evaluation(reordered)
+
+
 def test_cyclical_industrials_pack_uses_the_common_gate_engine() -> None:
     payload = _json(PACK_EXAMPLE)
     payload["pack_id"] = "cyclical_industrials_v1"

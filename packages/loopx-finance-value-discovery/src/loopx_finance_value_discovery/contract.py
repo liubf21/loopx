@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
+from math import isfinite
 from typing import Any
 
 from .boundary import reject_forbidden_material
-
 
 FINANCE_CASE_CONTRACT_SCHEMA_VERSION = "finance_case_contract_v1"
 FINANCE_CASE_INPUT_SCHEMA_VERSION = "finance_case_gate_input_v1"
@@ -75,10 +75,11 @@ def _gate_rule(value: object, *, index: int) -> dict[str, Any]:
     reference = value.get("reference_value")
     if value_type == "boolean" and not isinstance(reference, bool):
         raise ValueError(f"{field}.reference_value must be a boolean")
-    if value_type == "number" and (
-        not isinstance(reference, (int, float)) or isinstance(reference, bool)
-    ):
-        raise ValueError(f"{field}.reference_value must be a number")
+    if value_type == "number":
+        if not isinstance(reference, (int, float)) or isinstance(reference, bool):
+            raise ValueError(f"{field}.reference_value must be a number")
+        if isinstance(reference, float) and not isfinite(reference):
+            raise ValueError(f"{field}.reference_value must be a finite number")
     if value_type == "string":
         reference = _text(
             reference, field=f"{field}.reference_value", limit=120

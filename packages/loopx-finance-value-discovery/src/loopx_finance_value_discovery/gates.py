@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from math import isfinite
 from typing import Any
 
 from .boundary import reject_forbidden_material
@@ -8,7 +9,6 @@ from .contract import (
     FINANCE_CASE_EVALUATION_SCHEMA_VERSION,
     validate_finance_case_input,
 )
-
 
 OBSERVATION_STATES = {"observed", "missing", "conflict", "not_run"}
 BLOCKING_GATE_STATES = {"failed", "missing", "conflict"}
@@ -95,6 +95,8 @@ def _observed_value_matches(rule: Mapping[str, Any], value: object) -> bool:
     elif value_type == "number":
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ValueError(f"gate {rule['gate_id']} value must be a number")
+        if isinstance(value, float) and not isfinite(value):
+            raise ValueError(f"gate {rule['gate_id']} value must be a finite number")
     elif value_type == "string":
         if not isinstance(value, str):
             raise ValueError(f"gate {rule['gate_id']} value must be a string")

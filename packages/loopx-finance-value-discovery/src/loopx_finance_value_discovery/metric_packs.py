@@ -24,6 +24,7 @@ COMMON_GATE_IDS = {
     "valuation",
     "terminal_risk",
 }
+REQUIRED_COMMON_GATE_PREFIX = ("source_lineage", "point_in_time")
 
 _METRIC_PACKS: dict[str, dict[str, Any]] = {
     "software_platforms_v1": {
@@ -113,6 +114,13 @@ def _validate_pack_contract(
         if isinstance(item, Mapping)
     }
     gates = case_input["contract"]["gates"]
+    gate_order = [str(item["gate_id"]) for item in gates]
+    if gate_order[: len(REQUIRED_COMMON_GATE_PREFIX)] != list(
+        REQUIRED_COMMON_GATE_PREFIX
+    ):
+        raise ValueError(
+            "metric pack contract must begin with source_lineage then point_in_time"
+        )
     gate_ids = {str(item["gate_id"]) for item in gates}
     unknown = gate_ids - COMMON_GATE_IDS - set(metrics)
     if unknown:
