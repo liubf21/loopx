@@ -120,15 +120,44 @@ rank field.
 
 ## Issue-Fix Domain Route
 
-When `/loopx <goal text>` contains a public GitHub issue/PR URL or an explicit
-issue-fix intent, the planner should preview the dedicated capability route
-before writing todos:
+When `/loopx <goal text>` explicitly asks to fix or resolve a GitHub issue/PR,
+optionally by public URL, the planner should preview the dedicated capability
+route before writing todos. A URL alone identifies an object, not an action:
+review, merge, monitor, and summary requests stay on their own routes.
+
+`start-goal` projects that decision as a typed `selected_capability_route`.
+This is a bootstrap-only selection, not later-turn authority. The guided
+transaction is complete only after feasibility persists capability-owned state
+and its exact successor is written as a generic Agent Todo. That Todo keeps
+only the scheduling route (`action_kind`) and stable public target
+(`target_key`); issue facts, prior-work checks, repository evidence,
+reproduction, scope, and validation remain owned by `issue_fix` state.
+
+Later turns re-enter through `quota should-run.selected_todo`, which preserves
+the successor's `action_kind` and `target_key`; they do not call `start-goal`
+again or infer admission from stale prompt context.
+
+The guided transaction's `command_cwd_source` points to the packet's resolved
+`project`; hosts execute its project-relative commands from that exact root.
+
+Before planning implementation, select a currently open public tracker issue.
+Repository TODO/FIXME entries, warnings, and incidental test failures may
+support later reproduction, but they are not issue identity:
+
+```bash
+gh issue list \
+  --repo "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
+  --state open \
+  --limit 20 \
+  --json number,title,url,labels
+```
 
 ```bash
 loopx issue-fix workflow-plan \
   --url <github-issue-or-pr-url> \
   --repo-path <approved-repo> \
   --repository-context-json <compact-context.json> \
+  --candidate-preflight-json <candidate-preflight.json> \
   --validation-label "<validation command>" \
   --format json
 ```
@@ -138,13 +167,17 @@ branch planning, validation labels, the feasibility checkpoint, and PR review
 readiness blockers into `/loopx <goal text>`. Repository context pins compact
 policy, architecture, change-scope, reproduction, and validation refs to a
 revision; memory and external experts stay advisory until repository-verified.
+Refresh the issue body and latest comments, then provide all-state numeric PR
+references plus any current-revision-verified semantic candidates in the
+candidate preflight input. Only a `proceed` decision may start a new
+implementation; other routes reuse, disposition, or skip existing work.
 Initially write only metadata classification and the feasibility checkpoint in
 priority and planner order. Then record a compact observation and let LoopX
 select exactly one route:
 
 ```bash
 loopx issue-fix feasibility \
-  --url <github-issue-url> \
+  --url <github-issue-or-pr-url> \
   --reproduction-status <confirmed|planned|missing|blocked> \
   --scope-class <bounded|uncertain|oversized> \
   --repository-context-json <compact-context.json> \

@@ -1,15 +1,98 @@
 from __future__ import annotations
 
+import re
+import shlex
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .acceptance_loop import build_issue_fix_caller_repo_branch_packet
 from .candidate_preflight import build_issue_fix_candidate_preflight_packet
 from .intake_surface import build_content_ops_issue_fix_metadata_preview_packet
-from .repository_context import build_issue_fix_repository_context_packet
-
+from .repository_context import (
+    ISSUE_FIX_REPOSITORY_CONTEXT_INPUT_SCHEMA_VERSION,
+    build_issue_fix_repository_context_packet,
+    repository_context_input_contract,
+)
 
 ISSUE_FIX_WORKFLOW_PLAN_PACKET_SCHEMA_VERSION = "issue_fix_workflow_plan_packet_v0"
+ISSUE_FIX_GOAL_CANDIDATE_DISCOVERY_COMMAND_TEMPLATE = (
+    "gh issue list --repo "
+    '"$(gh repo view --json nameWithOwner --jq .nameWithOwner)" '
+    "--state open --limit 20 --json number,title,url,labels"
+)
+_PUBLIC_GITHUB_ISSUE_OR_PR = re.compile(
+    r"https://github\.com/[^/\s]+/[^/\s]+/(?:issues|pull)/[1-9][0-9]*"
+)
+_ISSUE_FIX_TARGET = re.compile(
+    r"\b(?:github issue|issue|issues|pull request|pull requests|pr)\b"
+)
+_ISSUE_FIX_ACTION = re.compile(
+    r"\b(?:fix|fixes|fixed|fixing|repair|repairs|resolve|resolves|"
+    r"solve|solves|solved|solving|solver)\b"
+)
+
+
+def match_issue_fix_goal_intent(goal_text: str | None) -> str | None:
+    """Return why an explicit goal should enter the issue-fix capability."""
+
+    text = " ".join((goal_text or "").split()).casefold()
+    if not text:
+        return None
+    has_action = bool(
+        _ISSUE_FIX_ACTION.search(text)
+        or "issue-fix" in text
+        or "修复" in text
+        or "解决" in text
+    )
+    if _PUBLIC_GITHUB_ISSUE_OR_PR.search(text) and has_action:
+        return "public_issue_or_pr_reference"
+    return "issue_fix_intent" if _ISSUE_FIX_TARGET.search(text) and has_action else None
+
+
+def build_issue_fix_goal_command_templates(
+    *, cli_bin: str, goal_id: str
+) -> dict[str, str]:
+    """Return the capability-owned commands projected into goal-start packets."""
+
+    cli = shlex.quote(cli_bin)
+    goal = (
+        goal_id
+        if goal_id.startswith("<") and goal_id.endswith(">")
+        else shlex.quote(goal_id)
+    )
+    return {
+        "issue_fix_workflow_plan_template": (
+            f"{cli} issue-fix workflow-plan "
+            "--url <github-issue-or-pr-url> "
+            "--repo-path <approved-repo> "
+            "--repository-context-json <compact-context.json> "
+            "--candidate-preflight-json <candidate-preflight.json> "
+            "--validation-label '<validation command>' "
+            "--format json"
+        ),
+        "issue_fix_feasibility_template": (
+            f"{cli} issue-fix feasibility "
+            "--url <github-issue-or-pr-url> "
+            "--reproduction-status <confirmed|planned|missing|blocked> "
+            "--scope-class <bounded|uncertain|oversized> "
+            "--repository-context-json <compact-context.json> "
+            f"--goal-id {goal} "
+            "--format json"
+        ),
+        "issue_fix_pr_lifecycle_template": (
+            f"{cli} issue-fix pr-lifecycle "
+            "--url <github-pr-url> "
+            f"--goal-id {goal} "
+            "--format json"
+        ),
+        "issue_fix_reviewer_request_template": (
+            f"{cli} issue-fix reviewer-request "
+            "--url <github-pr-url> "
+            "--repo-path <approved-repo> "
+            "--base-ref <base-ref> "
+            "--execute --format json"
+        ),
+    }
 
 
 def _todo_preview(
@@ -533,6 +616,7 @@ def build_issue_fix_workflow_plan_packet(
             "body_captured": False,
             "comment_bodies_captured": False,
         },
+        "repository_context_input_contract": repository_context_input_contract(),
         "repository_context": repository_context,
         "candidate_preflight": candidate_preflight,
         "candidate_fix_workflow_allowed": preflight_route == "proceed",
@@ -621,6 +705,15 @@ def validate_issue_fix_workflow_plan_packet(
             is not True
         ):
             errors.append("repository_context must deny external-write authority")
+
+    repository_context_contract = packet.get("repository_context_input_contract")
+    if not isinstance(repository_context_contract, Mapping):
+        errors.append("repository_context_input_contract is required")
+    elif (
+        repository_context_contract.get("schema_version")
+        != ISSUE_FIX_REPOSITORY_CONTEXT_INPUT_SCHEMA_VERSION
+    ):
+        errors.append("repository_context_input_contract has wrong schema")
 
     candidate_preflight = packet.get("candidate_preflight")
     if not isinstance(candidate_preflight, Mapping):

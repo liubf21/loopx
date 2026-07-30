@@ -11,6 +11,10 @@ from typing import Any
 from loopx.bootstrap_command_pack import (
     GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION,
     build_start_goal_guided_packet,
+    render_start_goal_guided_markdown,
+)
+from loopx.capabilities.issue_fix.candidate_preflight import (
+    build_issue_fix_candidate_preflight_packet,
 )
 from loopx.cli import main as cli_main
 
@@ -70,6 +74,7 @@ def _host_shadow_document(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": payload["schema_version"],
         "project": payload["project"],
+        "command_cwd_source": transaction["command_cwd_source"],
         "goal_id": payload["goal_id"],
         "agent_id": payload["agent_id"],
         "host_surface": payload["host_surface"],
@@ -117,6 +122,9 @@ def test_default_projection_preserves_host_actions_and_json_anchors(
     assert _host_shadow_document(compact) == _host_shadow_document(detailed)
     assert compact["command_pack_detail_included"] is False
     assert detailed["command_pack_detail_included"] is True
+    assert compact["guided_transaction"]["ordered_steps"][-1]["id"] == (
+        "scheduler_ack_when_needed"
+    )
 
     projection = compact["command_pack"]
     assert projection["schema_version"] == "loopx_bootstrap_command_pack_v0"
@@ -148,6 +156,183 @@ def test_default_projection_preserves_host_actions_and_json_anchors(
         _resolve_pointer(compact, ref["json_pointer"])
     for ref in projection["packet_summary"]["detail_refs"].values():
         _resolve_pointer(projection, ref["json_pointer"])
+
+
+def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
+    tmp_path: Path,
+) -> None:
+    project = _write_connected_project(tmp_path)
+    payload = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text=(
+            "Autonomously deliver review-ready fixes for two distinct open "
+            "repository issues in one long-running Goal."
+        ),
+        available_capabilities=["network"],
+    )
+
+    transaction = payload["guided_transaction"]
+    assert transaction["command_cwd_source"] == "#/project"
+    assert payload["project"] == str(project)
+    route = transaction["selected_capability_route"]
+    assert route == {
+        "schema_version": "loopx_goal_capability_route_v0",
+        "capability_id": "issue-fix",
+        "selection_source": "explicit_goal_text",
+        "selection_reason_code": "issue_fix_intent",
+        "entry_command_key": "issue_fix_workflow_plan_template",
+        "admission_command_key": "issue_fix_feasibility_template",
+        "candidate_authority": "public_open_tracker_issue",
+        "authority_refresh_required": "current issue body and latest comments",
+        "candidate_preflight": {
+            "schema_version": "issue_fix_candidate_preflight_input_v0",
+            "required_before_implementation": True,
+            "required_evidence_fields": [
+                "numeric_pr_evidence",
+                "semantic_pr_evidence",
+            ],
+            "semantic_evidence_rule": "current_revision_verified candidates only",
+            "decision_rule": "only proceed may start a new implementation",
+        },
+        "implementation_admission": {
+            "status": "qualification_required",
+            "state_owner": "issue_fix",
+            "route_scope": "start_goal_bootstrap_only",
+            "durable_reentry_fields": ["action_kind", "target_key"],
+        },
+        "activation_condition": (
+            "after selecting a public issue candidate and before substantive "
+            "implementation"
+        ),
+    }
+    guard = transaction["ordered_steps"][2]
+    assert guard["id"] == "qualify_selected_capability"
+    assert guard["candidate_discovery_command_template"].startswith(
+        "gh issue list "
+    )
+    assert guard["command_source"].endswith(
+        "/commands/issue_fix_workflow_plan_template"
+    )
+    assert guard["admission_command_source"].endswith(
+        "/commands/issue_fix_feasibility_template"
+    )
+    assert guard["durable_successor_source"] == (
+        "admission_result.transition.projected_todo"
+    )
+    assert "exact successor Todo" in guard["completion_condition"]
+    assert "command_template" not in guard
+    assert "admission_command_template" not in guard
+    commands = payload["command_pack"]["commands"]
+    assert commands[route["entry_command_key"]].startswith(
+        "loopx issue-fix workflow-plan "
+    )
+    assert "--candidate-preflight-json <candidate-preflight.json>" in commands[
+        route["entry_command_key"]
+    ]
+    assert guard["candidate_preflight"]["required_before_implementation"] is True
+    assert commands[route["admission_command_key"]].startswith(
+        "loopx issue-fix feasibility "
+    )
+    rendered = render_start_goal_guided_markdown(payload)
+    assert "authority: open public issue; source clues are evidence only" in rendered
+    assert "discover: `gh issue list " in rendered
+    assert "numeric_pr_evidence + semantic_pr_evidence" in rendered
+    assert "only proceed may start a new implementation" in rendered
+    assert "loopx issue-fix workflow-plan " in rendered
+    assert "loopx issue-fix feasibility " in rendered
+    assert len(rendered.replace(str(project), "<project>")) <= 3_600
+    todo_command = next(
+        step["command_template"]
+        for step in transaction["ordered_steps"]
+        if step["id"] == "write_ordered_todos"
+    )
+    assert "--project ." in todo_command
+    assert "--action-kind <action_kind>" in todo_command
+    assert "[--target-key <target_key>]" in todo_command
+    refresh_command = next(
+        step["command"]
+        for step in transaction["ordered_steps"]
+        if step["id"] == "refresh_state"
+    )
+    assert "--project ." in refresh_command
+    assert all(
+        field not in todo_command
+        for field in ("issue_url", "issue_number", "base_sha", "acceptance")
+    )
+
+
+def test_configured_candidate_preflight_requires_prior_work_evidence() -> None:
+    try:
+        build_issue_fix_candidate_preflight_packet(
+            repo="volcengine/OpenViking",
+            issue_ref="#3005",
+            input_payload={
+                "schema_version": "issue_fix_candidate_preflight_input_v0",
+                "semantic_pr_evidence": [],
+            },
+            generated_at="2026-07-30T00:00:00Z",
+        )
+    except ValueError as error:
+        assert "numeric_pr_evidence" in str(error)
+    else:
+        raise AssertionError("configured preflight must require prior-work evidence")
+
+
+def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None:
+    project = _write_connected_project(tmp_path)
+    payload = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text="Improve the public onboarding documentation.",
+    )
+
+    transaction = payload["guided_transaction"]
+    assert "selected_capability_route" not in transaction
+    assert transaction["ordered_steps"][-1]["id"] == "quota_guard"
+    assert all(
+        step["id"] != "scheduler_ack_when_needed"
+        for step in transaction["ordered_steps"]
+    )
+    assert (
+        payload["command_pack"]["goal_start_contract"]["selected_capability_route"]
+        is None
+    )
+    referenced = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text="Fix https://github.com/owner/repo/pull/42.",
+    )
+    assert (
+        referenced["guided_transaction"]["selected_capability_route"][
+            "selection_reason_code"
+        ]
+        == "public_issue_or_pr_reference"
+    )
+    for goal_text in (
+        "Review https://github.com/owner/repo/pull/42.",
+        "Merge https://github.com/owner/repo/pull/42 after checks pass.",
+        "Monitor https://github.com/owner/repo/pull/42.",
+        "Summarize https://github.com/owner/repo/issues/42.",
+    ):
+        unrelated = build_start_goal_guided_packet(
+            project=project,
+            goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
+            cli_bin="loopx",
+            host_surface="ark-managed-agent",
+            goal_text=goal_text,
+        )
+        assert "selected_capability_route" not in unrelated["guided_transaction"]
 
 
 def test_explicit_cold_path_restores_the_complete_command_pack(tmp_path: Path) -> None:

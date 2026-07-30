@@ -72,6 +72,8 @@ def test_host_materialization_can_bind_exact_managed_agent_surface(
     assert "Before dependent work, persist material scope" in skill_text
     assert "current Todo evidence and the next executable Todo" in skill_text
     assert "Chat/model summaries are not durable state" in skill_text
+    assert "run its entry and admission commands" in skill_text
+    assert "generic Todos remain scheduling records" in skill_text
 
 
 def test_host_materialization_rejects_unknown_fixed_surface(tmp_path: Path) -> None:
