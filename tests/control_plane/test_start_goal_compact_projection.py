@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,6 @@ from loopx.bootstrap_command_pack import (
     build_start_goal_guided_packet,
 )
 from loopx.cli import main as cli_main
-
 
 GOAL_ID = "guided-projection-goal"
 AGENT_ID = "codex-guided-projection"
@@ -271,6 +271,99 @@ def test_projection_preserves_multi_goal_selection_actions(tmp_path: Path) -> No
         "select_goal",
     ]
     assert _host_shadow_document(compact) == _host_shadow_document(detailed)
+
+
+def test_start_goal_keeps_the_requested_linked_worktree(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    subprocess.run(["git", "init"], cwd=primary, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "loopx@example.invalid"],
+        cwd=primary,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "LoopX Test"],
+        cwd=primary,
+        check=True,
+        capture_output=True,
+    )
+    (primary / "README.md").write_text("# primary\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "README.md"], cwd=primary, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=primary,
+        check=True,
+        capture_output=True,
+    )
+
+    worktree = tmp_path / "fresh-worktree"
+    subprocess.run(
+        ["git", "worktree", "add", "-b", "fresh-worktree", str(worktree)],
+        cwd=primary,
+        check=True,
+        capture_output=True,
+    )
+
+    old_goal_id = "old-primary-goal"
+    primary_registry = primary / ".loopx" / "registry.json"
+    primary_registry.parent.mkdir(parents=True)
+    old_goal = {
+        "id": old_goal_id,
+        "status": "active",
+        "repo": str(primary),
+        "state_file": f".codex/goals/{old_goal_id}/ACTIVE_GOAL_STATE.md",
+    }
+    primary_registry.write_text(
+        json.dumps({"schema_version": "0.1", "goals": [old_goal]}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "registry.global.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "goals": [
+                    {
+                        **old_goal,
+                        "source_registry": str(primary_registry),
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LOOPX_RUNTIME_ROOT", str(runtime))
+
+    payload = build_start_goal_guided_packet(
+        project=worktree,
+        goal_id=None,
+        agent_id=None,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text=GOAL_TEXT,
+        available_capabilities=["network"],
+    )
+
+    assert Path(payload["project"]).resolve() == worktree.resolve()
+    assert payload["goal_id"] == "fresh-worktree-goal"
+    alias = payload["project_connection"]["canonical_project_alias"]
+    assert alias["applied"] is False
+    assert alias["kind"] == "exact_project_route"
+    connect_command = payload["command_pack"]["commands"][
+        "goal_start_connect_if_needed"
+    ]
+    assert str(worktree.resolve()) in connect_command
+    assert old_goal_id not in json.dumps(payload)
 
 
 def test_cli_without_host_returns_read_only_host_selection_gate(

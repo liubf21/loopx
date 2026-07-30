@@ -41,11 +41,11 @@ If there is any non-whitespace text after `/loopx`, it is goal text. Preserve
 that exact trailing text, pass it to the guided start preview, and do not
 downgrade the request into a status or inspection turn.
 
-When the target is a linked git worktree, trust the command pack's
-`canonical_project_alias` / `source_registry` route. Do not manually run
-`loopx bootstrap` in the linked worktree merely because its local `.loopx`
-state is missing or stale; that can create a worktree-local shadow goal instead
-of updating the canonical project state.
+`start-goal --project` keeps the requested project route, including a linked
+git worktree, so a fresh task cannot inherit an older worktree's goal.
+Lower-level diagnostic command packs may still report a canonical
+`canonical_project_alias` / `source_registry` route. Do not manually replace
+either route with an unadvertised bootstrap command.
 
 From the target project root, pass the text after `/loopx` as the explicit
 goal-start objective before planning or writing project state:

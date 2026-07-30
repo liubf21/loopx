@@ -627,7 +627,10 @@ def test_skill_slash_fallback_contract() -> None:
     assert "loopx bootstrap-command-pack --project ." in skill_text
     assert "loopx start-goal --guided --project ." in skill_text
     assert "canonical_project_alias" in skill_text
-    assert "worktree-local shadow goal" in skill_text
+    assert (
+        "`start-goal --project` keeps the requested project route" in skill_text
+    )
+    assert "Lower-level diagnostic command packs" in normalized
     assert '--goal-text "<GOAL_TEXT>"' in skill_text
     assert "bare `/loopx` read-only command" in skill_text
     assert "explicit goal-start intent" in normalized

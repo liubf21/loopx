@@ -24,7 +24,6 @@ from .project_prompt import (
 from .registry import registry_goals, resolve_state_file
 from .slash_commands import build_slash_command_catalog
 
-
 SCHEMA_VERSION = "loopx_bootstrap_command_pack_v0"
 CANONICAL_SLASH_COMMAND = "/loopx"
 GOAL_START_SCHEMA_VERSION = "loopx_goal_start_command_v0"
@@ -388,9 +387,25 @@ def _select_goal(goals: list[dict[str, Any]], goal_id: str | None) -> tuple[str,
     return "", None
 
 
-def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -> dict[str, Any]:
+def inspect_bootstrap_connection(
+    project: Path,
+    *,
+    goal_id: str | None = None,
+    resolve_linked_worktree_alias: bool = True,
+) -> dict[str, Any]:
+    """Inspect either the canonical project route or the caller's exact route."""
+
     input_project = _resolve_project(project)
-    alias = resolve_canonical_project_alias(input_project, goal_id=goal_id)
+    alias = (
+        resolve_canonical_project_alias(input_project, goal_id=goal_id)
+        if resolve_linked_worktree_alias
+        else {
+            "applied": False,
+            "kind": "exact_project_route",
+            "input_project": str(input_project),
+            "reason": "the caller requires the explicitly requested project route",
+        }
+    )
     resolved_project = (
         _resolve_project(Path(str(alias.get("canonical_project"))))
         if alias.get("applied") and alias.get("canonical_project")
@@ -709,8 +724,13 @@ def build_loopx_bootstrap_command_pack(
     host_surface: str,
     goal_text: str | None = None,
     available_capabilities: list[str] | None = None,
+    resolve_linked_worktree_alias: bool = True,
 ) -> dict[str, Any]:
-    inspection = inspect_bootstrap_connection(project, goal_id=goal_id)
+    inspection = inspect_bootstrap_connection(
+        project,
+        goal_id=goal_id,
+        resolve_linked_worktree_alias=resolve_linked_worktree_alias,
+    )
     resolved_project = str(inspection["project"])
     resolved_goal_id = str(inspection["goal_id"])
     connected = inspection.get("connection_state") == "connected"
@@ -975,7 +995,10 @@ def _build_multi_goal_start_selection_packet(
     available_capabilities: list[str] | None,
     include_command_pack_detail: bool,
 ) -> dict[str, Any] | None:
-    inspection = inspect_bootstrap_connection(project)
+    inspection = inspect_bootstrap_connection(
+        project,
+        resolve_linked_worktree_alias=False,
+    )
     registry_path = Path(str(inspection.get("registry") or ""))
     registry, registry_error = _read_registry(registry_path)
     if registry_error or not registry:
@@ -1119,7 +1142,7 @@ def _build_multi_goal_start_selection_packet(
             {
                 "id": "inspect_connection",
                 "kind": "read_only",
-                "purpose": "resolve the canonical project and discover registered goals",
+                "purpose": "inspect the requested project route and discover registered goals",
             },
             {
                 "id": "select_goal",
@@ -1231,6 +1254,7 @@ def build_start_goal_guided_packet(
         host_surface=host_surface,
         goal_text=goal_text,
         available_capabilities=available_capabilities,
+        resolve_linked_worktree_alias=False,
     )
     commands = command_pack.get("commands")
     commands = commands if isinstance(commands, dict) else {}
@@ -1247,7 +1271,7 @@ def build_start_goal_guided_packet(
                 "id": "inspect_connection",
                 "kind": "read_only",
                 "command_source": "#/command_pack/canonical_cli_command",
-                "purpose": "resolve canonical project, goal id, registry, and active state before any mutation",
+                "purpose": "resolve the requested project route, goal id, registry, and active state before any mutation",
             },
             {
                 "id": "connect_if_needed",
