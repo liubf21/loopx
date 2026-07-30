@@ -965,6 +965,7 @@ supervisor_cmd=(
   --local-public-artifact-dir "$public_dir"
   --private-log-path "${private_dir}/remote-command.log"
   --public-output-path "${public_dir}/supervisor.public.json"
+  --owner-control-id "$run_group"
 )
 
 if [[ -n "$local_proxy_command" ]]; then
