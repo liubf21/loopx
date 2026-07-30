@@ -9246,6 +9246,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "setup_only_agent_install_canary": bool(
             getattr(args, "setup_only_agent_install_canary", False)
         ),
+        "setup_only_scored_lifecycle_canary": bool(
+            getattr(args, "setup_only_scored_lifecycle_canary", False)
+        ),
+        "scored_lifecycle_canary_timeout_sec": int(
+            getattr(args, "scored_lifecycle_canary_timeout_sec", 180) or 180
+        ),
         "setup_only_stage_timeout_sec": (
             _effective_setup_only_stage_timeout_sec(args)
         ),
@@ -9783,6 +9789,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "build_stall_timeout_requested_sec",
         "build_stall_timeout_sec",
         "setup_only_stage_timeout_sec",
+        "scored_lifecycle_canary_timeout_sec",
         "local_codex_task_output_quiet_timeout_sec",
     )
     for field in int_fields:
@@ -9803,6 +9810,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "bootstrap_light_fail_fast_defaulted",
         "setup_only_public_preflight",
         "setup_only_agent_install_canary",
+        "setup_only_scored_lifecycle_canary",
         "global_ledger_sync_enabled",
         "ledger_inherit_enabled",
     ):
@@ -15177,6 +15185,9 @@ async def run_benchflow_case(
     setup_only_public_preflight = bool(
         getattr(args, "setup_only_public_preflight", False)
     )
+    setup_only_scored_lifecycle_canary = bool(
+        getattr(args, "setup_only_scored_lifecycle_canary", False)
+    )
     controller_user = None
     controller_trace: dict[str, Any] | None = None
     product_mode_case_payload: dict[str, Any] | None = None
@@ -15189,6 +15200,11 @@ async def run_benchflow_case(
             max_rounds=args.max_rounds,
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
             goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
+        )
+    if setup_only_scored_lifecycle_canary:
+        controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
+        controller_trace["last_decision"] = (
+            "task_free_scored_lifecycle_canary_selected"
         )
     if not setup_only_public_preflight and args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -15295,6 +15311,95 @@ async def run_benchflow_case(
     config = RolloutConfig(
         **_filter_kwargs_for_signature(RolloutConfig, rollout_config_kwargs)
     )
+
+    async def run_task_free_scored_lifecycle_canary(
+        rollout: Any,
+    ) -> Mapping[str, Any]:
+        env = getattr(rollout, "env", None)
+        if env is None:
+            raise RuntimeError("scored lifecycle canary rollout env missing")
+        payload = benchmark_case_loopx_install_payload(
+            benchmark_id="skillsbench",
+            case_id=args.task_id,
+            arm_id=_loopx_case_arm_id_for_route(args.route),
+            route=args.route,
+            max_rounds=args.max_rounds,
+            case_loopx_source_path=_loopx_case_source_path_for_container(args),
+            goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
+        )
+        goal_id = str(payload["benchmark_case_goal_id"])
+        cli_prefix = benchmark_case_loopx_command_prefix(
+            case_cli_path=str(payload["case_cli_path"]),
+            case_registry_path=str(payload["case_registry_path"]),
+            case_runtime_root=str(payload["case_runtime_root"]),
+        )
+        connected = await connect_host_local_acp(
+            env,
+            "codex-acp",
+            "",
+            agent_env,
+            args.sandbox_user,
+            args.model,
+            Path(getattr(rollout, "_rollout_dir", None) or plan["jobs_dir"]),
+            args.sandbox,
+            str(getattr(rollout, "_agent_cwd", None) or "/app"),
+            reasoning_effort=_effective_reasoning_effort(args),
+            mcp_servers=None,
+        )
+        client = connected[0]
+        try:
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="task_free_scored_lifecycle_canary_active",
+                worker_status="agent_active",
+            )
+            read_result = await env.exec(
+                f"{cli_prefix} status --goal-id {shlex.quote(goal_id)} --limit 5",
+                timeout_sec=60,
+            )
+            if int(read_result.return_code) != 0:
+                raise RuntimeError("scored lifecycle canary state read failed")
+            write_result = await env.exec(
+                f"{cli_prefix} refresh-state "
+                f"--goal-id {shlex.quote(goal_id)} "
+                "--classification benchmark_case_scored_lifecycle_canary "
+                "--delivery-batch-scale single_surface "
+                "--delivery-outcome surface_only "
+                "--no-global-sync",
+                timeout_sec=60,
+            )
+            if int(write_result.return_code) != 0:
+                raise RuntimeError("scored lifecycle canary state write failed")
+        finally:
+            with contextlib.suppress(Exception):
+                await client.close()
+
+        source = plan.get("loopx_runner_source_fingerprint")
+        if not isinstance(source, Mapping):
+            source = {}
+        return {
+            "case_goal_state_initialized_before_agent": bool(
+                isinstance(controller_trace, dict)
+                and controller_trace.get(
+                    "case_goal_state_initialized_before_agent"
+                )
+                is True
+            ),
+            "acp_session_initialized": True,
+            "agent_active_observed": True,
+            "loopx_state_read_count": 1,
+            "loopx_state_write_count": 1,
+            "task_prompt_sent": False,
+            "benchmark_task_launched": False,
+            "loopx_runner_source_git_head": str(source.get("git_head") or ""),
+            "loopx_runner_source_expected_git_head": str(
+                source.get("expected_git_head") or ""
+            ),
+            "loopx_runner_source_matches_expected": (
+                source.get("matches_expected") is True
+            ),
+        }
+
     result_path: Path | None = None
     prerequisites = plan.setdefault("runner_prerequisites", {})
     requested_build_stall_timeout_sec = _requested_build_stall_timeout_sec(args)
@@ -15446,6 +15551,15 @@ async def run_benchflow_case(
                 ),
                 agent_install_canary=bool(
                     getattr(args, "setup_only_agent_install_canary", False)
+                ),
+                scored_lifecycle_canary=(
+                    run_task_free_scored_lifecycle_canary
+                    if setup_only_scored_lifecycle_canary
+                    else None
+                ),
+                scored_lifecycle_timeout_sec=float(
+                    getattr(args, "scored_lifecycle_canary_timeout_sec", 180)
+                    or 180
                 ),
             )
             plan["setup_only_public_preflight_result"] = setup_only_result
@@ -17185,6 +17299,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--setup-only-scored-lifecycle-canary",
+        action="store_true",
+        help=(
+            "With setup-only agent install, initialize a task-free ACP session "
+            "and prove one case-local LoopX state read/write lifecycle before "
+            "allowing later scored launches."
+        ),
+    )
+    parser.add_argument(
+        "--scored-lifecycle-canary-timeout-sec",
+        type=int,
+        default=180,
+        help="Strict terminal budget for the task-free scored lifecycle canary.",
+    )
+    parser.add_argument(
         "--reduce-only",
         action="store_true",
         help="Reduce an existing result.json for the selected job without rerunning the task.",
@@ -17635,6 +17764,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error(
             "--setup-only-agent-install-canary requires "
             "--setup-only-public-preflight"
+        )
+    if (
+        args.setup_only_scored_lifecycle_canary
+        and not args.setup_only_agent_install_canary
+    ):
+        parser.error(
+            "--setup-only-scored-lifecycle-canary requires "
+            "--setup-only-agent-install-canary"
+        )
+    if args.setup_only_scored_lifecycle_canary and not args.host_local_acp_launch:
+        parser.error(
+            "--setup-only-scored-lifecycle-canary requires "
+            "--host-local-acp-launch"
+        )
+    if args.setup_only_scored_lifecycle_canary and not _is_case_loopx_route(
+        args.route
+    ):
+        parser.error(
+            "--setup-only-scored-lifecycle-canary requires a case-local "
+            "LoopX route"
+        )
+    if not 1 <= args.scored_lifecycle_canary_timeout_sec <= 300:
+        parser.error(
+            "--scored-lifecycle-canary-timeout-sec must be between 1 and 300"
         )
     if args.setup_only_public_preflight and (args.append_history or args.update_ledger):
         parser.error(
