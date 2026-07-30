@@ -15,6 +15,7 @@ from loopx.bootstrap_command_pack import (
 )
 from loopx.capabilities.issue_fix.candidate_preflight import (
     build_issue_fix_candidate_preflight_packet,
+    candidate_preflight_input_contract,
 )
 from loopx.cli import main as cli_main
 
@@ -188,20 +189,13 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
         "admission_command_key": "issue_fix_feasibility_template",
         "candidate_authority": "public_open_tracker_issue",
         "authority_refresh_required": "current issue body and latest comments",
-        "candidate_preflight": {
-            "schema_version": "issue_fix_candidate_preflight_input_v0",
-            "required_before_implementation": True,
-            "required_evidence_fields": [
-                "numeric_pr_evidence",
-                "semantic_pr_evidence",
-            ],
-            "semantic_evidence_rule": "current_revision_verified candidates only",
-            "decision_rule": "only proceed may start a new implementation",
-        },
+        "candidate_preflight": candidate_preflight_input_contract(),
         "implementation_admission": {
             "status": "qualification_required",
             "state_owner": "issue_fix",
             "route_scope": "start_goal_bootstrap_only",
+            "candidate_receipt_stream": "candidate-preflight",
+            "feasibility_required_for_route": "proceed",
             "durable_reentry_fields": ["action_kind", "target_key"],
         },
         "activation_condition": (
@@ -220,19 +214,21 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
     assert guard["admission_command_source"].endswith(
         "/commands/issue_fix_feasibility_template"
     )
-    assert guard["durable_successor_source"] == (
-        "admission_result.transition.projected_todo"
-    )
-    assert "exact successor Todo" in guard["completion_condition"]
+    assert guard["durable_successor_sources"] == {
+        "proceed": "admission_result.transition.projected_todo",
+        "non_proceed": "entry_result.ordered_loopx_todo_writeback_preview",
+    }
+    assert "for non-proceed" in guard["completion_condition"]
     assert "command_template" not in guard
     assert "admission_command_template" not in guard
     commands = payload["command_pack"]["commands"]
     assert commands[route["entry_command_key"]].startswith(
         "loopx issue-fix workflow-plan "
     )
-    assert "--candidate-preflight-json <candidate-preflight.json>" in commands[
+    assert "--fetch-candidate-evidence" in commands[
         route["entry_command_key"]
     ]
+    assert f"--goal-id {GOAL_ID}" in commands[route["entry_command_key"]]
     assert guard["candidate_preflight"]["required_before_implementation"] is True
     assert commands[route["admission_command_key"]].startswith(
         "loopx issue-fix feasibility "
@@ -240,10 +236,14 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
     rendered = render_start_goal_guided_markdown(payload)
     assert "authority: open public issue; source clues are evidence only" in rendered
     assert "discover: `gh issue list " in rendered
-    assert "numeric_pr_evidence + semantic_pr_evidence" in rendered
-    assert "only proceed may start a new implementation" in rendered
+    assert (
+        "numeric_pr_evidence + semantic_pr_evidence + "
+        "maintainer_comment_evidence"
+    ) in rendered
+    assert "only admitted proceed may start a new implementation" in rendered
     assert "loopx issue-fix workflow-plan " in rendered
     assert "loopx issue-fix feasibility " in rendered
+    assert "proceed: `loopx issue-fix feasibility " in rendered
     assert len(rendered.replace(str(project), "<project>")) <= 3_600
     todo_command = next(
         step["command_template"]
@@ -280,6 +280,118 @@ def test_configured_candidate_preflight_requires_prior_work_evidence() -> None:
         assert "numeric_pr_evidence" in str(error)
     else:
         raise AssertionError("configured preflight must require prior-work evidence")
+
+
+def test_candidate_preflight_rejects_unqualified_negative_evidence() -> None:
+    def receipt(query_scope: str) -> dict[str, Any]:
+        return {
+            "repo": "volcengine/OpenViking",
+            "issue_ref": "#3005",
+            "query_scope": query_scope,
+            "complete": True,
+            "truncated": False,
+            "rows": [],
+        }
+
+    complete = {
+        "schema_version": "issue_fix_candidate_preflight_input_v0",
+        "numeric_pr_evidence": receipt("issue_specific_all_states"),
+        "semantic_pr_evidence": receipt("issue_specific_current_revision"),
+        "maintainer_comment_evidence": receipt(
+            "issue_specific_comment_metadata"
+        ),
+    }
+    packet = build_issue_fix_candidate_preflight_packet(
+        repo="volcengine/OpenViking",
+        issue_ref="#3005",
+        input_payload=complete,
+        generated_at="2026-07-30T00:00:00Z",
+    )
+    assert packet["decision"]["route"] == "proceed"
+    assert packet["input_contract"] == candidate_preflight_input_contract()
+
+    missing_comment_evidence = dict(complete)
+    missing_comment_evidence.pop("maintainer_comment_evidence")
+    try:
+        build_issue_fix_candidate_preflight_packet(
+            repo="volcengine/OpenViking",
+            issue_ref="#3005",
+            input_payload=missing_comment_evidence,
+            generated_at="2026-07-30T00:00:00Z",
+        )
+    except ValueError as error:
+        assert "maintainer_comment_evidence" in str(error)
+    else:
+        raise AssertionError("missing comment evidence must not admit a candidate")
+
+    invalid_inputs = [
+        {
+            **complete,
+            "numeric_pr_evidence": {
+                **complete["numeric_pr_evidence"],
+                "truncated": True,
+            },
+        },
+        {
+            **complete,
+            "semantic_pr_evidence": {
+                **complete["semantic_pr_evidence"],
+                "query_scope": "aggregate_recent_pull_requests",
+            },
+        },
+    ]
+    for payload in invalid_inputs:
+        try:
+            build_issue_fix_candidate_preflight_packet(
+                repo="volcengine/OpenViking",
+                issue_ref="#3005",
+                input_payload=payload,
+                generated_at="2026-07-30T00:00:00Z",
+            )
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError("unqualified negative evidence must fail closed")
+
+    try:
+        build_issue_fix_candidate_preflight_packet(
+            repo="volcengine/OpenViking",
+            issue_ref="#3005",
+            input_payload={**complete, "numeric_pr_evidence": []},
+            generated_at="2026-07-30T00:00:00Z",
+        )
+    except TypeError as error:
+        assert "one evidence receipt object, not a list" in str(error)
+        assert "issue_specific_all_states" in str(error)
+    else:
+        raise AssertionError("receipt lists must fail with an actionable error")
+
+
+def test_candidate_preflight_contract_describes_receipt_shapes() -> None:
+    contract = candidate_preflight_input_contract()
+    receipts = contract["evidence_receipts"]
+
+    assert {
+        field: receipt["query_scope"] for field, receipt in receipts.items()
+    } == {
+        "numeric_pr_evidence": "issue_specific_all_states",
+        "semantic_pr_evidence": "issue_specific_current_revision",
+        "maintainer_comment_evidence": "issue_specific_comment_metadata",
+    }
+    for receipt in receipts.values():
+        assert receipt["cardinality"] == "one_receipt_object"
+        assert receipt["required_fields"] == [
+            "repo",
+            "issue_ref",
+            "query_scope",
+            "complete",
+            "truncated",
+            "rows",
+        ]
+        assert (
+            receipt["negative_result_rule"]
+            == "rows may be empty only when complete=true and truncated=false"
+        )
 
 
 def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None:

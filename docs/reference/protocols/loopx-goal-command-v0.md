@@ -127,9 +127,12 @@ review, merge, monitor, and summary requests stay on their own routes.
 
 `start-goal` projects that decision as a typed `selected_capability_route`.
 This is a bootstrap-only selection, not later-turn authority. The guided
-transaction is complete only after feasibility persists capability-owned state
-and its exact successor is written as a generic Agent Todo. That Todo keeps
-only the scheduling route (`action_kind`) and stable public target
+transaction first persists candidate admission in capability-owned state.
+Missing evidence projects `evidence_required`; unresolved cross-references,
+closed PRs, or maintainer comments project `verification_required`. Only an
+`admitted` `proceed` candidate enters feasibility. Final reuse and terminal
+routes are distinct from pending verification. The Todo keeps only the
+scheduling route (`action_kind`) and stable public target
 (`target_key`); issue facts, prior-work checks, repository evidence,
 reproduction, scope, and validation remain owned by `issue_fix` state.
 
@@ -157,7 +160,8 @@ loopx issue-fix workflow-plan \
   --url <github-issue-or-pr-url> \
   --repo-path <approved-repo> \
   --repository-context-json <compact-context.json> \
-  --candidate-preflight-json <candidate-preflight.json> \
+  --fetch-candidate-evidence \
+  --goal-id <goal-id> \
   --validation-label "<validation command>" \
   --format json
 ```
@@ -167,13 +171,21 @@ branch planning, validation labels, the feasibility checkpoint, and PR review
 readiness blockers into `/loopx <goal text>`. Repository context pins compact
 policy, architecture, change-scope, reproduction, and validation refs to a
 revision; memory and external experts stay advisory until repository-verified.
-Refresh the issue body and latest comments, then provide all-state numeric PR
-references plus any current-revision-verified semantic candidates in the
-candidate preflight input. Only a `proceed` decision may start a new
-implementation; other routes reuse, disposition, or skip existing work.
-Initially write only metadata classification and the feasibility checkpoint in
-priority and planner order. Then record a compact observation and let LoopX
-select exactly one route:
+The built-in public GitHub collector produces issue-specific, complete,
+non-truncated receipts for closing PR references, cross-references, and
+maintainer comment metadata without retaining bodies. Exact closing
+references may be reused directly. Cross-references remain
+`verification_required` until their exact current revision is inspected;
+maintainer comments project a content-read gate plus disposition successor.
+The optional `--candidate-resolution-json` binds those compact outcomes to the
+current PR head or maintainer-comment `updatedAt` revision before they feed back
+to current source rows, so a changed source revision fails closed. A capped aggregate
+PR index may generate candidates but cannot prove that prior work is absent.
+The command persists the preflight receipt when `--goal-id` is present. Only
+an `admitted` `proceed` decision may start a new implementation and enter
+feasibility. Pending verification, final reuse, and terminal routes must not invoke feasibility. For a
+`proceed` candidate, record a compact observation and let LoopX select exactly
+one implementation route. Write projected successors in priority and planner order:
 
 ```bash
 loopx issue-fix feasibility \
