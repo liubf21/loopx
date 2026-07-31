@@ -1,0 +1,265 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from loopx.capabilities.integration_branch import (
+    configure_integration_branch,
+    integration_branch_status,
+    sync_integration_branch,
+)
+from loopx.capabilities.integration_branch.core import IntegrationBranchError
+from loopx.cli import main
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _commit(repo: Path, path: str, content: str, message: str) -> str:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _repository(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.name", "LoopX Test")
+    _git(repo, "config", "user.email", "loopx@example.invalid")
+    _commit(repo, "shared.txt", "base\n", "base")
+
+    _git(repo, "switch", "-c", "feature-a")
+    _commit(repo, "a.txt", "a1\n", "feature a")
+    _git(repo, "switch", "main")
+
+    _git(repo, "switch", "-c", "fix-b")
+    _commit(repo, "b.txt", "b1\n", "fix b")
+    _git(repo, "switch", "main")
+    return repo
+
+
+def _configure(repo: Path) -> dict[str, object]:
+    return configure_integration_branch(
+        repo_path=repo,
+        base_ref="main",
+        integration_branch="codex/local-integration",
+        source_refs=["feature-a", "fix-b"],
+        execute=True,
+    )
+
+
+def test_configure_is_preview_first_and_idempotent(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+
+    preview = configure_integration_branch(
+        repo_path=repo,
+        base_ref="main",
+        integration_branch="codex/local-integration",
+        source_refs=["feature-a", "fix-b"],
+    )
+    plan_path = Path(preview["plan_file"])
+    assert preview["status"] == "preview"
+    assert not plan_path.exists()
+
+    configured = _configure(repo)
+    repeated = _configure(repo)
+    assert configured["changed"] is True
+    assert repeated["changed"] is False
+    assert json.loads(plan_path.read_text(encoding="utf-8"))["last_sync"] is None
+
+    with pytest.raises(IntegrationBranchError, match="configured base ref"):
+        configure_integration_branch(
+            repo_path=repo,
+            base_ref="main",
+            integration_branch="main",
+            source_refs=["feature-a"],
+        )
+
+
+def test_sync_detects_review_updates_and_rebuilds_exact_heads(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _configure(repo)
+
+    initial = integration_branch_status(repo_path=repo)
+    assert initial["status"] == "drifted"
+    assert initial["drift_reasons"] == [{"kind": "never_synced"}]
+
+    preview = sync_integration_branch(repo_path=repo)
+    assert preview["status"] == "preview_ready"
+    assert _git(repo, "branch", "--list", "codex/local-integration") == ""
+
+    synced = sync_integration_branch(repo_path=repo, execute=True)
+    assert synced["candidate_tree_sha"] == preview["candidate_tree_sha"]
+    assert (
+        synced["status_packet"]["plan"]["last_sync"]["candidate_tree_sha"]
+        == preview["candidate_tree_sha"]
+    )
+    first_integration_head = str(synced["candidate_sha"])
+    assert synced["status"] == "synced"
+    assert integration_branch_status(repo_path=repo)["status"] == "in_sync"
+    for source in ("feature-a", "fix-b"):
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            source,
+            "codex/local-integration",
+        )
+
+    _git(repo, "switch", "feature-a")
+    updated_source_head = _commit(repo, "a.txt", "a2\n", "review fix")
+    _git(repo, "switch", "main")
+
+    drifted = integration_branch_status(repo_path=repo)
+    assert _git(repo, "rev-parse", "codex/local-integration") == first_integration_head
+    assert {reason["kind"] for reason in drifted["drift_reasons"]} == {
+        "source_ref_moved"
+    }
+
+    resynced = sync_integration_branch(repo_path=repo, execute=True)
+    assert resynced["status"] == "synced"
+    assert resynced["candidate_sha"] != first_integration_head
+    _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        updated_source_head,
+        "codex/local-integration",
+    )
+    assert _git(repo, "rev-parse", "feature-a") == updated_source_head
+    assert integration_branch_status(repo_path=repo)["status"] == "in_sync"
+
+
+def test_merge_conflict_keeps_previous_integration_head(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    _configure(repo)
+    first = sync_integration_branch(repo_path=repo, execute=True)
+    old_head = str(first["candidate_sha"])
+
+    _git(repo, "switch", "feature-a")
+    _commit(repo, "shared.txt", "from-a\n", "feature a shared change")
+    _git(repo, "switch", "fix-b")
+    _commit(repo, "shared.txt", "from-b\n", "fix b shared change")
+    _git(repo, "switch", "main")
+
+    failed = sync_integration_branch(repo_path=repo, execute=True)
+    assert failed["ok"] is False
+    assert failed["status"] == "merge_failed"
+    assert failed["source_ref"] == "fix-b"
+    assert failed["integration_unchanged"] is True
+    assert _git(repo, "rev-parse", "codex/local-integration") == old_head
+
+    _git(repo, "switch", "-c", "manual-resolution", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "feature-a")
+    merge = subprocess.run(
+        ["git", "-C", str(repo), "merge", "--no-ff", "--no-edit", "fix-b"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert merge.returncode != 0
+    (repo / "shared.txt").write_text("resolved\n", encoding="utf-8")
+    _git(repo, "add", "shared.txt")
+    _git(repo, "commit", "--no-edit")
+    resolved_head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+
+    with pytest.raises(IntegrationBranchError, match="does not contain source"):
+        sync_integration_branch(repo_path=repo, candidate_ref="main")
+
+    preview = sync_integration_branch(repo_path=repo, candidate_ref=resolved_head)
+    assert preview["status"] == "preview_ready"
+    assert preview["candidate_source"] == "supplied"
+
+    synced = sync_integration_branch(
+        repo_path=repo,
+        candidate_ref=resolved_head,
+        execute=True,
+    )
+    assert synced["status"] == "synced"
+    assert synced["candidate_sha"] == resolved_head
+    assert synced["status_packet"]["plan"]["last_sync"]["candidate_source"] == "supplied"
+    assert integration_branch_status(repo_path=repo)["status"] == "in_sync"
+
+
+def test_dirty_checked_out_integration_worktree_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _configure(repo)
+    sync_integration_branch(repo_path=repo, execute=True)
+
+    source_worktree = tmp_path / "source-worktree"
+    _git(repo, "worktree", "add", str(source_worktree), "feature-a")
+    _commit(source_worktree, "a.txt", "a2\n", "review update")
+    _git(repo, "switch", "codex/local-integration")
+    (repo / "shared.txt").write_text("dirty\n", encoding="utf-8")
+
+    preview = sync_integration_branch(repo_path=repo)
+    assert preview["status"] == "preview_ready"
+    assert preview["updated"] is False
+
+    with pytest.raises(IntegrationBranchError, match="worktree is dirty"):
+        sync_integration_branch(repo_path=repo, execute=True)
+
+
+def test_cli_configure_and_status_json(tmp_path: Path, capsys) -> None:
+    repo = _repository(tmp_path)
+    common = [
+        "--format",
+        "json",
+        "integration-branch",
+    ]
+    assert (
+        main(
+            [
+                *common,
+                "configure",
+                "--repo-path",
+                str(repo),
+                "--base-ref",
+                "main",
+                "--integration-branch",
+                "codex/local-integration",
+                "--source-branch",
+                "feature-a",
+                "--source-branch",
+                "fix-b",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    configured = json.loads(capsys.readouterr().out)
+    assert configured["status"] == "configured"
+
+    assert (
+        main(
+            [
+                *common,
+                "status",
+                "--repo-path",
+                str(repo),
+            ]
+        )
+        == 0
+    )
+    status = json.loads(capsys.readouterr().out)
+    assert status["status"] == "drifted"
+    assert status["drift_reasons"] == [{"kind": "never_synced"}]

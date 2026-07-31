@@ -14,6 +14,10 @@ from .capabilities.change_quality.cli import (
     handle_change_quality_command,
     register_change_quality_commands,
 )
+from .capabilities.integration_branch.cli import (
+    handle_integration_branch_command,
+    register_integration_branch_commands,
+)
 from .capabilities.decision_context.cli import (
     handle_decision_context_command,
     register_decision_context_commands,
@@ -216,6 +220,8 @@ def build_parser() -> LoopXArgumentParser:
 
     register_change_quality_commands(sub, add_subcommand_format)
 
+    register_integration_branch_commands(sub, add_subcommand_format)
+
     register_content_ops_commands(sub, add_subcommand_format)
 
     register_decision_context_commands(sub, add_subcommand_format)
@@ -408,6 +414,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if change_quality_result is not None:
         return change_quality_result
+
+    integration_branch_result = handle_integration_branch_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if integration_branch_result is not None:
+        return integration_branch_result
 
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)

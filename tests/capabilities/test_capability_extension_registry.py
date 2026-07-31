@@ -23,6 +23,7 @@ from loopx.extensions.runtime import (
 )
 
 BUILTIN_IDS = [
+    "integration-branch-reconcile",
     "change-quality-qualification",
     "issue-fix",
     "decision-context",

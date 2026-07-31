@@ -22,6 +22,9 @@ propose a typed transition through the existing Kernel contract.
 
 Current capability paths:
 
+- [integration-branch](integration-branch/README.md): detect when a reviewed
+  feature or fix branch has moved, then preview or safely rebuild one local
+  integration branch from exact current source heads.
 - [decision-context](decision-context/README.md)
   ([中文](decision-context/README.zh-CN.md),
   [architecture](../reference/protocols/decision-context-architecture-v0.md)):
