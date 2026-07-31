@@ -198,6 +198,30 @@ def test_merge_conflict_keeps_previous_integration_head(tmp_path: Path) -> None:
     assert integration_branch_status(repo_path=repo)["status"] == "in_sync"
 
 
+def test_adopt_current_integration_head_without_touching_worktree(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _configure(repo)
+    _git(repo, "switch", "-c", "codex/local-integration", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "feature-a")
+    _git(repo, "merge", "--no-ff", "--no-edit", "fix-b")
+    integration_head = _git(repo, "rev-parse", "HEAD")
+    (repo / "shared.txt").write_text("local diagnostic\n", encoding="utf-8")
+
+    synced = sync_integration_branch(
+        repo_path=repo,
+        candidate_ref=integration_head,
+        execute=True,
+    )
+
+    assert synced["status"] == "synced"
+    assert synced["updated"] is False
+    assert _git(repo, "rev-parse", "HEAD") == integration_head
+    assert (repo / "shared.txt").read_text(encoding="utf-8") == "local diagnostic\n"
+    assert integration_branch_status(repo_path=repo)["status"] == "in_sync"
+
+
 def test_dirty_checked_out_integration_worktree_fails_closed(
     tmp_path: Path,
 ) -> None:

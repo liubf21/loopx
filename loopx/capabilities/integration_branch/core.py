@@ -551,12 +551,14 @@ def sync_integration_branch(
         plan=status["plan"],
         resolved=resolved,
     )
-    _update_integration_branch(
-        repo,
-        branch=branch,
-        expected_old_sha=resolved["integration"]["sha"],
-        candidate_sha=candidate_sha,
-    )
+    branch_updated = candidate_sha != resolved["integration"]["sha"]
+    if branch_updated:
+        _update_integration_branch(
+            repo,
+            branch=branch,
+            expected_old_sha=resolved["integration"]["sha"],
+            candidate_sha=candidate_sha,
+        )
     plan = dict(status["plan"])
     plan["last_sync"] = {
         "base_sha": resolved["base"]["sha"],
@@ -579,7 +581,7 @@ def sync_integration_branch(
         "schema_version": SYNC_SCHEMA_VERSION,
         "status": "synced",
         "executed": True,
-        "updated": True,
+        "updated": branch_updated,
         "candidate_sha": candidate_sha,
         "candidate_tree_sha": candidate_tree_sha,
         "candidate_source": candidate_source,

@@ -81,6 +81,10 @@ SHA as ancestors. LoopX does not choose or generate the resolution; it only
 verifies the immutable result before the normal local publication and
 readback flow.
 
+When the supplied commit is already the integration branch head, execute only
+records the verified receipt. It does not reset or otherwise touch the checked
+out worktree.
+
 ## Boundary
 
 The capability is deliberately local:
