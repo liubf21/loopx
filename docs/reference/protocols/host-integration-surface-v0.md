@@ -123,10 +123,13 @@ policy. The host has no automation mode, and it must not wrap every inner goal
 iteration in `loopx turn run-once`.
 
 The generated `host_contract` states that activation happens once, the goal
-runtime owns continuation, host session state is non-authoritative, and the
-LoopX Turn driver is not required. Durable policy remains in current
-`quota should-run.interaction_contract`, active state, todos, vision, and
-writeback.
+runtime owns continuation, the lifecycle scope is the registered Goal until
+terminal, phase handoff is not allowed, host session state is
+non-authoritative, and the LoopX Turn driver is not required. A bounded
+delivery segment is progress inside that Goal, not permission to replace it
+with a successor host Goal after screening, implementation, review, or another
+ordinary phase transition. Durable policy remains in current `quota
+should-run.interaction_contract`, active state, todos, vision, and writeback.
 
 A dependent work step may begin only after material upstream results have
 crossed the durable boundary: update the current todo evidence and the next

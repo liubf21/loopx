@@ -112,11 +112,18 @@ def test_one_shot_host_contract_keeps_goal_closure_with_the_host() -> None:
 
     assert prompt["host_contract"]["activation_mode"] == "goal_once"
     assert prompt["host_contract"]["goal_runtime_owns_continuation"] is True
+    assert (
+        prompt["host_contract"]["goal_lifecycle_scope"]
+        == "registered_goal_until_terminal"
+    )
+    assert prompt["host_contract"]["phase_handoff_allowed"] is False
     assert prompt["host_contract"]["loopx_turn_driver_required"] is False
     assert prompt["host_contract"]["session_state_authoritative"] is False
     assert len(prompt["task_body"]) <= 4_000
     task_body = prompt["task_body"]
     normalized = " ".join(task_body.split())
+    assert "a segment is progress, not a new Goal boundary" in normalized
+    assert "do not create a successor host Goal merely to continue" in normalized
     assert "refresh the accountable progress record before spending" in normalized
     assert "Then spend exactly once against that refresh" in normalized
     assert task_body.index("loopx refresh-state") < task_body.index("quota spend-slot")

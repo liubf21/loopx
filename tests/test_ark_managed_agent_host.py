@@ -71,6 +71,12 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "Goal runtime owns continuation and inner iterations" in normalized
     assert "goal loop, not automation" in normalized
     assert "invoke LoopX Turn" in normalized
+    assert "a segment is progress, not a new Goal boundary" in normalized
+    assert (
+        "Keep this activation across phases, steers, and code revisions until "
+        "terminal"
+    ) in normalized
+    assert "do not create a successor host Goal merely to continue" in normalized
     assert (
         "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
         "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
@@ -97,6 +103,8 @@ def test_goal_prompt_projects_goal_only_host_contract() -> None:
         "policy_source": "quota_should_run.interaction_contract",
         "transport_contract": "goal_prompt_v0",
         "goal_runtime_owns_continuation": True,
+        "goal_lifecycle_scope": "registered_goal_until_terminal",
+        "phase_handoff_allowed": False,
         "loopx_turn_driver_required": False,
         "session_state_authoritative": False,
         "runtime_capability_reentry": {

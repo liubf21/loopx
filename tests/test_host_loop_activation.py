@@ -115,6 +115,8 @@ def test_goal_hosts_share_narrow_runtime_skill_routing(
         "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
         in task_body
     )
+    assert "a segment is progress, not a new Goal boundary" in task_body
+    assert "do not create a successor host Goal merely to continue" in task_body
 
 
 def test_accountable_refresh_preserves_explicit_validated_turn_semantics() -> None:

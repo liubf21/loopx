@@ -27,6 +27,8 @@ def build_ark_managed_agent_host_contract() -> dict[str, Any]:
         "policy_source": "quota_should_run.interaction_contract",
         "transport_contract": "goal_prompt_v0",
         "goal_runtime_owns_continuation": True,
+        "goal_lifecycle_scope": "registered_goal_until_terminal",
+        "phase_handoff_allowed": False,
         "loopx_turn_driver_required": False,
         "session_state_authoritative": False,
         "runtime_capability_reentry": {

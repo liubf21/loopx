@@ -1136,9 +1136,12 @@ automation.
 If `should_run=true`, choose the highest-priority in-scope unblocked agent todo.
 Honor claims/leases, blocker-push and recovery obligations. Before dependent work,
 persist material scope/acceptance/non-goal changes in current evidence and the next
-todo. Complete one bounded segment; validate it; write public-safe evidence, critic,
-and next action back to LoopX. A non-trivial completion needs a successor todo or
-an explicit no-follow-up rationale. After validated writeback, replace all three
+todo. Complete one bounded segment inside this same Goal; a segment is progress, not
+a new Goal boundary. Keep this activation across phases, steers, and code revisions
+until terminal; do not create a successor host Goal merely to continue the
+registered objective. Validate the segment; write public-safe evidence, critic, and
+next action back to LoopX. A non-trivial completion needs a successor todo or an
+explicit no-follow-up rationale. After validated writeback, replace all three
 accountable-refresh placeholders with this turn's actual classification, batch
 scale, and outcome; never default or upgrade them to
 `multi_surface` / `outcome_progress`. Then refresh the accountable progress
