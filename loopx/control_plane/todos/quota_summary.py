@@ -247,7 +247,7 @@ def _terminal_closure_proof_is_valid(
     )
 
 
-def _validated_todo_source_contract(
+def validate_todo_source_contract(
     value: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     proof = value.get("source_proof")
@@ -445,7 +445,7 @@ def summarize_user_todos_for_quota(
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    source_completeness, closure_intent = _validated_todo_source_contract(value)
+    source_completeness, closure_intent = validate_todo_source_contract(value)
     all_open_items = sorted(
         todo_summary_source_items(value),
         key=todo_projection_sort_key,

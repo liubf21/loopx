@@ -20,6 +20,8 @@ from .control_plane.agents.workspace_guard import capture_delivery_workspace
 from .control_plane.work_items.repair_delta import (
     REPAIR_DELTA_KIND_CHOICES as REPAIR_DELTA_KIND_CHOICES,
     normalize_repair_delta_kinds,
+    repair_delta_kinds_have_frontier_delta,
+    validate_repair_delta_claims,
 )
 from .control_plane.work_items.autonomous_replan_ack import (
     latest_blocked_successor_frontier_identity,
@@ -48,6 +50,7 @@ from .control_plane.goals.goal_frontier import latest_agent_vision_from_runs
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
 from .state_projection import state_projection_gap_warning
+from .control_plane.todos.active_state_todo_parser import parse_active_state_todos
 from .control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
@@ -191,11 +194,31 @@ def build_repair_delta_contract(
     requested_delta_kinds: list[str],
     active_state_next_action_update: dict[str, Any] | None,
     agent_vision: dict[str, Any] | None,
+    existing_agent_vision: dict[str, Any] | None,
+    state_text: str,
+    agent_id: str | None,
     dry_run: bool,
 ) -> dict[str, Any]:
-    delta_kinds = list(requested_delta_kinds)
-    evidence: list[dict[str, Any]] = []
     update = active_state_next_action_update or {}
+    todo_fields = parse_active_state_todos(state_text, item_limit=None)
+    effective_vision = agent_vision or existing_agent_vision or {}
+    vision_patch = (
+        effective_vision.get("vision_patch")
+        if isinstance(effective_vision.get("vision_patch"), dict)
+        else {}
+    )
+    delta_kinds, evidence, rejected_claims = validate_repair_delta_claims(
+        requested_delta_kinds,
+        agent_todo_summary=(
+            todo_fields.get("agent_todos")
+            if isinstance(todo_fields.get("agent_todos"), dict)
+            else None
+        ),
+        agent_id=agent_id,
+        advancement_policy=str(vision_patch.get("advancement_policy") or "").strip(),
+        next_action_changed=bool(update.get("would_update")),
+        vision_patch_written=agent_vision is not None,
+    )
     if update.get("updated") is True:
         if "active_state_next_action" not in delta_kinds:
             delta_kinds.append("active_state_next_action")
@@ -232,14 +255,17 @@ def build_repair_delta_contract(
             }
         )
 
-    return {
+    contract = {
         "schema_version": REPAIR_DELTA_CONTRACT_SCHEMA_VERSION,
         "required": True,
-        "delta_present": bool(delta_kinds),
+        "delta_present": repair_delta_kinds_have_frontier_delta(delta_kinds),
         "delta_kinds": delta_kinds,
         "auto_evidence": evidence,
         "accepted_without_delta": False,
     }
+    if rejected_claims:
+        contract["rejected_claims"] = rejected_claims
+    return contract
 
 
 def build_vision_checkpoint(
@@ -1086,6 +1112,7 @@ def refresh_state_run(
         action, recommended_action_source = derive_recommended_action_with_source(state_text)
     validate_local_control_text("recommended_action", action)
     repair_delta_contract: dict[str, Any] | None = None
+    validated_repair_delta_kinds: list[str] = []
     requested_classification = classification
     effective_autonomous_replan_recorded = bool(autonomous_replan_recorded)
     if autonomous_replan_recorded:
@@ -1093,7 +1120,13 @@ def refresh_state_run(
             requested_delta_kinds=normalized_repair_delta_kinds,
             active_state_next_action_update=active_state_next_action_update,
             agent_vision=agent_vision,
+            existing_agent_vision=existing_agent_vision,
+            state_text=state_text,
+            agent_id=normalized_agent_id or None,
             dry_run=dry_run,
+        )
+        validated_repair_delta_kinds = list(
+            repair_delta_contract.get("delta_kinds") or []
         )
         if not repair_delta_contract["delta_present"]:
             classification = _noop_classification_for(classification)
@@ -1108,7 +1141,7 @@ def refresh_state_run(
         delivery_outcome=normalized_delivery_outcome,
         autonomous_replan_recorded=bool(autonomous_replan_recorded),
         active_state_next_action_update=active_state_next_action_update,
-        repair_delta_kinds=normalized_repair_delta_kinds,
+        repair_delta_kinds=validated_repair_delta_kinds,
     )
     delivery_workspace = None
     if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
