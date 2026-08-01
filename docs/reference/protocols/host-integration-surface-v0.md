@@ -131,6 +131,15 @@ with a successor host Goal after screening, implementation, review, or another
 ordinary phase transition. Durable policy remains in current `quota
 should-run.interaction_contract`, active state, todos, vision, and writeback.
 
+For `--runtime-profile ark_managed_agent_goal`, the same quota read also emits
+`scheduler_hint.goal_runtime_continuation` with schema
+`goal_runtime_continuation_v0`. Its disposition is `continue_now`, `defer`, or
+`complete`; deferred results include a bounded `recheck_after_seconds`, while
+`state_identity` lets the host discard a stale timer after the frontier
+changes. This is the machine continuation contract. The Goal prompt is not
+rewritten to teach waiting policy, and the model is not asked to infer a wake
+time from prose.
+
 A dependent work step may begin only after material upstream results have
 crossed the durable boundary: update the current todo evidence and the next
 executable todo with any scope, acceptance, or non-goal delta, then refresh
