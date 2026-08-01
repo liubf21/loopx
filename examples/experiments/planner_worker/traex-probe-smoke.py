@@ -10,10 +10,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.extensions.traex_planner_worker import (  # noqa: E402
+from loopx.experiments.planner_worker.traex import (  # noqa: E402
     TraexPlannerWorkerError,
     run_traex_planner_worker_probe,
 )

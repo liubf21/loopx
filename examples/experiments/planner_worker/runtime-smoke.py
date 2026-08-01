@@ -9,19 +9,21 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.extensions.traex_planner_worker import (  # noqa: E402
-    GitWorkspaceObserver,
-    SubprocessValidationRunner,
-)
-from loopx.planner_worker import (  # noqa: E402
+from loopx.experiments.planner_worker.contract import (  # noqa: E402
     AdapterTurn,
     PLANNER_WORKER_PLAN_SCHEMA_VERSION,
     PLANNER_WORKER_STEP_SCHEMA_VERSION,
 )
-from loopx.planner_worker_runtime import run_planner_worker_once  # noqa: E402
+from loopx.experiments.planner_worker.runtime import (  # noqa: E402
+    run_planner_worker_once,
+)
+from loopx.experiments.planner_worker.traex import (  # noqa: E402
+    GitWorkspaceObserver,
+    SubprocessValidationRunner,
+)
 
 
 class FixturePlanner:

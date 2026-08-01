@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypedDict
 
-from .planner_worker import (
+from .contract import (
     AdapterTurn,
     PLANNER_WORKER_RECEIPT_SCHEMA_VERSION,
     ValidationResult,

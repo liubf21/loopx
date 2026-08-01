@@ -5,17 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from loopx.extensions.traex_planner_worker import (
-    GitWorkspaceObserver,
-    SubprocessValidationRunner,
-)
-from loopx.planner_worker import (
+from loopx.experiments.planner_worker.contract import (
     AdapterTurn,
     PLANNER_WORKER_PLAN_SCHEMA_VERSION,
     PLANNER_WORKER_STEP_SCHEMA_VERSION,
     ValidationResult,
 )
-from loopx.planner_worker_runtime import WorkspaceChange, run_planner_worker_once
+from loopx.experiments.planner_worker.runtime import (
+    WorkspaceChange,
+    run_planner_worker_once,
+)
+from loopx.experiments.planner_worker.traex import (
+    GitWorkspaceObserver,
+    SubprocessValidationRunner,
+)
 
 
 def executable_plan() -> dict:

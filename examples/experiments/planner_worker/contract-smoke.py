@@ -7,10 +7,10 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.planner_worker import (  # noqa: E402
+from loopx.experiments.planner_worker.contract import (  # noqa: E402
     build_planner_prompt,
     build_worker_step_prompt,
     parse_planner_worker_plan_text,

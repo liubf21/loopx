@@ -10,6 +10,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / "loopx"
 SCRIPTS_ROOT = REPOSITORY_ROOT / "scripts"
 CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
+EXPERIMENT_ROOT = PACKAGE_ROOT / "experiments"
+EXPERIMENT_PREFIX = "loopx.experiments"
 BENCHMARK_READ_MODELS_ROOT = PACKAGE_ROOT / "benchmarks" / "read_models"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
 QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
@@ -188,6 +190,22 @@ def test_control_plane_does_not_gain_outward_dependencies() -> None:
     assert not outward_dependencies, (
         "control-plane code must not depend on presentation, CLI, capability, or "
         f"benchmark-adapter layers; unexpected edges: {sorted(outward_dependencies)}"
+    )
+
+
+def test_core_does_not_import_experiments() -> None:
+    forbidden_edges = {
+        (_module_name(path), dependency)
+        for path in PACKAGE_ROOT.rglob("*.py")
+        if not path.is_relative_to(EXPERIMENT_ROOT)
+        for dependency in _resolved_imports(path)
+        if dependency == EXPERIMENT_PREFIX
+        or dependency.startswith(EXPERIMENT_PREFIX + ".")
+    }
+
+    assert not forbidden_edges, (
+        "stable LoopX code must not depend on opt-in experiments; "
+        f"unexpected edges: {sorted(forbidden_edges)}"
     )
 
 

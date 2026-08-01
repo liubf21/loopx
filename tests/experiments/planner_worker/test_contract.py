@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from loopx.planner_worker import (
+from loopx.experiments.planner_worker.contract import (
     PLANNER_WORKER_PLAN_SCHEMA_VERSION,
     PLANNER_WORKER_STEP_SCHEMA_VERSION,
     parse_planner_worker_plan_text,
