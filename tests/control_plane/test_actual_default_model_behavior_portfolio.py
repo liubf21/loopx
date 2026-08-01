@@ -17,7 +17,6 @@ from loopx.control_plane.testing.actual_default_model_behavior_portfolio import 
     ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET,
     actual_default_model_behavior_scenario_catalog,
     build_actual_default_model_behavior_scenario_inputs,
-    build_actual_default_model_behavior_scenario_packets,
     build_quota_hot_path_compaction_regression_source,
     run_actual_default_model_behavior_portfolio,
 )
@@ -242,6 +241,12 @@ def _scenario_inputs(
             "turn_quota_hot_path_compaction_regression": production_sources[
                 "turn_quota_hot_path_compaction_regression"
             ],
+            "turn_quota_hot_path_selected_todo_invariance": production_sources[
+                "turn_quota_hot_path_selected_todo_invariance"
+            ],
+            "turn_quota_hot_path_human_gate_invariance": production_sources[
+                "turn_quota_hot_path_human_gate_invariance"
+            ],
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
                 executable_todo_count=1,
@@ -346,7 +351,7 @@ def _onboarding_actor(request: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) -> None:
-    packets = build_actual_default_model_behavior_scenario_packets(tmp_path)
+    sources, packets = build_actual_default_model_behavior_scenario_inputs(tmp_path)
 
     selection_commands = packets["onboarding_goal_selection_gate"]["command_pack"][
         "commands"
@@ -464,6 +469,46 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
     }
     assert "title" not in regression["agent_lane_next_action"]
     assert regression["goal_route_hint"]["other_agent_next_action_count"] == 24
+    invariant_pairs = (
+        (
+            "turn_selected_todo",
+            "turn_quota_hot_path_selected_todo_invariance",
+        ),
+        (
+            "turn_human_gate",
+            "turn_quota_hot_path_human_gate_invariance",
+        ),
+    )
+    hard_fields = (
+        "decision",
+        "selected_todo_id",
+        "user_action_required",
+        "must_attempt_work",
+        "delivery_allowed",
+        "quiet_noop_allowed",
+        "external_write_requested",
+    )
+    for clean_id, noisy_id in invariant_pairs:
+        assert len(
+            json.dumps(sources[noisy_id], ensure_ascii=False, indent=2).encode("utf-8")
+        ) > ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET
+        assert len(
+            json.dumps(packets[noisy_id], ensure_ascii=False, indent=2).encode("utf-8")
+        ) <= ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET
+        clean_decision = _turn_decision({"packet": packets[clean_id]})
+        noisy_decision = _turn_decision({"packet": packets[noisy_id]})
+        assert {
+            field: clean_decision[field] for field in hard_fields
+        } == {
+            field: noisy_decision[field] for field in hard_fields
+        }
+        assert model_behavior_semantic_contract_from_packet(
+            sources[noisy_id],
+            arm="full_packet",
+        ) == model_behavior_semantic_contract_from_packet(
+            packets[noisy_id],
+            arm="full_packet",
+        )
     assert set(packets) == {
         item["scenario_id"]
         for item in actual_default_model_behavior_scenario_catalog()["scenarios"]
@@ -588,7 +633,7 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
     catalog = actual_default_model_behavior_scenario_catalog()
 
     assert catalog["topology"] == "actual_default_one_arm"
-    assert len(catalog["scenarios"]) == 13
+    assert len(catalog["scenarios"]) == 15
     assert all(
         scenario["packet_view"]
         == (
@@ -598,6 +643,18 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
         )
         for scenario in catalog["scenarios"]
     )
+    assert {
+        contrast["contrast_id"] for contrast in catalog["contrasts"]
+    } == {
+        "selected_todo_survives_omitted_diagnostics",
+        "blocking_gate_survives_omitted_diagnostics",
+        "blocking_gate_vs_non_blocking_notice",
+        "selected_work_vs_required_vision_replan",
+    }
+    assert {contrast["contrast_kind"] for contrast in catalog["contrasts"]} == {
+        "invariance",
+        "sensitivity",
+    }
     composed = [
         scenario
         for scenario in catalog["scenarios"]
@@ -703,6 +760,14 @@ def test_portfolio_turn_actor_reads_actual_default_packet_without_semantic_echo(
     )
 
     assert result["qualification_passed"] is True
+    assert result["scenario_count"] == 15
+    assert result["contrast_count"] == 4
+    assert result["actor_call_budget"] == 30
+    assert result["actor_call_count"] == 30
+    assert result["failure_count"] == 0
+    assert result["skip_count"] == 0
+    assert result["contrast_failure_count"] == 0
+    assert all(contrast["status"] == "passed" for contrast in result["contrasts"])
     assert requests
     assert all(request["arm"] == "full_packet" for request in requests)
     assert all(request["packet"]["mode"] == "should-run" for request in requests)
@@ -711,6 +776,79 @@ def test_portfolio_turn_actor_reads_actual_default_packet_without_semantic_echo(
         for request in requests
     )
     assert all(request["semantic_contract_required"] is False for request in requests)
+
+
+def test_portfolio_preflight_rejects_invalid_contrast_before_actor_spend(
+    tmp_path: Path,
+) -> None:
+    sources, packets = _scenario_inputs(tmp_path)
+    source = _turn_source(human_gate=False)
+    source["interaction_contract"]["user_channel"]["action_required"] = True
+    source["action_required"] = True
+    sources["turn_selected_todo"] = source
+    packets["turn_selected_todo"] = compact_quota_should_run_cli_payload(source)
+    calls = 0
+
+    def turn_actor(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        return _turn_actor(request)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "contrast selected_todo_survives_omitted_diagnostics "
+            "source relation is invalid"
+        ),
+    ):
+        run_actual_default_model_behavior_portfolio(
+            packets,
+            scenario_sources=sources,
+            qualification_id="actual-default-portfolio-invalid-contrast",
+            turn_actor=turn_actor,
+            onboarding_actor=_onboarding_actor,
+        )
+
+    assert calls == 0
+
+
+def test_portfolio_contrast_rejects_noisy_gate_semantic_collapse(
+    tmp_path: Path,
+) -> None:
+    def collapsed_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        result = _turn_actor(request)
+        packet = request["packet"]
+        capability_gate = packet.get("capability_gate") or {}
+        if (
+            capability_gate.get("action") == "operator_gate"
+            and "payload_compaction" in capability_gate
+        ):
+            result["decision"] = {
+                **result["decision"],
+                "must_attempt_work": True,
+            }
+        return result
+
+    sources, packets = _scenario_inputs(tmp_path)
+    result = run_actual_default_model_behavior_portfolio(
+        packets,
+        scenario_sources=sources,
+        qualification_id="actual-default-portfolio-noisy-gate-collapse",
+        turn_actor=collapsed_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    contrast = next(
+        item
+        for item in result["contrasts"]
+        if item["contrast_id"] == "blocking_gate_survives_omitted_diagnostics"
+    )
+    assert result["qualification_passed"] is False
+    assert result["failure_count"] == 2
+    assert result["contrast_failure_count"] == 1
+    assert contrast["status"] == "failed"
+    assert contrast["failure_codes"] == ["expected_match:must_attempt_work"]
+    assert contrast["repeats_compared"] == 2
 
 
 def test_portfolio_oracle_rejects_quiet_wait_for_required_vision_replan(

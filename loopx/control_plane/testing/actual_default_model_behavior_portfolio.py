@@ -16,6 +16,7 @@ from .control_plane_composition_scenarios import (
     build_control_plane_composition_scenario_sources,
 )
 from .model_behavior_qualification import (
+    MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS,
     ModelBehaviorActor,
     _actor_failure_code,
     build_model_behavior_actor_request,
@@ -44,6 +45,9 @@ ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS = 2
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID = "portfolio-goal"
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID = "codex-portfolio"
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET = 40_000
+ACTUAL_DEFAULT_MODEL_BEHAVIOR_CONTRAST_SCHEMA_VERSION = (
+    "actual_default_model_behavior_contrast_v0"
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,16 @@ class _ScenarioSpec:
     expected_route: str
     scenario_family: str = "core_contract"
     composition_dimensions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ContrastSpec:
+    contrast_id: str
+    contrast_kind: str
+    left_scenario_id: str
+    right_scenario_id: str
+    must_match_fields: tuple[str, ...]
+    must_differ_fields: tuple[str, ...] = ()
 
 
 _SCENARIOS = (
@@ -136,6 +150,22 @@ _SCENARIOS = (
         ),
     ),
     _ScenarioSpec(
+        "turn_quota_hot_path_selected_todo_invariance",
+        "turn",
+        None,
+        "execute",
+        "quota_cli_compaction_contrast",
+        ("selected_todo", "omitted_diagnostics", "invariance"),
+    ),
+    _ScenarioSpec(
+        "turn_quota_hot_path_human_gate_invariance",
+        "turn",
+        None,
+        "ask_user",
+        "quota_cli_compaction_contrast",
+        ("blocking_user_gate", "omitted_diagnostics", "invariance"),
+    ),
+    _ScenarioSpec(
         "onboarding_healthy_continue",
         "onboarding",
         "postcondition",
@@ -149,6 +179,57 @@ _SCENARIOS = (
     ),
 )
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_SCENARIO_COUNT = len(_SCENARIOS)
+
+_HARD_INVARIANT_FIELDS = tuple(MODEL_BEHAVIOR_HARD_INVARIANT_FIELDS)
+_CONTRASTS = (
+    _ContrastSpec(
+        "selected_todo_survives_omitted_diagnostics",
+        "invariance",
+        "turn_selected_todo",
+        "turn_quota_hot_path_selected_todo_invariance",
+        _HARD_INVARIANT_FIELDS,
+    ),
+    _ContrastSpec(
+        "blocking_gate_survives_omitted_diagnostics",
+        "invariance",
+        "turn_human_gate",
+        "turn_quota_hot_path_human_gate_invariance",
+        _HARD_INVARIANT_FIELDS,
+    ),
+    _ContrastSpec(
+        "blocking_gate_vs_non_blocking_notice",
+        "sensitivity",
+        "turn_human_gate",
+        "turn_scoped_gate_successor_replan",
+        (
+            "user_action_required",
+            "quiet_noop_allowed",
+            "external_write_requested",
+        ),
+        (
+            "decision",
+            "selected_todo_id",
+            "must_attempt_work",
+            "delivery_allowed",
+        ),
+    ),
+    _ContrastSpec(
+        "selected_work_vs_required_vision_replan",
+        "sensitivity",
+        "turn_selected_todo",
+        "turn_required_vision_replan",
+        (
+            "decision",
+            "user_action_required",
+            "must_attempt_work",
+            "delivery_allowed",
+            "quiet_noop_allowed",
+            "external_write_requested",
+        ),
+        ("selected_todo_id",),
+    ),
+)
+ACTUAL_DEFAULT_MODEL_BEHAVIOR_CONTRAST_COUNT = len(_CONTRASTS)
 
 
 def _canonical_json(value: Any) -> str:
@@ -189,6 +270,17 @@ def actual_default_model_behavior_scenario_catalog() -> dict[str, Any]:
                 },
             }
             for spec in _SCENARIOS
+        ],
+        "contrasts": [
+            {
+                "contrast_id": spec.contrast_id,
+                "contrast_kind": spec.contrast_kind,
+                "left_scenario_id": spec.left_scenario_id,
+                "right_scenario_id": spec.right_scenario_id,
+                "must_match_fields": list(spec.must_match_fields),
+                "must_differ_fields": list(spec.must_differ_fields),
+            }
+            for spec in _CONTRASTS
         ],
     }
 
@@ -430,6 +522,55 @@ def build_quota_hot_path_compaction_regression_source() -> dict[str, Any]:
     return payload
 
 
+def _build_quota_hot_path_selected_todo_invariance_source() -> dict[str, Any]:
+    payload = build_quota_hot_path_compaction_regression_source()
+    selected_todo = dict(payload["selected_todo"])
+    selected_todo.update(
+        {
+            "todo_id": "todo_portfolio001",
+            "text": "Implement one bounded public-safe slice.",
+        }
+    )
+    payload["selected_todo"] = selected_todo
+    payload["recommended_action"] = selected_todo["text"]
+    payload["latest_run_recommended_action"] = selected_todo["text"]
+    payload["agent_lane_next_action"] = {
+        **selected_todo,
+        "title": selected_todo["text"],
+        "text": f"[P1] {selected_todo['text']}",
+    }
+    warning = dict(payload["next_action_projection_warning"])
+    warning["latest_run_recommended_action"] = selected_todo["text"]
+    warning["agent_lane_next_action"] = payload["agent_lane_next_action"]["text"]
+    warning["recommended_action"] = selected_todo["text"]
+    payload["next_action_projection_warning"] = warning
+    payload["interaction_contract"] = build_interaction_contract(
+        payload,
+        available_capabilities=["network", "shell", "filesystem_write"],
+    )
+    return payload
+
+
+def _build_quota_hot_path_human_gate_invariance_source() -> dict[str, Any]:
+    payload = _turn_scenario_source(human_gate=True)
+    noisy_source = build_quota_hot_path_compaction_regression_source()
+    capability_gate = deepcopy(noisy_source["capability_gate"])
+    capability_gate.update(
+        {
+            "required": [],
+            "available": ["network"],
+            "missing": [],
+            "action": "operator_gate",
+            "decision_owner": "user",
+        }
+    )
+    payload["capability_gate"] = capability_gate
+    goal_route_hint = deepcopy(noisy_source["goal_route_hint"])
+    goal_route_hint["route_decision"] = "wait_for_blocking_user_gate"
+    payload["goal_route_hint"] = goal_route_hint
+    return payload
+
+
 def _build_actual_default_model_behavior_scenario_sources(
     root: Path,
 ) -> dict[str, dict[str, Any]]:
@@ -450,6 +591,12 @@ def _build_actual_default_model_behavior_scenario_sources(
             "turn_human_gate": _turn_scenario_source(human_gate=True),
             "turn_quota_hot_path_compaction_regression": (
                 build_quota_hot_path_compaction_regression_source()
+            ),
+            "turn_quota_hot_path_selected_todo_invariance": (
+                _build_quota_hot_path_selected_todo_invariance_source()
+            ),
+            "turn_quota_hot_path_human_gate_invariance": (
+                _build_quota_hot_path_human_gate_invariance_source()
             ),
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
@@ -551,12 +698,14 @@ def _validate_quota_hot_path_compaction_regression(
     source: Mapping[str, Any],
     packet: Mapping[str, Any],
     contract: Mapping[str, Any],
+    *,
+    expected_selected_todo_id: str | None,
 ) -> None:
     if _pretty_json_size(source) <= ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET:
         raise ValueError("compaction-regression source must exceed the hot-path budget")
     if _pretty_json_size(packet) > ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET:
         raise ValueError("compaction-regression packet exceeds the hot-path budget")
-    if contract.get("selected_todo_id") != "todo_c0ffee123456":
+    if contract.get("selected_todo_id") != expected_selected_todo_id:
         raise ValueError("compaction regression must preserve the selected todo")
 
 
@@ -720,13 +869,68 @@ def _scenario_contract(
             )
         if "todo_portfolio_monitor_schedule" not in str(action.get("primary_action")):
             raise ValueError("primary action must name the selected monitor repair")
-    if spec.scenario_id == "turn_quota_hot_path_compaction_regression":
+    compaction_selected_todos = {
+        "turn_quota_hot_path_compaction_regression": "todo_c0ffee123456",
+        "turn_quota_hot_path_selected_todo_invariance": "todo_portfolio001",
+        "turn_quota_hot_path_human_gate_invariance": None,
+    }
+    if spec.scenario_id in compaction_selected_todos:
         _validate_quota_hot_path_compaction_regression(
             source_packet,
             actor_packet,
             contract,
+            expected_selected_todo_id=compaction_selected_todos[spec.scenario_id],
         )
     return contract
+
+
+def _contrast_relation_failures(
+    spec: _ContrastSpec,
+    left: Mapping[str, Any],
+    right: Mapping[str, Any],
+) -> list[str]:
+    failures = [
+        f"expected_match:{field}"
+        for field in spec.must_match_fields
+        if left.get(field) != right.get(field)
+    ]
+    failures.extend(
+        f"expected_difference:{field}"
+        for field in spec.must_differ_fields
+        if left.get(field) == right.get(field)
+    )
+    return failures
+
+
+def _validate_contrast_source_contracts(
+    contracts: Mapping[str, Mapping[str, Any]],
+) -> None:
+    scenario_ids = set(contracts)
+    allowed_fields = set(_HARD_INVARIANT_FIELDS)
+    for spec in _CONTRASTS:
+        if spec.contrast_kind not in {"invariance", "sensitivity"}:
+            raise ValueError(f"contrast {spec.contrast_id} has an invalid kind")
+        if spec.left_scenario_id not in scenario_ids or spec.right_scenario_id not in (
+            scenario_ids
+        ):
+            raise ValueError(
+                f"contrast {spec.contrast_id} references an unknown scenario"
+            )
+        relation_fields = set(spec.must_match_fields) | set(spec.must_differ_fields)
+        if not relation_fields or not relation_fields <= allowed_fields:
+            raise ValueError(f"contrast {spec.contrast_id} has invalid relation fields")
+        if set(spec.must_match_fields) & set(spec.must_differ_fields):
+            raise ValueError(f"contrast {spec.contrast_id} has overlapping fields")
+        failures = _contrast_relation_failures(
+            spec,
+            contracts[spec.left_scenario_id],
+            contracts[spec.right_scenario_id],
+        )
+        if failures:
+            raise ValueError(
+                f"contrast {spec.contrast_id} source relation is invalid: "
+                + ", ".join(failures)
+            )
 
 
 def _receipt_alignment(
@@ -760,11 +964,12 @@ def _scenario_result(
     qualification_id: str,
     turn_actor: ModelBehaviorActor,
     onboarding_actor: OnboardingModelBehaviorActor,
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[dict[str, Any], bool, list[dict[str, Any]]]:
     receipt_digests: list[str] = []
     observed_routes: list[str] = []
     failure_codes: list[str] = []
     actor_error = False
+    observations: list[dict[str, Any]] = []
     for repeat_index in range(ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS):
         run_id = f"{qualification_id}:{spec.scenario_id}:r{repeat_index + 1}"
         try:
@@ -791,6 +996,9 @@ def _scenario_result(
             break
         aligned, mismatches = _receipt_alignment(spec, receipt, expected)
         receipt_digests.append(_digest(dict(receipt)))
+        observations.append(
+            {field: receipt.get(field) for field in _HARD_INVARIANT_FIELDS}
+        )
         if observed_route not in observed_routes:
             observed_routes.append(observed_route)
         if not aligned:
@@ -814,7 +1022,54 @@ def _scenario_result(
             "receipt_digests": receipt_digests,
         },
         actor_error,
+        observations,
     )
+
+
+def _contrast_result(
+    spec: _ContrastSpec,
+    observations: Mapping[str, list[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    left = observations.get(spec.left_scenario_id, [])
+    right = observations.get(spec.right_scenario_id, [])
+    compared = min(len(left), len(right))
+    failure_codes: list[str] = []
+    observation_digests: list[str] = []
+    if compared != ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS:
+        failure_codes.append("contrast_scenarios_incomplete")
+    for repeat_index in range(compared):
+        failures = _contrast_relation_failures(
+            spec,
+            left[repeat_index],
+            right[repeat_index],
+        )
+        failure_codes.extend(failures)
+        observation_digests.append(
+            _digest(
+                {
+                    "left": dict(left[repeat_index]),
+                    "right": dict(right[repeat_index]),
+                }
+            )
+        )
+    passed = bool(
+        not failure_codes
+        and compared == ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS
+    )
+    return {
+        "schema_version": ACTUAL_DEFAULT_MODEL_BEHAVIOR_CONTRAST_SCHEMA_VERSION,
+        "contrast_id": spec.contrast_id,
+        "contrast_kind": spec.contrast_kind,
+        "left_scenario_id": spec.left_scenario_id,
+        "right_scenario_id": spec.right_scenario_id,
+        "must_match_fields": list(spec.must_match_fields),
+        "must_differ_fields": list(spec.must_differ_fields),
+        "status": "passed" if passed else "failed",
+        "repeats_required": ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS,
+        "repeats_compared": compared,
+        "failure_codes": sorted(set(failure_codes)),
+        "observation_digests": observation_digests,
+    }
 
 
 def run_actual_default_model_behavior_portfolio(
@@ -852,7 +1107,9 @@ def run_actual_default_model_behavior_portfolio(
         )
         for spec in _SCENARIOS
     }
+    _validate_contrast_source_contracts(contracts)
     results: list[dict[str, Any]] = []
+    observations: dict[str, list[dict[str, Any]]] = {}
     actor_call_count = 0
     aborted = False
     for spec in _SCENARIOS:
@@ -872,7 +1129,7 @@ def run_actual_default_model_behavior_portfolio(
                 }
             )
             continue
-        result, actor_error = _scenario_result(
+        result, actor_error, scenario_observations = _scenario_result(
             spec,
             scenario_packets[spec.scenario_id],
             expected=contracts[spec.scenario_id],
@@ -885,22 +1142,41 @@ def run_actual_default_model_behavior_portfolio(
             actor_call_count += 1
             aborted = True
         results.append(result)
+        observations[spec.scenario_id] = scenario_observations
 
-    passed = all(result["status"] == "passed" for result in results)
+    contrast_results = [
+        _contrast_result(spec, observations)
+        for spec in _CONTRASTS
+    ]
+    passed = all(result["status"] == "passed" for result in results) and all(
+        result["status"] == "passed" for result in contrast_results
+    )
+    scenario_failure_count = sum(
+        result["status"] == "failed" for result in results
+    )
+    contrast_failure_count = sum(
+        result["status"] == "failed" for result in contrast_results
+    )
+    skip_count = sum(result["status"] == "not_run" for result in results)
     return {
         "schema_version": ACTUAL_DEFAULT_MODEL_BEHAVIOR_PORTFOLIO_SCHEMA_VERSION,
         "qualification_id": qualification_id,
         "topology": "actual_default_one_arm",
         "scenario_catalog_digest": _digest(catalog),
         "scenario_count": ACTUAL_DEFAULT_MODEL_BEHAVIOR_SCENARIO_COUNT,
+        "contrast_count": ACTUAL_DEFAULT_MODEL_BEHAVIOR_CONTRAST_COUNT,
         "actor_call_budget": (
             ACTUAL_DEFAULT_MODEL_BEHAVIOR_SCENARIO_COUNT
             * ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS
         ),
         "actor_call_count": actor_call_count,
+        "failure_count": scenario_failure_count + contrast_failure_count,
+        "skip_count": skip_count,
+        "contrast_failure_count": contrast_failure_count,
         "qualification_passed": passed,
         "automatic_release_promotion_allowed": False,
         "scenarios": results,
+        "contrasts": contrast_results,
         "boundary": {
             "tools_enabled": False,
             "raw_packets_persisted": False,

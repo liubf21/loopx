@@ -61,9 +61,11 @@ def _summary(qualification_id: str, *, commit: str = COMMIT) -> dict[str, object
         "doubao_actual_default": {
             "model_id": "doubao-seed-1.6",
             "topology": "actual_default_one_arm",
-            "scenario_count": 13,
+            "scenario_count": 15,
+            "contrast_count": 4,
+            "contrast_failure_count": 0,
             "repeats_per_scenario": 2,
-            "actor_call_count": 26,
+            "actor_call_count": 30,
             "failure_count": 0,
             "skip_count": 0,
             "qualification_passed": True,
@@ -181,8 +183,8 @@ def test_failed_skipped_and_semantically_invalid_checks_do_not_qualify() -> None
     manifest = _manifest()
     manifest["qualifications"]["ruff"]["status"] = "skipped"
     manifest["qualifications"]["doubao_actual_default"]["summary"][
-        "actor_call_count"
-    ] = 13
+        "contrast_failure_count"
+    ] = 1
     receipt = build_exact_release_commit_qualification(manifest, observed_source=_source())
 
     assert receipt["ready_for_release"] is False

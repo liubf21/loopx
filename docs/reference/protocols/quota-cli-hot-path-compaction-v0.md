@@ -41,7 +41,11 @@ source oracle must still observe the expected selected todo, user gate,
 execution obligation, scheduler route, and vision/replan behavior on every
 repeat. A dedicated compaction-regression scenario must exceed the JSON hot-path
 budget before projection, fit within the budget afterward, preserve the exact
-source-derived semantic contract, and preserve the model's route. Exact helper
+source-derived semantic contract, and preserve the model's route. Two additional
+over-budget scenarios repeat clean selected-work and blocking-gate contracts
+under omitted diagnostic noise. Bounded contrast results require those pairs to
+remain invariant, while blocking versus non-blocking user action and selected
+work versus required vision replan remain distinguishable. Exact helper
 traversal, omitted counts, warning references, deduplication, and peer-route
 shape remain deterministic projection-test responsibilities. The old full
 packet is not retained as a permanent second product contract; paired mode is
