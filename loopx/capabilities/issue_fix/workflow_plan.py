@@ -49,8 +49,46 @@ def match_issue_fix_goal_intent(goal_text: str | None) -> str | None:
     return "issue_fix_intent" if _ISSUE_FIX_TARGET.search(text) and has_action else None
 
 
+def _command_arg(value: str) -> str:
+    if value.startswith("<") and value.endswith(">"):
+        return value
+    return shlex.quote(value)
+
+
+def build_issue_fix_pr_lifecycle_command(
+    *,
+    cli_bin: str,
+    goal_id: str,
+    agent_id: str,
+    project: str | None = None,
+) -> str:
+    """Build the canonical executable PR lifecycle reconciliation command."""
+
+    parts = [
+        shlex.quote(cli_bin),
+        "issue-fix",
+        "pr-lifecycle",
+        "--url",
+        "<github-pr-url>",
+    ]
+    if project:
+        parts.extend(["--project", _command_arg(project)])
+    parts.extend(
+        [
+            "--goal-id",
+            _command_arg(goal_id),
+            "--claimed-by",
+            _command_arg(agent_id),
+            "--execute-transition",
+            "--format",
+            "json",
+        ]
+    )
+    return " ".join(parts)
+
+
 def build_issue_fix_goal_command_templates(
-    *, cli_bin: str, goal_id: str
+    *, cli_bin: str, goal_id: str, agent_id: str = "<agent-id>"
 ) -> dict[str, str]:
     """Return the capability-owned commands projected into goal-start packets."""
 
@@ -80,11 +118,10 @@ def build_issue_fix_goal_command_templates(
             f"--goal-id {goal} "
             "--format json"
         ),
-        "issue_fix_pr_lifecycle_template": (
-            f"{cli} issue-fix pr-lifecycle "
-            "--url <github-pr-url> "
-            f"--goal-id {goal} "
-            "--format json"
+        "issue_fix_pr_lifecycle_template": build_issue_fix_pr_lifecycle_command(
+            cli_bin=cli_bin,
+            goal_id=goal_id,
+            agent_id=agent_id,
         ),
         "issue_fix_reviewer_request_template": (
             f"{cli} issue-fix reviewer-request "
@@ -196,9 +233,11 @@ def _resolution_route_candidates(
 def _post_pr_lifecycle_monitor_plan() -> dict[str, Any]:
     return {
         "schema_version": "issue_fix_post_pr_lifecycle_monitor_plan_v1",
-        "command_preview": (
-            "loopx issue-fix pr-lifecycle --url <github-pr-url> "
-            "--metadata-json <public-pr-state.json> --format json"
+        "command_preview": build_issue_fix_pr_lifecycle_command(
+            cli_bin="loopx",
+            goal_id="<goal-id>",
+            agent_id="<agent-id>",
+            project="<approved-repo>",
         ),
         "creates_per_pr_continuous_monitor_todo": False,
         "monitor_scope": "lifecycle_state_bucket",

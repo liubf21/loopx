@@ -124,6 +124,10 @@ def assert_workflow_shape(payload: dict[str, Any]) -> None:
     assert feasibility["writes_loopx_todo"] is False
     post_pr = payload["post_pr_lifecycle_monitor_plan"]
     assert post_pr["schema_version"] == "issue_fix_post_pr_lifecycle_monitor_plan_v1"
+    assert "--goal-id <goal-id>" in post_pr["command_preview"]
+    assert "--claimed-by <agent-id>" in post_pr["command_preview"]
+    assert "--execute-transition" in post_pr["command_preview"]
+    assert "--fetch-metadata" not in post_pr["command_preview"]
     assert post_pr["creates_per_pr_continuous_monitor_todo"] is False, post_pr
     assert post_pr["monitor_scope"] == "lifecycle_state_bucket", post_pr
     assert post_pr["materializes_nonempty_buckets_only"] is True, post_pr

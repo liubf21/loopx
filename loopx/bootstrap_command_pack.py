@@ -775,10 +775,6 @@ def build_loopx_bootstrap_command_pack(
     mutation_confirmation_required = bool(inspection.get("mutation_confirmation_required"))
     normalized_goal_text = " ".join(goal_text.split()) if goal_text else None
     explicit_goal_start = bool(normalized_goal_text)
-    issue_fix_commands = build_issue_fix_goal_command_templates(
-        cli_bin=cli_bin,
-        goal_id=resolved_goal_id,
-    )
     issue_fix_hint_commands = build_issue_fix_goal_command_templates(
         cli_bin=cli_bin,
         goal_id="<goal-id>",
@@ -811,6 +807,11 @@ def build_loopx_bootstrap_command_pack(
         available_capabilities=available_capabilities,
     )
     selected_agent_id = host_loop_activation.get("agent_id")
+    issue_fix_commands = build_issue_fix_goal_command_templates(
+        cli_bin=cli_bin,
+        goal_id=resolved_goal_id,
+        agent_id=str(selected_agent_id) if selected_agent_id else "<agent-id>",
+    )
     activation_allowed = bool(host_loop_activation.get("activation_allowed"))
     activation_commands = host_loop_activation.get("commands")
     activation_commands = activation_commands if isinstance(activation_commands, dict) else {}
