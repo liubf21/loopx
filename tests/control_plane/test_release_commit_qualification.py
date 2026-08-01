@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -321,3 +322,32 @@ def test_release_qualification_cli_redacts_manifest_path_errors(tmp_path: Path) 
     payload = json.loads(result.stdout)
     assert payload["error"] == "manifest_unreadable"
     assert str(tmp_path) not in result.stdout
+
+
+def test_live_doubao_script_prefers_candidate_checkout_over_pythonpath(
+    tmp_path: Path,
+) -> None:
+    shadow = tmp_path / "shadow"
+    shadow_loopx = shadow / "loopx"
+    shadow_loopx.mkdir(parents=True)
+    (shadow_loopx / "__init__.py").write_text(
+        'raise RuntimeError("loaded shadow loopx")\n',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "qualify-doubao-model-behavior-live.py"),
+            "--help",
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(shadow)},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Run the actual-default behavior portfolio" in result.stdout
+    assert "loaded shadow loopx" not in result.stderr
