@@ -69,6 +69,7 @@ QUOTA_DETAIL_SECTIONS = (
     "agent-todos",
     "user-todos",
     "goal-boundary",
+    "vision",
 )
 QUOTA_EVENT_KINDS = {
     "should-run": "quota_should_run",
@@ -227,7 +228,7 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Include one cold-path `quota should-run` detail section. Repeat for "
             "multiple sections or use `all`. Canonical sections: scheduler, "
-            "agent-todos, user-todos, and goal-boundary."
+            "agent-todos, user-todos, goal-boundary, and vision."
         ),
     )
     quota_parser.add_argument(
@@ -969,6 +970,7 @@ def handle_quota_command(
             include_todo_summary_detail="agent-todos" in detail_sections,
             include_user_todo_summary_detail="user-todos" in detail_sections,
             include_goal_boundary_detail="goal-boundary" in detail_sections,
+            include_vision_detail="vision" in detail_sections,
         )
     print_payload(payload, args.format, _quota_renderer(args))
     return 0 if payload.get("ok") else 1
