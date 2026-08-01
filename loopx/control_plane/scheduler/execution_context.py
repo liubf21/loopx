@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 SCHEDULER_EXECUTION_CONTEXT_SCHEMA_VERSION = "scheduler_execution_context_v0"
+GOAL_RUNTIME_CONTINUATION_SCHEMA_VERSION = "goal_runtime_continuation_v0"
 
 
 class HostSurface(str, Enum):
@@ -41,6 +42,12 @@ class SchedulerRuntimeProfile(str, Enum):
     CLAUDE_CODE_VISIBLE = "claude_code"
     GENERIC_CLI_AGENT_LOOP = "generic_cli"
     GENERIC_CLI_OUTER_CONTROLLER = "outer_controller"
+
+
+class GoalRuntimeContinuationDisposition(str, Enum):
+    CONTINUE_NOW = "continue_now"
+    DEFER = "defer"
+    COMPLETE = "complete"
 
 
 NATIVE_GOAL_RUNTIME_PROFILES = frozenset(
@@ -399,6 +406,39 @@ def scheduler_execution_context_for_turn(
     )
 
 
+def build_goal_runtime_continuation(
+    scheduler_hint: Mapping[str, Any],
+) -> dict[str, Any]:
+    action = str(scheduler_hint.get("action") or "")
+    if action == "run_now":
+        disposition = GoalRuntimeContinuationDisposition.CONTINUE_NOW
+    elif action == "stop_until_explicit_resume":
+        disposition = GoalRuntimeContinuationDisposition.COMPLETE
+    else:
+        disposition = GoalRuntimeContinuationDisposition.DEFER
+
+    reset_policy = scheduler_hint.get("reset_policy")
+    reset_policy = reset_policy if isinstance(reset_policy, Mapping) else {}
+    continuation = {
+        "schema_version": GOAL_RUNTIME_CONTINUATION_SCHEMA_VERSION,
+        "source": "quota.should-run.scheduler_hint",
+        "disposition": disposition.value,
+        "reason_code": scheduler_hint.get("reason_code"),
+        "state_identity": {
+            key: reset_policy[key]
+            for key in ("reset_token", "identity_signature")
+            if reset_policy.get(key) is not None
+        },
+    }
+    if disposition is GoalRuntimeContinuationDisposition.DEFER:
+        host_cadence = scheduler_hint.get("codex_app")
+        host_cadence = host_cadence if isinstance(host_cadence, Mapping) else {}
+        recommended_interval = host_cadence.get("recommended_interval_minutes")
+        if isinstance(recommended_interval, int) and recommended_interval > 0:
+            continuation["recheck_after_seconds"] = recommended_interval * 60
+    return continuation
+
+
 def apply_scheduler_execution_context(
     result: dict[str, Any],
     resolution: SchedulerExecutionContextResolution,
@@ -443,6 +483,12 @@ def apply_scheduler_execution_context(
             cold_path["execution_phase"] = execution_phase
         return result
 
+    goal_runtime_continuation = (
+        build_goal_runtime_continuation(result)
+        if context.scheduler_owner is SchedulerOwner.GOAL_RUNTIME
+        else None
+    )
+
     result["execution_context"] = resolution.projection()
     result["codex_app"] = {
         "applicability": "not_applicable",
@@ -479,4 +525,6 @@ def apply_scheduler_execution_context(
             "selected scheduler owner requires no Codex App apply or ACK"
         ),
     }
+    if goal_runtime_continuation is not None:
+        result["goal_runtime_continuation"] = goal_runtime_continuation
     return result

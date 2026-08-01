@@ -5,8 +5,8 @@ from itertools import product
 import pytest
 
 from loopx.control_plane.scheduler.execution_context import (
-    ExecutionMode,
     GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    ExecutionMode,
     HostSurface,
     SchedulerOwner,
     SchedulerRuntimeProfile,
@@ -19,7 +19,6 @@ from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.work_items.interaction_contract import (
     interaction_next_cli_actions,
 )
-
 
 VALID_COMBINATIONS = {
     ("ark_managed_agent", "goal_runtime", "interactive"),
@@ -240,6 +239,76 @@ def test_codex_app_runtime_profile_preserves_host_backoff() -> None:
     assert hint["cold_path_detail"]["execution_phase"]["apply_needed"] is True
 
 
+def test_goal_runtime_projects_typed_immediate_continuation() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+
+    hint = build_scheduler_hint(
+        _active_payload(),
+        scheduler_execution_context=context,
+    )
+
+    assert hint["goal_runtime_continuation"] == {
+        "schema_version": "goal_runtime_continuation_v0",
+        "source": "quota.should-run.scheduler_hint",
+        "disposition": "continue_now",
+        "reason_code": "interaction_agent_attempt_required",
+        "state_identity": {
+            "reset_token": hint["reset_policy"]["reset_token"],
+            "identity_signature": hint["reset_policy"]["identity_signature"],
+        },
+    }
+
+
+def test_goal_runtime_projects_typed_defer_with_recheck_delay() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        scheduler_execution_context=context,
+    )
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert continuation["recheck_after_seconds"] == 15 * 60
+    assert continuation["state_identity"]["reset_token"]
+    assert hint["execution_phase"]["disposition"] == "goal_runtime_owned"
+
+
+def test_non_goal_runtime_does_not_receive_goal_continuation() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+    )
+
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        scheduler_execution_context=context,
+    )
+
+    assert "goal_runtime_continuation" not in hint
+
+
+def test_goal_runtime_terminal_stop_projects_complete() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    payload = _monitor_wait_payload()
+    payload["effective_action"] = "terminal_no_followup"
+    payload["interaction_contract"]["mode"] = "terminal_no_followup"
+
+    hint = build_scheduler_hint(
+        payload,
+        scheduler_execution_context=context,
+    )
+
+    assert hint["action"] == "stop_until_explicit_resume"
+    assert hint["goal_runtime_continuation"]["disposition"] == "complete"
+    assert "recheck_after_seconds" not in hint["goal_runtime_continuation"]
+
+
 @pytest.mark.parametrize(
     ("profile", "runtime_key"),
     (
@@ -366,9 +435,11 @@ def test_codex_app_monitor_quiet_retry_uses_turn_receipt() -> None:
     )
 
     assert actions == [
-        "on missing/write_failed heartbeat_receipt only: loopx --format json "
-        "quota should-run --goal-id codex-heartbeat-fixture --agent-id "
-        'codex-fixture --codex-app --turn-instance-id "${LOOPX_TURN:?}"'
+        (
+            "on missing/write_failed heartbeat_receipt only: loopx --format json "
+            "quota should-run --goal-id codex-heartbeat-fixture --agent-id "
+            'codex-fixture --codex-app --turn-instance-id "${LOOPX_TURN:?}"'
+        )
     ]
 
 
