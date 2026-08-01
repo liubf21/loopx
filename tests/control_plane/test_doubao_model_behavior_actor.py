@@ -278,16 +278,16 @@ def test_direct_transport_classifies_http_errors_without_exposing_response(
     error_code: str,
     message: str,
 ) -> None:
-    secret_response = b'{"error":"credential detail must remain private"}'
+    private_response = b'{"error":"provider detail must remain private"}'
 
     class UnauthorizedOpener:
         def open(self, *_: Any, **__: Any) -> Any:
             raise HTTPError(
                 DOUBAO_CHAT_COMPLETIONS_ENDPOINT,
                 status,
-                "credential detail must remain private",
+                "provider detail must remain private",
                 hdrs=None,
-                fp=BytesIO(secret_response),
+                fp=BytesIO(private_response),
             )
 
     monkeypatch.setattr(
@@ -298,14 +298,14 @@ def test_direct_transport_classifies_http_errors_without_exposing_response(
     with pytest.raises(DoubaoActorTransportError) as exc_info:
         _direct_ark_transport(
             endpoint=DOUBAO_CHAT_COMPLETIONS_ENDPOINT,
-            headers={"Authorization": "Bearer fixture-key-not-a-secret"},
+            headers={},
             body=b"{}",
             timeout_seconds=1.0,
         )
 
     assert exc_info.value.error_code == error_code
     assert str(exc_info.value) == message
-    assert "credential detail" not in str(exc_info.value)
+    assert "provider detail" not in str(exc_info.value)
 
 
 def test_actor_rejects_noncanonical_request_before_transport() -> None:
