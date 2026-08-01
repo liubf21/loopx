@@ -336,6 +336,17 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
         "status",
         "goal_selection_choices",
     }
+    selection_activation = packets["onboarding_goal_selection_gate"][
+        "command_pack"
+    ]["host_loop_activation"]
+    assert selection_activation == {
+        "activation_state": "goal_selection_required",
+        "activation_allowed": False,
+        "activation_required_after_todo_write": False,
+    }
+    assert onboarding_entry_semantic_contract(
+        packets["onboarding_goal_selection_gate"]
+    )["host_loop_activation_after_todo_write"] is False
     gate = packets["turn_human_gate"]
     assert gate["mode"] == "should-run"
     gate_signature = quota_action_signature_document(gate)

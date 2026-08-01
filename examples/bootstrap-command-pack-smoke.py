@@ -427,6 +427,11 @@ def test_start_goal_guided_requires_explicit_goal_for_multi_goal_project() -> No
             ], choice
         commands = payload["command_pack"]["commands"]
         assert set(commands) == {"doctor", "status", "goal_selection_choices"}, commands
+        assert payload["command_pack"]["host_loop_activation"] == {
+            "activation_state": "goal_selection_required",
+            "activation_allowed": False,
+            "activation_required_after_todo_write": False,
+        }, payload
         assert payload["safety_contract"]["writes_registry"] is False, payload
         assert payload["safety_contract"]["creates_heartbeat"] is False, payload
         assert_packet_summary_refs(
