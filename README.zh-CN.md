@@ -76,12 +76,14 @@ LoopX 不是生产自动化控制器。危险权限、生产写入、公开发�
 
 ## 证据
 
-下面是 LoopX 在真实长程工作中的 public-safe 证据，不代表无人值守的生产自治。
-点击原图可以检查跨轮保留的 graph、证据分支和决策。
+这些不是单轮 demo。OpenViking Issue-Fix 与 Auto ML 两条真实轨迹各自跨越
+**200+ 小时自然时长**，持续保留多轮 todo、决策和证据更新。这里的自然时长是
+项目从启动到最新证据的 wall-clock 时间，不等于 200 小时连续模型执行，也不代表
+无人值守的生产自治。点击原图可以检查 public-safe graph、证据分支和跨轮决策。
 
 ### 开源 Issue Fix
 
-**Focused PR 交付与可复用修复知识互相反哺。**
+**超过 200 小时的公开贡献轨迹：Focused PR 交付与可复用修复知识互相反哺。**
 
 <a href="docs/assets/long-running-loop-openviking-trajectory.png">
   <img src="docs/assets/long-running-loop-openviking-trajectory.png" alt="开源 Issue Fix 轨迹：连接 Focused PR 交付与 LoopX 通用能力沉淀" width="420">
@@ -89,19 +91,23 @@ LoopX 不是生产自动化控制器。危险权限、生产写入、公开发�
 
 LoopX 的创建者以
 [OpenViking contributor](https://github.com/volcengine/OpenViking/pulls?q=is%3Apr+author%3Ahuangruiteng)
-身份把这条路径用于持续的 issue-to-PR 修复。
+身份把这条路径用于持续的 issue-to-PR 修复。图中公开贡献序列从首个 PR 创建到
+最后一次所示 review 或 update，跨越 200+ 小时。
 [Issue-Fix 能力说明](docs/capabilities/issue-fix/README.zh-CN.md)把 rolling
 repository context、带 revision 的修复知识和 reviewer-facing preference
-分开管理；当前 checkout 的源码与测试始终具有最高权威。
+分开管理；所链接 PR 与当前 checkout 的源码、测试始终具有最高权威。
 
 ### Auto ML Experiment
 
-**假设、matched evidence、无效谱系、运行中复现和 promote / stop gate
-留在同一张图中。**
+**超过 200 小时的 owner-run 实验轨迹：假设、matched evidence、无效谱系、
+运行中复现和 promote / stop gate 留在同一张图中。**
 
 <a href="docs/assets/long-running-loop-ml-experiment-trajectory.png">
   <img src="docs/assets/long-running-loop-ml-experiment-trajectory.png" alt="Auto ML Experiment 轨迹：实验谱系、证据门和晋级决策" width="760">
 </a>
+
+这张经过脱敏的 public-safe graph 保留了该 200+ 小时自然时间窗口中的决策谱系；
+它是轨迹证据，不代表连续算力执行、独立复现或生产结果。
 
 ### Auto Research
 

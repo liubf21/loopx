@@ -84,14 +84,17 @@ publishing, production writes, and final ownership stay with the human.
 
 ## Evidence
 
-The examples below are public-safe evidence of LoopX being used in long-running
-work. They are not claims of unattended production autonomy. Open each visual
-to inspect the underlying graph, evidence branches, and decisions preserved
-across turns.
+These are not one-turn demos. The OpenViking Issue-Fix and Auto ML trajectories
+each span **200+ hours of elapsed loop lifetime** across many bounded turns,
+decisions, and evidence updates. Elapsed lifetime is wall-clock project time,
+not 200 hours of continuous model execution or a claim of unattended
+production autonomy. Open each visual to inspect the public-safe graph,
+evidence branches, and decisions preserved across turns.
 
 ### Open-Source Issue Fix
 
-**PR delivery and reusable fix knowledge evolve together.**
+**200+ hour public contribution arc: PR delivery and reusable fix knowledge
+evolve together.**
 
 <a href="docs/assets/long-running-loop-openviking-trajectory.png">
   <img src="docs/assets/long-running-loop-openviking-trajectory.png" alt="Open-source issue-fix trajectory linking focused PR delivery with reusable LoopX capabilities" width="420">
@@ -99,18 +102,26 @@ across turns.
 
 LoopX's creator uses this path as an
 [OpenViking contributor](https://github.com/volcengine/OpenViking/pulls?q=is%3Apr+author%3Ahuangruiteng).
-The [Issue-Fix capability](docs/capabilities/issue-fix/README.md) keeps rolling
+The represented public contribution sequence spans more than 200 elapsed hours
+from its first PR creation to the latest represented review or update. The
+[Issue-Fix capability](docs/capabilities/issue-fix/README.md) keeps rolling
 repository context, revision-stamped fix knowledge, and reviewer-facing
-preferences separate; current checkout source and tests remain authoritative.
+preferences separate; linked PRs plus current checkout source and tests remain
+authoritative.
 
 ### Auto ML Experiment
 
-**Hypotheses, matched evidence, invalid lineages, running replicates, and
-promote/stop gates remain visible in one graph.**
+**200+ hour owner-run experiment arc: hypotheses, matched evidence, invalid
+lineages, running replicates, and promote/stop gates remain visible in one
+graph.**
 
 <a href="docs/assets/long-running-loop-ml-experiment-trajectory.png">
   <img src="docs/assets/long-running-loop-ml-experiment-trajectory.png" alt="Auto ML Experiment trajectory with experiment lineages, evidence gates, and promotion decisions" width="760">
 </a>
+
+The redacted public-safe graph preserves decision lineage across that 200+ hour
+elapsed window. It is trajectory evidence, not a claim of continuous compute,
+independent reproduction, or a production result.
 
 ### Auto Research
 
