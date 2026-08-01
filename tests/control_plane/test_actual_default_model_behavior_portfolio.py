@@ -20,6 +20,9 @@ from loopx.control_plane.testing.actual_default_model_behavior_portfolio import 
     build_quota_hot_path_compaction_regression_source,
     run_actual_default_model_behavior_portfolio,
 )
+from loopx.control_plane.testing.doubao_model_behavior_actor import (
+    DoubaoActorTransportError,
+)
 from loopx.control_plane.testing.model_behavior_qualification import (
     FULL_QUOTA_DECISION_PACKET_SCHEMA_VERSION,
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
@@ -704,6 +707,36 @@ def test_portfolio_preflights_every_scenario_before_actor_spend(tmp_path: Path) 
         )
 
     assert calls == 0
+
+
+def test_portfolio_aborts_on_authentication_failure_with_bounded_receipt(
+    tmp_path: Path,
+) -> None:
+    sources, packets = _scenario_inputs(tmp_path)
+    calls = 0
+
+    def turn_actor(_: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        raise DoubaoActorTransportError(
+            "sensitive provider response must not be persisted",
+            error_code="provider_authentication_failed",
+        )
+
+    result = run_actual_default_model_behavior_portfolio(
+        packets,
+        scenario_sources=sources,
+        qualification_id="actual-default-portfolio-auth-failure",
+        turn_actor=turn_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    assert calls == 1
+    assert result["qualification_passed"] is False
+    assert result["actor_call_count"] < result["actor_call_budget"]
+    failed = next(item for item in result["scenarios"] if item["status"] == "failed")
+    assert failed["failure_codes"] == ["provider_authentication_failed"]
+    assert "sensitive provider response" not in json.dumps(result)
 
 
 def test_portfolio_preflight_rejects_wrong_same_agent_route(tmp_path: Path) -> None:
