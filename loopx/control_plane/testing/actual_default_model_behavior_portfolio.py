@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -129,10 +130,9 @@ _SCENARIOS = (
         "execute",
         "quota_cli_compaction_regression",
         (
-            "capability_gate",
-            "next_action_warning",
-            "agent_lane_next_action",
-            "peer_route",
+            "json_budget",
+            "source_semantics",
+            "model_route",
         ),
     ),
     _ScenarioSpec(
@@ -430,10 +430,10 @@ def build_quota_hot_path_compaction_regression_source() -> dict[str, Any]:
     return payload
 
 
-def build_actual_default_model_behavior_scenario_packets(
+def _build_actual_default_model_behavior_scenario_sources(
     root: Path,
 ) -> dict[str, dict[str, Any]]:
-    """Build the default packets used by Codex App automation qualification."""
+    """Build authoritative pre-projection sources for behavior qualification."""
 
     packets = _entry_scenario_packets(root)
     packets.update(
@@ -475,14 +475,38 @@ def build_actual_default_model_behavior_scenario_packets(
             agent_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
         )
     )
+    return packets
+
+
+def _compact_actual_default_model_behavior_scenario_sources(
+    sources: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
     return {
         scenario_id: (
-            compact_quota_should_run_cli_payload(packet)
+            compact_quota_should_run_cli_payload(deepcopy(dict(packet)))
             if packet.get("mode") == "should-run"
-            else packet
+            else deepcopy(dict(packet))
         )
-        for scenario_id, packet in packets.items()
+        for scenario_id, packet in sources.items()
     }
+
+
+def build_actual_default_model_behavior_scenario_inputs(
+    root: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Build paired source and actual-default actor packets from one fixture."""
+
+    sources = _build_actual_default_model_behavior_scenario_sources(root)
+    return sources, _compact_actual_default_model_behavior_scenario_sources(sources)
+
+
+def build_actual_default_model_behavior_scenario_packets(
+    root: Path,
+) -> dict[str, dict[str, Any]]:
+    """Build the default packets used by Codex App automation qualification."""
+
+    _, packets = build_actual_default_model_behavior_scenario_inputs(root)
+    return packets
 
 
 def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
@@ -524,63 +548,56 @@ def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _validate_quota_hot_path_compaction_regression(
+    source: Mapping[str, Any],
     packet: Mapping[str, Any],
     contract: Mapping[str, Any],
 ) -> None:
+    if _pretty_json_size(source) <= ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET:
+        raise ValueError("compaction-regression source must exceed the hot-path budget")
     if _pretty_json_size(packet) > ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET:
         raise ValueError("compaction-regression packet exceeds the hot-path budget")
-    capability_gate = packet.get("capability_gate")
-    warning = packet.get("next_action_projection_warning")
-    lane_action = packet.get("agent_lane_next_action")
-    route_hint = packet.get("goal_route_hint")
-    traverses_targeted_compactors = bool(
-        isinstance(capability_gate, Mapping)
-        and capability_gate.get("payload_compaction", {}).get(
-            "omitted_candidate_counts"
-        )
-        == {"runnable": 24, "blocked": 16, "resolution_bindings": 16}
-        and isinstance(warning, Mapping)
-        and set(warning.get("projection_refs") or {})
-        == {
-            "active_state_next_action",
-            "latest_run_recommended_action",
-            "agent_lane_next_action",
-        }
-        and isinstance(lane_action, Mapping)
-        and "title" not in lane_action
-        and isinstance(route_hint, Mapping)
-        and route_hint.get("other_agent_next_action_count") == 24
-        and "other_agent_next_actions" not in route_hint
-    )
-    if not traverses_targeted_compactors:
-        raise ValueError(
-            "compaction-regression packet must traverse every targeted hot-path compactor"
-        )
     if contract.get("selected_todo_id") != "todo_c0ffee123456":
         raise ValueError("compaction regression must preserve the selected todo")
 
 
 def _scenario_contract(
     spec: _ScenarioSpec,
-    packet: Mapping[str, Any],
+    source_packet: Mapping[str, Any],
+    actor_packet: Mapping[str, Any],
 ) -> dict[str, Any]:
     if spec.actor_kind == "turn":
         build_model_behavior_actor_request(
-            packet,
+            actor_packet,
             qualification_id=f"portfolio-preflight-{spec.scenario_id}",
             arm="full_packet",
             semantic_contract_required=False,
         )
-        contract = _turn_expected_contract(packet)
+        contract = _turn_expected_contract(source_packet)
+        if _turn_expected_contract(actor_packet) != contract:
+            raise ValueError(
+                f"scenario {spec.scenario_id} actor packet diverges "
+                "from source action contract"
+            )
+        if model_behavior_semantic_contract_from_packet(
+            actor_packet,
+            arm="full_packet",
+        ) != model_behavior_semantic_contract_from_packet(
+            source_packet,
+            arm="full_packet",
+        ):
+            raise ValueError(
+                f"scenario {spec.scenario_id} actor packet diverges "
+                "from source semantic contract"
+            )
     else:
         if spec.phase == "entry":
-            _validate_actual_default_projection(packet)
+            _validate_actual_default_projection(actor_packet)
         build_onboarding_model_behavior_actor_request(
-            packet,
+            actor_packet,
             qualification_id=f"portfolio-preflight-{spec.scenario_id}",
             phase=str(spec.phase),
         )
-        contract = _semantic_contract(packet, phase=str(spec.phase))
+        contract = _semantic_contract(source_packet, phase=str(spec.phase))
         violations = _behavior_contract_violations(contract, phase=str(spec.phase))
         if violations:
             raise OnboardingActualBehaviorValidationError(
@@ -610,7 +627,7 @@ def _scenario_contract(
         "turn_same_agent_continuation",
     }:
         peer_route = model_behavior_semantic_contract_from_packet(
-            packet,
+            source_packet,
             arm="full_packet",
         )["peer_route"]
         if not peer_route.get("agent_id"):
@@ -636,7 +653,7 @@ def _scenario_contract(
             raise ValueError("human-gate scenario violates final gate precedence")
     if spec.scenario_id == "turn_required_vision_replan":
         semantics = model_behavior_semantic_contract_from_packet(
-            packet,
+            source_packet,
             arm="full_packet",
         )
         vision = semantics["vision_continuation"]
@@ -660,7 +677,7 @@ def _scenario_contract(
                 "required-vision scenario must remain immediately runnable"
             )
     if spec.scenario_id == "turn_scoped_gate_successor_replan":
-        signature = quota_action_signature_document(packet)
+        signature = quota_action_signature_document(source_packet)
         action = dict(signature.get("action") or {})
         user = dict(signature.get("user") or {})
         selected = dict(action.get("selected_todo") or {})
@@ -675,7 +692,7 @@ def _scenario_contract(
                 "scoped-gate scenario must notify without blocking successor replan"
             )
         semantics = model_behavior_semantic_contract_from_packet(
-            packet,
+            source_packet,
             arm="full_packet",
         )
         if semantics["gate_or_stop"].get("interaction_mode") != (
@@ -685,7 +702,7 @@ def _scenario_contract(
         if semantics["scheduler_action"].get("action") != "run_now":
             raise ValueError("scoped-gate fallback must remain immediately runnable")
     if spec.scenario_id == "turn_capability_monitor_repair":
-        signature = quota_action_signature_document(packet)
+        signature = quota_action_signature_document(source_packet)
         capsule = dict(signature.get("contract_capsule") or {})
         lane = dict(capsule.get("work_lane_contract") or {})
         fallback = dict(capsule.get("capability_monitor_fallback") or {})
@@ -704,7 +721,11 @@ def _scenario_contract(
         if "todo_portfolio_monitor_schedule" not in str(action.get("primary_action")):
             raise ValueError("primary action must name the selected monitor repair")
     if spec.scenario_id == "turn_quota_hot_path_compaction_regression":
-        _validate_quota_hot_path_compaction_regression(packet, contract)
+        _validate_quota_hot_path_compaction_regression(
+            source_packet,
+            actor_packet,
+            contract,
+        )
     return contract
 
 
@@ -799,6 +820,7 @@ def _scenario_result(
 def run_actual_default_model_behavior_portfolio(
     scenario_packets: Mapping[str, Mapping[str, Any]],
     *,
+    scenario_sources: Mapping[str, Mapping[str, Any]],
     qualification_id: str,
     turn_actor: ModelBehaviorActor,
     onboarding_actor: OnboardingModelBehaviorActor,
@@ -812,10 +834,22 @@ def run_actual_default_model_behavior_portfolio(
         raise ValueError(
             f"scenario packets must match the catalog; missing={missing}, unknown={unknown}"
         )
+    source_ids = set(scenario_sources)
+    if source_ids != expected_ids:
+        missing = sorted(expected_ids - source_ids)
+        unknown = sorted(source_ids - expected_ids)
+        raise ValueError(
+            "scenario sources must match the catalog; "
+            f"missing={missing}, unknown={unknown}"
+        )
 
     catalog = actual_default_model_behavior_scenario_catalog()
     contracts = {
-        spec.scenario_id: _scenario_contract(spec, scenario_packets[spec.scenario_id])
+        spec.scenario_id: _scenario_contract(
+            spec,
+            scenario_sources[spec.scenario_id],
+            scenario_packets[spec.scenario_id],
+        )
         for spec in _SCENARIOS
     }
     results: list[dict[str, Any]] = []

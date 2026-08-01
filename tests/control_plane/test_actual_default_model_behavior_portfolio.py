@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from loopx.bootstrap_command_pack import build_start_goal_guided_packet
+from loopx.control_plane.quota.cli_projection import (
+    compact_quota_should_run_cli_payload,
+)
 from loopx.control_plane.quota.turn_envelope import quota_action_signature_document
 from loopx.control_plane.testing.actual_default_model_behavior_portfolio import (
     ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET,
     actual_default_model_behavior_scenario_catalog,
+    build_actual_default_model_behavior_scenario_inputs,
     build_actual_default_model_behavior_scenario_packets,
     build_quota_hot_path_compaction_regression_source,
     run_actual_default_model_behavior_portfolio,
@@ -206,12 +211,14 @@ def _turn_source(
     }
 
 
-def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
-    packets = _entry_packets(tmp_path)
-    production_packets = build_actual_default_model_behavior_scenario_packets(
+def _scenario_inputs(
+    tmp_path: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    sources = _entry_packets(tmp_path)
+    production_sources, _ = build_actual_default_model_behavior_scenario_inputs(
         tmp_path / "required-vision"
     )
-    packets.update(
+    sources.update(
         {
             "turn_selected_todo": _turn_source(human_gate=False),
             "turn_peer_agent_identity": _turn_source(
@@ -223,16 +230,16 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
                 continuation_policy="same_agent_non_delivery",
             ),
             "turn_human_gate": _turn_source(human_gate=True),
-            "turn_required_vision_replan": production_packets[
+            "turn_required_vision_replan": production_sources[
                 "turn_required_vision_replan"
             ],
-            "turn_scoped_gate_successor_replan": production_packets[
+            "turn_scoped_gate_successor_replan": production_sources[
                 "turn_scoped_gate_successor_replan"
             ],
-            "turn_capability_monitor_repair": production_packets[
+            "turn_capability_monitor_repair": production_sources[
                 "turn_capability_monitor_repair"
             ],
-            "turn_quota_hot_path_compaction_regression": production_packets[
+            "turn_quota_hot_path_compaction_regression": production_sources[
                 "turn_quota_hot_path_compaction_regression"
             ],
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
@@ -253,7 +260,15 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
             ),
         }
     )
-    return packets
+    packets = {
+        scenario_id: (
+            compact_quota_should_run_cli_payload(deepcopy(source))
+            if source.get("mode") == "should-run"
+            else deepcopy(source)
+        )
+        for scenario_id, source in sources.items()
+    }
+    return sources, packets
 
 
 def _turn_decision(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -364,9 +379,12 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
         ],
         "full_detail_cold_path": "quota should-run --include-detail vision",
     }
-    assert replan["goal_frontier_projection"]["vision_continuation_audit"][
-        "projection_ref"
-    ] == "$.vision_continuation_audit"
+    assert (
+        replan["goal_frontier_projection"]["vision_continuation_audit"][
+            "projection_ref"
+        ]
+        == "$.vision_continuation_audit"
+    )
     replan_signature = quota_action_signature_document(replan)
     assert replan_signature["action"]["selected_todo"] is None
     assert replan_signature["action"]["must_attempt"] is True
@@ -463,8 +481,10 @@ def test_portfolio_oracle_catches_wrong_selected_todo(tmp_path: Path) -> None:
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-wrong-todo",
         turn_actor=wrong_actor,
         onboarding_actor=_onboarding_actor,
@@ -481,11 +501,41 @@ def test_portfolio_oracle_catches_wrong_selected_todo(tmp_path: Path) -> None:
     assert selected["failure_codes"] == ["source_mismatch:selected_todo_id"]
 
 
+def test_portfolio_source_oracle_rejects_mutated_compact_user_action(
+    tmp_path: Path,
+) -> None:
+    sources, packets = _scenario_inputs(tmp_path)
+    packets["turn_quota_hot_path_compaction_regression"]["interaction_contract"][
+        "user_channel"
+    ]["action_required"] = True
+    calls = 0
+
+    def turn_actor(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        return _turn_actor(request)
+
+    with pytest.raises(
+        ValueError,
+        match="actor packet diverges from source (action|semantic) contract",
+    ):
+        run_actual_default_model_behavior_portfolio(
+            packets,
+            scenario_sources=sources,
+            qualification_id="actual-default-portfolio-mutated-compact-user-action",
+            turn_actor=turn_actor,
+            onboarding_actor=_onboarding_actor,
+        )
+
+    assert calls == 0
+
+
 def test_portfolio_rejects_mutated_blocking_gate_response_plan(tmp_path: Path) -> None:
-    packets = _scenario_packets(tmp_path)
+    sources, packets = _scenario_inputs(tmp_path)
     source = _turn_source(human_gate=True)
     source["interaction_contract"]["response_plan"]["action_sequence"] = ["wait"]
-    packets["turn_human_gate"] = source
+    sources["turn_human_gate"] = source
+    packets["turn_human_gate"] = compact_quota_should_run_cli_payload(source)
 
     with pytest.raises(
         ValueError,
@@ -493,6 +543,7 @@ def test_portfolio_rejects_mutated_blocking_gate_response_plan(tmp_path: Path) -
     ):
         run_actual_default_model_behavior_portfolio(
             packets,
+            scenario_sources=sources,
             qualification_id="actual-default-portfolio-mutated-gate-plan",
             turn_actor=_turn_actor,
             onboarding_actor=_onboarding_actor,
@@ -511,8 +562,10 @@ def test_portfolio_oracle_rejects_silent_wait_for_user_gate(tmp_path: Path) -> N
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-silent-gate-wait",
         turn_actor=silent_wait_actor,
         onboarding_actor=_onboarding_actor,
@@ -564,7 +617,7 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
 
 
 def test_portfolio_preflights_every_scenario_before_actor_spend(tmp_path: Path) -> None:
-    packets = _scenario_packets(tmp_path)
+    sources, packets = _scenario_inputs(tmp_path)
     packets["onboarding_projection_repair"] = {
         **packets["onboarding_projection_repair"],
         "derived_route": "continue_validation",
@@ -587,6 +640,7 @@ def test_portfolio_preflights_every_scenario_before_actor_spend(tmp_path: Path) 
     ):
         run_actual_default_model_behavior_portfolio(
             packets,
+            scenario_sources=sources,
             qualification_id="actual-default-portfolio-preflight",
             turn_actor=turn_actor,
             onboarding_actor=onboarding_actor,
@@ -596,13 +650,16 @@ def test_portfolio_preflights_every_scenario_before_actor_spend(tmp_path: Path) 
 
 
 def test_portfolio_preflight_rejects_wrong_same_agent_route(tmp_path: Path) -> None:
-    packets = _scenario_packets(tmp_path)
+    sources, packets = _scenario_inputs(tmp_path)
     source = _turn_source(
         human_gate=False,
         continuation_policy="same_agent_non_delivery",
     )
     source["selected_todo"]["claimed_by"] = "codex-wrong-peer"
-    packets["turn_same_agent_continuation"] = source
+    sources["turn_same_agent_continuation"] = source
+    packets["turn_same_agent_continuation"] = compact_quota_should_run_cli_payload(
+        source
+    )
     calls = 0
 
     def turn_actor(request: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -616,6 +673,7 @@ def test_portfolio_preflight_rejects_wrong_same_agent_route(tmp_path: Path) -> N
     ):
         run_actual_default_model_behavior_portfolio(
             packets,
+            scenario_sources=sources,
             qualification_id="actual-default-portfolio-wrong-peer",
             turn_actor=turn_actor,
             onboarding_actor=_onboarding_actor,
@@ -635,8 +693,10 @@ def test_portfolio_turn_actor_reads_actual_default_packet_without_semantic_echo(
         result["decision"].pop("semantic_contract", None)
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-runtime-shaped",
         turn_actor=turn_actor,
         onboarding_actor=_onboarding_actor,
@@ -668,8 +728,10 @@ def test_portfolio_oracle_rejects_quiet_wait_for_required_vision_replan(
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-required-vision-wait",
         turn_actor=quiet_wait_actor,
         onboarding_actor=_onboarding_actor,
@@ -701,8 +763,10 @@ def test_portfolio_oracle_rejects_waiting_on_hot_path_compaction_refs(
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-compaction-regression-wait",
         turn_actor=waiting_actor,
         onboarding_actor=_onboarding_actor,
@@ -736,8 +800,10 @@ def test_portfolio_oracle_rejects_treating_non_blocking_notice_as_gate(
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-non-blocking-notice",
         turn_actor=blocking_actor,
         onboarding_actor=_onboarding_actor,
@@ -769,8 +835,10 @@ def test_portfolio_oracle_rejects_waiting_on_capability_monitor_repair(
             }
         return result
 
+    sources, packets = _scenario_inputs(tmp_path)
     result = run_actual_default_model_behavior_portfolio(
-        _scenario_packets(tmp_path),
+        packets,
+        scenario_sources=sources,
         qualification_id="actual-default-portfolio-capability-monitor-repair",
         turn_actor=waiting_actor,
         onboarding_actor=_onboarding_actor,

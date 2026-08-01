@@ -41,10 +41,11 @@ source oracle must still observe the expected selected todo, user gate,
 execution obligation, scheduler route, and vision/replan behavior on every
 repeat. A dedicated compaction-regression scenario must exceed the JSON hot-path
 budget before projection, fit within the budget afterward, preserve the exact
-model semantic contract, and traverse capability candidates, next-action
-warning references, agent-lane deduplication, and peer-route compaction. The old
-full packet is not retained as a permanent second product contract; paired mode
-is reserved for explicit differential diagnosis.
+source-derived semantic contract, and preserve the model's route. Exact helper
+traversal, omitted counts, warning references, deduplication, and peer-route
+shape remain deterministic projection-test responsibilities. The old full
+packet is not retained as a permanent second product contract; paired mode is
+reserved for explicit differential diagnosis.
 
 Live receipts may retain only bounded scenario outcomes and digests. Packets,
 prompts, raw model responses, credentials, and conversations remain outside the
