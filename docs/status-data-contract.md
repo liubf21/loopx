@@ -2237,6 +2237,10 @@ heartbeat worker report that the release snapshot should not be promoted until
 fresh canary promotion-readiness evidence is written back to the shared
 run-history projection. This keeps release readiness in queryable control-plane
 state instead of relying on dashboard prose, `doctor` output, or a chat thread.
+The warning message names the writeback command,
+`python3 examples/canary/canary-promotion-readiness-smoke.py`. A run with
+`--no-write-evidence` validates the canary without refreshing this durable
+projection and cannot clear the warning.
 
 ## Usage Summary
 

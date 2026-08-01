@@ -7,9 +7,10 @@ from typing import Any, Callable
 PROMOTION_READINESS_PROXY_NOTE = (
     "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
 )
-PROMOTION_READINESS_WARNING_MESSAGE = (
-    "promotion readiness evidence is missing, stale, or unknown; run canary readiness smoke"
+PROMOTION_READINESS_WRITEBACK_COMMAND = (
+    "python3 examples/canary/canary-promotion-readiness-smoke.py"
 )
+PROMOTION_READINESS_WARNING_MESSAGE = PROMOTION_READINESS_WRITEBACK_COMMAND
 
 ParseTimestamp = Callable[[Any], Any]
 FreshnessBuilder = Callable[[dict[str, Any]], dict[str, Any]]

@@ -801,8 +801,10 @@ readiness evidence, `quota should-run` also includes
 `should_run`, but it lets heartbeat workers and dashboards report release
 readiness blockers from the shared run-history projection without parsing
 `doctor`, dashboard copy, or chat reports. Before promoting the local release
-snapshot, run the canary promotion-readiness smoke and confirm fresh evidence in
-status or doctor output.
+snapshot, run `python3 examples/canary/canary-promotion-readiness-smoke.py` and
+confirm fresh evidence in status or doctor output. The
+`--no-write-evidence` form remains the non-mutating validation path and therefore
+does not clear this warning.
 Connected delivery goals also include `goal_boundary` when the registry has
 boundary data. That field carries the adapter status, allowed write scope,
 parent-approval scopes, registry guards, next probe, and stop condition. It is
