@@ -25,7 +25,6 @@ from .metadata_preview import (
 )
 from .pr_lifecycle import validate_issue_fix_pr_lifecycle_monitor_packet
 
-
 ISSUE_FIX_DISCOVERED_ISSUE_PROMOTION_INPUT_SCHEMA_VERSION = (
     "issue_fix_discovered_issue_promotion_input_v0"
 )
@@ -621,6 +620,15 @@ def promote_issue_fix_feasibility_packet(
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()[:16]
+    transition = promoted.get("transition")
+    if isinstance(transition, dict):
+        projected_todo = transition.get("projected_todo")
+        if isinstance(projected_todo, dict):
+            projected_todo["target_key"] = f"issue-fix:{repo}:{canonical_ref}"
+            projected_todo["text"] = str(projected_todo.get("text") or "").replace(
+                f"{repo} {source_issue_ref}",
+                f"{repo} {canonical_ref}",
+            )
     promoted["domain_state_key"] = {"repo": repo, "issue_ref": canonical_ref}
     projection = promoted.get("domain_state_projection")
     if not isinstance(projection, dict):
