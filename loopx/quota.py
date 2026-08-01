@@ -2537,6 +2537,7 @@ def build_quota_slot_preview(
     goal_id: str,
     slots: int = 1,
     agent_id: str | None = None,
+    workspace_path: Path | None = None,
     available_capabilities: Any = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
@@ -2551,6 +2552,7 @@ def build_quota_slot_preview(
         goal_id=safe_goal_id,
         slots=slots,
         agent_id=agent_id,
+        workspace_path=workspace_path,
         before=before,
         after_decision=lambda after_status: build_quota_should_run(
             after_status,
@@ -2756,6 +2758,7 @@ def spend_quota_slot(
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     agent_id: str | None = None,
+    workspace_path: Path | None = None,
     available_capabilities: Any = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
@@ -2764,6 +2767,7 @@ def spend_quota_slot(
         goal_id=safe_goal_id,
         slots=slots,
         agent_id=agent_id,
+        workspace_path=workspace_path,
         available_capabilities=available_capabilities, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     if not preview.get("ok"):

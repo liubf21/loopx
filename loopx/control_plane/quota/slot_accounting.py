@@ -167,6 +167,7 @@ def build_quota_slot_preview_for_decision(
     self_repair_spend_actions: set[str] | frozenset[str],
     slots: int = 1,
     agent_id: str | None = None,
+    workspace_path: Path | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_slots = max(1, _int_number(slots, default=1))
@@ -209,6 +210,7 @@ def build_quota_slot_preview_for_decision(
         build_delivery_workspace_guard(
             delivery_completion_run,
             agent_id=safe_requested_agent_id,
+            current_path=workspace_path,
         )
         if delivery_completion_run and delivery_workspace
         else None

@@ -1077,6 +1077,18 @@ def _build_interaction_cli_channel(
     }
     if capability_reentry is not None:
         channel["runtime_capability_reentry"] = capability_reentry
+    selected_todo = (
+        payload.get("selected_todo")
+        if isinstance(payload.get("selected_todo"), Mapping)
+        else {}
+    )
+    if spend_after_validation and selected_todo.get("task_repository"):
+        channel["delivery_workspace_causality"] = {
+            "schema_version": "delivery_workspace_causality_v0",
+            "refresh": "delivery_workspace; otherwise --delivery-workspace-path",
+            "spend": "recorded_delivery_workspace",
+            "mismatch": "fail_closed",
+        }
     return channel
 
 

@@ -178,11 +178,20 @@ compatibility fields
   ],
   "spend_allowed_now": false,
   "spend_after_validation": true,
-  "spend_policy": "spend once after validated writeback"
+  "spend_policy": "spend once after validated writeback",
+  "delivery_workspace_causality": {
+    "schema_version": "delivery_workspace_causality_v0",
+    "refresh": "delivery_workspace; otherwise --delivery-workspace-path",
+    "spend": "recorded_delivery_workspace",
+    "mismatch": "fail_closed"
+  }
 }
 ```
 
-Host 和 agent 不应凭记忆重建这些命令。
+Host 和 agent 不应凭记忆重建这些命令，也不能从 goal repo、当前 shell 或下一条
+Todo 猜测交付 workspace。`refresh-state` 记录本次交付的因果 workspace；`spend-slot`
+只允许从这份记录对应的 workspace 记账。为保持默认 hot path 紧凑，这个子契约只在
+selected Todo 显式声明 `task_repository` 且当前 mode 允许验证后记账时出现。
 
 ## Mode 是闭集协议
 
