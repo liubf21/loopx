@@ -722,6 +722,26 @@ loopx reward \
   --reason-summary "validation improved and the route is worth extending"
 ```
 
+### Recover History Index Collisions
+
+History writers reserve their JSON/Markdown artifact pair atomically. If an
+older runtime reports legacy index identity collisions, review a complete
+rebuild plan before changing the index:
+
+```bash
+loopx --format json history rebuild-index-collisions \
+  --goal-id your-project-goal | jq '.review_plan' > reviewed-plan.json
+loopx history rebuild-index-collisions \
+  --goal-id your-project-goal \
+  --review-plan-json reviewed-plan.json \
+  --execute
+```
+
+The execute path requires the exact reviewed plan, keeps a pre-rebuild index
+backup, and preserves ambiguous legacy artifacts rather than guessing their
+owner. Truncated plans are not executable; raise `--limit` and review the
+complete digest first.
+
 ## Heartbeats And Quota
 
 Quota is compute eligibility, not strategy. It answers whether an automatic
