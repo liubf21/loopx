@@ -110,6 +110,42 @@ def _active_payload() -> dict:
     }
 
 
+def _monitor_wait_payload() -> dict:
+    payload = _active_payload()
+    payload.update(
+        {
+            "should_run": False,
+            "effective_action": "monitor_quiet_skip",
+            "heartbeat_recommendation": {
+                "recommended_mode": "monitor_quiet_until_material_transition",
+                "spend_policy": "no spend for quiet monitor waits",
+            },
+            "execution_obligation": {
+                "must_attempt_work": False,
+                "spend_policy": "no spend for quiet monitor waits",
+            },
+            "interaction_contract": {
+                "schema_version": "loopx_interaction_contract_v0",
+                "mode": "monitor_quiet_skip",
+                "user_channel": {
+                    "action_required": False,
+                    "notify": "DONT_NOTIFY",
+                },
+                "agent_channel": {
+                    "must_attempt": False,
+                    "delivery_allowed": False,
+                    "quiet_noop_allowed": True,
+                },
+                "cli_channel": {
+                    "next_cli_actions": [],
+                    "spend_allowed_now": False,
+                },
+            },
+        }
+    )
+    return payload
+
+
 @pytest.mark.parametrize(
     ("host_surface", "scheduler_owner", "execution_mode"),
     list(product(HostSurface, SchedulerOwner, ExecutionMode)),
@@ -202,6 +238,35 @@ def test_codex_app_runtime_profile_preserves_host_backoff() -> None:
     )
     assert hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
     assert hint["cold_path_detail"]["execution_phase"]["apply_needed"] is True
+
+
+@pytest.mark.parametrize(
+    ("profile", "runtime_key"),
+    (
+        (SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE, "codex_app_ssh_goal"),
+        (SchedulerRuntimeProfile.CODEX_CLI_VISIBLE, "codex_cli_tui"),
+    ),
+)
+def test_native_codex_goal_monitor_wait_uses_blocked_status_after_limit(
+    profile: SchedulerRuntimeProfile,
+    runtime_key: str,
+) -> None:
+    context = scheduler_execution_context_for_runtime_profile(profile)
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        include_detail=True,
+        scheduler_execution_context=context,
+    )
+
+    unchanged = hint["unchanged_poll"]
+    assert unchanged["limits"][runtime_key] == 3
+    assert unchanged["after_limits"][runtime_key] == (
+        "update_goal_blocked_keep_loopx_active"
+    )
+    host_detail = hint["cold_path_detail"][runtime_key]
+    assert host_detail["loopx_goal_state"] == "remains_active"
+    assert host_detail["resume_trigger"] == "explicit_codex_goal_resume"
+    assert host_detail["no_spend_for_block"] is True
 
 
 @pytest.mark.parametrize(

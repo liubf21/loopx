@@ -25,7 +25,10 @@ When the user provides text after `/loopx`, the host should:
      generated `heartbeat-prompt` task body.
    - `codex-app-ssh`: when Codex App is attached to a remote workspace over SSH
      and host automation tools are unavailable, set the current visible task to
-     `/goal <task_body>` using the generated `codex_app_ssh_goal` profile.
+     `/goal <task_body>` using the generated `codex_app_ssh_goal` profile. After
+     its typed unchanged-poll limit and final quota check, use native
+     `update_goal(status=blocked)` to block only that host Goal; keep the
+     registered LoopX goal active and resume the host with `/goal resume`.
    - `codex-cli`: set the visible Codex CLI TUI to `/goal <task_body>`.
    - `claude-code`: arm LoopX with `/loopx <task>`, then run native `/loop`.
    - `opencode`: call `loopx_goal_activate` from the installed LoopX OpenCode

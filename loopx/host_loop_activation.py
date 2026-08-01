@@ -515,11 +515,16 @@ def _codex_cli_activation(commands: dict[str, str]) -> dict[str, Any]:
 
 
 def _codex_app_ssh_activation(commands: dict[str, str]) -> dict[str, Any]:
-    return _codex_goal_activation(
+    activation = _codex_goal_activation(
         commands,
         host_label="Codex App SSH task",
         host_surface="codex_app_ssh_visible_goal_mode",
     )
+    activation["success_criteria"].append(
+        "After three unchanged blocked turns, native update_goal marks only the "
+        "host Goal blocked; LoopX remains active until user /goal resume."
+    )
+    return activation
 
 
 def _codex_ide_activation(commands: dict[str, str]) -> dict[str, Any]:

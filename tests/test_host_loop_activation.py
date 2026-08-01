@@ -119,6 +119,30 @@ def test_goal_hosts_share_narrow_runtime_skill_routing(
     assert "do not create a successor host Goal merely to continue" in task_body
 
 
+def test_native_codex_goal_wait_rule_matches_blocked_resume_contract() -> None:
+    ssh_body = build_heartbeat_prompt(
+        goal_id="ssh-wait-fixture",
+        thin=True,
+        runtime_profile="codex_app_ssh_goal",
+    )["task_body"]
+    cli_body = build_heartbeat_prompt(
+        goal_id="cli-wait-fixture",
+        thin=True,
+        runtime_profile="codex_cli",
+    )["task_body"]
+    managed_body = build_heartbeat_prompt(
+        goal_id="managed-wait-fixture",
+        thin=True,
+        runtime_profile="ark_managed_agent_goal",
+    )["task_body"]
+
+    for body in (ssh_body, cli_body):
+        assert "call `update_goal` with `status=blocked`" in body
+        assert "Only user `/goal resume`" in body
+        assert "reactivates it; rerun quota after resume" in body
+    assert "call `update_goal` with `status=blocked`" not in managed_body
+
+
 def test_accountable_refresh_preserves_explicit_validated_turn_semantics() -> None:
     command = render_accountable_progress_refresh_command(
         "validated-turn-fixture",
