@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from loopx.heartbeat_prompt import build_heartbeat_prompt
+from loopx.heartbeat_prompt import (
+    build_heartbeat_prompt,
+    uses_native_goal_host_loop,
+)
 from loopx.host_loop_activation import (
     AgentTypeError,
     agent_type_for_host_surface,
@@ -65,6 +68,26 @@ def test_first_class_hosts_bind_one_runtime_profile(
     assert scheduler_command_binding_for_agent_type(agent_type) == {
         "runtime_profile": runtime_profile
     }
+
+
+@pytest.mark.parametrize(
+    ("runtime_profile", "expected"),
+    (
+        ("ark_managed_agent_goal", True),
+        ("codex_app_ssh_goal", True),
+        ("codex_cli", True),
+        ("codex_app_heartbeat", False),
+        ("claude_code", False),
+    ),
+)
+def test_native_goal_host_family_is_profile_driven(
+    runtime_profile: str,
+    expected: bool,
+) -> None:
+    assert uses_native_goal_host_loop(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=None,
+    ) is expected
 
 
 @pytest.mark.parametrize(
@@ -141,6 +164,27 @@ def test_native_codex_goal_wait_rule_matches_blocked_resume_contract() -> None:
         assert "Only user `/goal resume`" in body
         assert "reactivates it; rerun quota after resume" in body
     assert "call `update_goal` with `status=blocked`" not in managed_body
+
+
+@pytest.mark.parametrize(
+    ("runtime_profile", "expected_host"),
+    (
+        ("ark_managed_agent_goal", "Ark Managed Agent goal prompt"),
+        ("codex_app_ssh_goal", "visible Codex /goal task body"),
+        ("codex_cli", "visible Codex /goal task body"),
+    ),
+)
+def test_native_goal_budget_error_names_the_actual_host(
+    runtime_profile: str,
+    expected_host: str,
+) -> None:
+    with pytest.raises(ValueError, match=expected_host):
+        build_heartbeat_prompt(
+            goal_id="oversized-native-goal",
+            thin=True,
+            runtime_profile=runtime_profile,
+            permission_rule="x" * 4_000,
+        )
 
 
 def test_accountable_refresh_preserves_explicit_validated_turn_semantics() -> None:

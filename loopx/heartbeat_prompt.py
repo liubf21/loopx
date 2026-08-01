@@ -18,6 +18,7 @@ from .project_prompt import (
 from .control_plane.scheduler.execution_context import (
     ExecutionMode,
     HostSurface,
+    NATIVE_GOAL_RUNTIME_PROFILES,
     SchedulerOwner,
     SchedulerRuntimeProfile,
     resolve_scheduler_execution_context,
@@ -79,11 +80,10 @@ INTERFACE_BUDGET_CHARS = {
     "thin": 1_750,
     "visible_goal": 4_000,
 }
-CODEX_VISIBLE_GOAL_MAX_CHARS = INTERFACE_BUDGET_CHARS["visible_goal"]
-ARK_MANAGED_AGENT_GOAL_MAX_CHARS = CODEX_VISIBLE_GOAL_MAX_CHARS
+NATIVE_GOAL_HOST_MAX_CHARS = INTERFACE_BUDGET_CHARS["visible_goal"]
 
 
-def uses_visible_goal_host_loop(
+def uses_native_goal_host_loop(
     *,
     runtime_profile: str | None,
     scheduler_execution_context: dict[str, Any] | None,
@@ -93,11 +93,7 @@ def uses_visible_goal_host_loop(
             profile = SchedulerRuntimeProfile(runtime_profile)
         except ValueError:
             return False
-        return profile in {
-            SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL,
-            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
-            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
-        }
+        return profile in NATIVE_GOAL_RUNTIME_PROFILES
     if scheduler_execution_context is None:
         return False
     resolution = resolve_scheduler_execution_context(scheduler_execution_context)
@@ -332,11 +328,11 @@ def build_interface_budget(
     compact: bool = False,
     brief: bool = False,
     thin: bool = False,
-    visible_goal: bool = False,
+    native_goal_host: bool = False,
 ) -> dict[str, Any]:
     mode = (
         "visible_goal"
-        if visible_goal
+        if native_goal_host
         else heartbeat_prompt_mode(full=full, compact=compact, brief=brief, thin=thin)
     )
     budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
@@ -375,7 +371,7 @@ def build_heartbeat_prompt(
 ) -> dict[str, Any]:
     if not (full or compact or brief or thin):
         thin = True
-    visible_goal = uses_visible_goal_host_loop(
+    native_goal_host = uses_native_goal_host_loop(
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
     )
@@ -450,13 +446,13 @@ def build_heartbeat_prompt(
         available_capabilities=normalized_available_capabilities,
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
-        heartbeat_turn_receipt=not visible_goal,
+        heartbeat_turn_receipt=not native_goal_host,
     )
     quota_spend_command = render_quota_spend_command(
         goal_id,
         source=(
             VISIBLE_GOAL_SLOT_SPEND_SOURCE
-            if visible_goal
+            if native_goal_host
             else DEFAULT_SLOT_SPEND_SOURCE
         ),
         cli_bin=cli_bin,
@@ -491,7 +487,7 @@ def build_heartbeat_prompt(
     thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
     if ark_managed_agent_goal:
         task_body_renderer = render_ark_managed_agent_goal_task_body
-    elif visible_goal:
+    elif native_goal_host:
         task_body_renderer = render_visible_goal_task_body
     elif thin:
         task_body_renderer = render_thin_heartbeat_task_body
@@ -519,18 +515,15 @@ def build_heartbeat_prompt(
         brief_prompt_command=brief_prompt_command,
         thin_prompt_command=thin_prompt_command,
     )
-    if visible_goal and len(task_body) > CODEX_VISIBLE_GOAL_MAX_CHARS:
-        raise ValueError(
-            "generated visible /goal task body exceeds the Codex 4000-character "
-            "limit; shorten agent scopes or project-specific prompt rules"
+    if native_goal_host and len(task_body) > NATIVE_GOAL_HOST_MAX_CHARS:
+        host_limit = (
+            "Ark Managed Agent goal prompt"
+            if ark_managed_agent_goal
+            else "visible Codex /goal task body"
         )
-    if (
-        ark_managed_agent_goal
-        and len(task_body) > ARK_MANAGED_AGENT_GOAL_MAX_CHARS
-    ):
         raise ValueError(
-            "generated Ark Managed Agent goal prompt exceeds the 4000-character "
-            "host budget; shorten agent scopes or project-specific prompt rules"
+            f"generated {host_limit} exceeds the 4000-character host budget; "
+            "shorten agent scopes or project-specific prompt rules"
         )
     payload = {
         "ok": True,
@@ -577,7 +570,7 @@ def build_heartbeat_prompt(
             compact=compact,
             brief=brief,
             thin=thin,
-            visible_goal=visible_goal,
+            native_goal_host=native_goal_host,
         ),
         "task_body": task_body,
     }

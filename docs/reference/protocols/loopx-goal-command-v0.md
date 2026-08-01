@@ -30,6 +30,11 @@ When the user provides text after `/loopx`, the host should:
      `update_goal(status=blocked)` to block only that host Goal; keep the
      registered LoopX goal active and resume the host with `/goal resume`.
    - `codex-cli`: set the visible Codex CLI TUI to `/goal <task_body>`.
+   - `codex-ide-plugin`: set the visible IDE composer task to
+     `/goal <task_body>` through the same `codex_cli` runtime profile.
+   - `ark-managed-agent`: submit the generated `<task_body>` once as a native
+     Goal. The Goal runtime owns continuation and terminal evaluation; do not
+     wrap its inner iterations in LoopX Turn or resubmit at phase boundaries.
    - `claude-code`: arm LoopX with `/loopx <task>`, then run native `/loop`.
    - `opencode`: call `loopx_goal_activate` from the installed LoopX OpenCode
      bridge; the bridge gates idle continuation and timer wakes through
@@ -50,6 +55,20 @@ loopx agent-onboard --list-agent-types
 Ambiguous values such as `codex` must fail closed because Codex App automation,
 Codex App over SSH, the IDE plugin, and Codex CLI use different host-loop
 activation paths.
+
+Codex App SSH, Codex CLI/IDE, and Ark Managed Agent form one native Goal host
+family. They share the stable `loopx_goal_prompt_v0` body, the 4,000-character
+host budget, per-continuation `quota should-run` packets, durable LoopX
+writeback, and non-heartbeat quota accounting. Their continuation owner remains
+an explicit host contract:
+
+| Native Goal host | Activation | Continuation and blocked-state owner |
+| --- | --- | --- |
+| Codex App SSH / Codex CLI / Codex IDE | Set a visible `/goal <task_body>`. | Native Codex Goal; after the unchanged limit it may call `update_goal(status=blocked)`, and only user `/goal resume` reactivates it. |
+| Ark Managed Agent | Submit the same prompt family once. | Managed Agent Goal runtime and its durable journal; LoopX must not emulate `/goal resume` or blindly resubmit. |
+
+This family is a prompt, quota, and state-boundary abstraction, not a claim that
+all hosts have the same transport or lifecycle API.
 
 The `codex-app-ssh` task body is an interactive Goal contract, not a scheduled
 heartbeat. It must fit the Codex `/goal` text limit, call `quota should-run`

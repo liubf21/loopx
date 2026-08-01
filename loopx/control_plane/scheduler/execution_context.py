@@ -43,6 +43,15 @@ class SchedulerRuntimeProfile(str, Enum):
     GENERIC_CLI_OUTER_CONTROLLER = "outer_controller"
 
 
+NATIVE_GOAL_RUNTIME_PROFILES = frozenset(
+    {
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL,
+        SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+    }
+)
+
+
 _SCHEDULER_RUNTIME_PROFILE_CONTEXTS = {
     SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL: (
         HostSurface.ARK_MANAGED_AGENT,
