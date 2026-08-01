@@ -348,6 +348,20 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
     }
     replan = packets["turn_required_vision_replan"]
     assert replan["mode"] == "should-run"
+    assert replan["vision_continuation_audit"]["payload_compaction"] == {
+        "schema_version": "quota_cli_vision_continuation_compaction_v0",
+        "mode": "compact_hot_path",
+        "omitted_fields": [
+            "acceptance_gaps",
+            "acceptance_requirements",
+            "authoritative_evidence_kinds",
+            "not_satisfied_by",
+        ],
+        "full_detail_cold_path": "quota should-run --include-detail vision",
+    }
+    assert replan["goal_frontier_projection"]["vision_continuation_audit"][
+        "projection_ref"
+    ] == "$.vision_continuation_audit"
     replan_signature = quota_action_signature_document(replan)
     assert replan_signature["action"]["selected_todo"] is None
     assert replan_signature["action"]["must_attempt"] is True

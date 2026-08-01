@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ...bootstrap_command_pack import build_start_goal_guided_packet
+from ..quota.cli_projection import compact_quota_should_run_cli_payload
 from ..quota.turn_envelope import quota_action_signature_document
 from ..work_items.interaction_contract import build_interaction_contract
 from .control_plane_composition_scenarios import (
@@ -372,7 +373,14 @@ def build_actual_default_model_behavior_scenario_packets(
             agent_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
         )
     )
-    return packets
+    return {
+        scenario_id: (
+            compact_quota_should_run_cli_payload(packet)
+            if packet.get("mode") == "should-run"
+            else packet
+        )
+        for scenario_id, packet in packets.items()
+    }
 
 
 def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
