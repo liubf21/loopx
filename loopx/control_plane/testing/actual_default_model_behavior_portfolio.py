@@ -42,6 +42,7 @@ ACTUAL_DEFAULT_MODEL_BEHAVIOR_CATALOG_SCHEMA_VERSION = (
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS = 2
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID = "portfolio-goal"
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID = "codex-portfolio"
+ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET = 40_000
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,19 @@ _SCENARIOS = (
         ("capability_gate", "monitor_schedule", "fallback", "selected_action"),
     ),
     _ScenarioSpec(
+        "turn_quota_hot_path_compaction_regression",
+        "turn",
+        None,
+        "execute",
+        "quota_cli_compaction_regression",
+        (
+            "capability_gate",
+            "next_action_warning",
+            "agent_lane_next_action",
+            "peer_route",
+        ),
+    ),
+    _ScenarioSpec(
         "onboarding_healthy_continue",
         "onboarding",
         "postcondition",
@@ -139,6 +153,12 @@ ACTUAL_DEFAULT_MODEL_BEHAVIOR_SCENARIO_COUNT = len(_SCENARIOS)
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _pretty_json_size(value: Any) -> int:
+    return len(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8")
+    )
 
 
 def _digest(value: Any) -> str:
@@ -331,6 +351,85 @@ def _turn_scenario_source(
     return payload
 
 
+def build_quota_hot_path_compaction_regression_source() -> dict[str, Any]:
+    """Build a coherent over-budget turn whose cold diagnostics are removable."""
+
+    payload = _turn_scenario_source(human_gate=False)
+    selected_todo = dict(payload["selected_todo"])
+    selected_todo.update(
+        {
+            "todo_id": "todo_c0ffee123456",
+            "text": "Implement the bounded hot-path qualification slice.",
+        }
+    )
+    payload["selected_todo"] = selected_todo
+    payload["recommended_action"] = selected_todo["text"]
+    payload["interaction_contract"] = build_interaction_contract(
+        payload,
+        available_capabilities=["network", "shell", "filesystem_write"],
+    )
+
+    repeated_detail = "Bounded public-safe candidate diagnostic. " * 28
+
+    def candidate(kind: str, index: int) -> dict[str, Any]:
+        return {
+            "todo_id": f"todo_{index:012x}",
+            "status": "open",
+            "priority": "P1",
+            "task_class": "advancement_task",
+            "action_kind": f"regression_{kind}",
+            "claimed_by": ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
+            "text": f"{kind} candidate {index}. {repeated_detail}",
+        }
+
+    runnable_candidates = [candidate("runnable", index) for index in range(1, 25)]
+    blocked_candidates = [candidate("blocked", index) for index in range(25, 41)]
+    resolution_bindings = [candidate("binding", index) for index in range(41, 57)]
+    payload["capability_gate"] = {
+        "schema_version": "capability_gate_v0",
+        "required": ["shell", "filesystem_write"],
+        "available": ["network", "shell", "filesystem_write"],
+        "missing": [],
+        "action": "run",
+        "decision_owner": "agent",
+        "candidate_order_policy": "claim_then_profile_then_priority",
+        "runnable_count": len(runnable_candidates),
+        "runnable_candidates": runnable_candidates,
+        "blocked_candidates": blocked_candidates,
+        "resolution_bindings": resolution_bindings,
+    }
+
+    lane_title = "Implement the bounded hot-path qualification slice."
+    payload["agent_lane_next_action"] = {
+        **selected_todo,
+        "title": lane_title,
+        "text": f"[P1] {lane_title}",
+    }
+    payload["active_state_next_action"] = (
+        "Preserve the durable quality route while the peer lane remains independent."
+    )
+    payload["latest_run_recommended_action"] = selected_todo["text"]
+    payload["next_action_projection_warning"] = {
+        "schema_version": "next_action_projection_warning_v0",
+        "kind": "next_action_projection_mismatch",
+        "severity": "info",
+        "requires_state_writeback": False,
+        "active_state_next_action": payload["active_state_next_action"],
+        "latest_run_recommended_action": payload["latest_run_recommended_action"],
+        "agent_lane_next_action": payload["agent_lane_next_action"]["text"],
+        "reason": "The agent lane is intentionally narrower than the durable route.",
+        "recommended_action": selected_todo["text"],
+    }
+    peer_actions = [candidate("peer", index) for index in range(57, 81)]
+    payload["goal_route_hint"] = {
+        "schema_version": "goal_route_hint_v0",
+        "route_decision": "run_current_agent_lane",
+        "counts": {"other_agent_claimed_advancement_count": len(peer_actions)},
+        "other_agent_next_actions": peer_actions,
+    }
+    return payload
+
+
 def build_actual_default_model_behavior_scenario_packets(
     root: Path,
 ) -> dict[str, dict[str, Any]]:
@@ -349,6 +448,9 @@ def build_actual_default_model_behavior_scenario_packets(
                 continuation_policy="same_agent_non_delivery",
             ),
             "turn_human_gate": _turn_scenario_source(human_gate=True),
+            "turn_quota_hot_path_compaction_regression": (
+                build_quota_hot_path_compaction_regression_source()
+            ),
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
                 executable_todo_count=1,
@@ -419,6 +521,43 @@ def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
     if blocking_user_gate:
         contract["intended_action_kinds"] = ["notify", "wait"]
     return contract
+
+
+def _validate_quota_hot_path_compaction_regression(
+    packet: Mapping[str, Any],
+    contract: Mapping[str, Any],
+) -> None:
+    if _pretty_json_size(packet) > ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET:
+        raise ValueError("compaction-regression packet exceeds the hot-path budget")
+    capability_gate = packet.get("capability_gate")
+    warning = packet.get("next_action_projection_warning")
+    lane_action = packet.get("agent_lane_next_action")
+    route_hint = packet.get("goal_route_hint")
+    traverses_targeted_compactors = bool(
+        isinstance(capability_gate, Mapping)
+        and capability_gate.get("payload_compaction", {}).get(
+            "omitted_candidate_counts"
+        )
+        == {"runnable": 24, "blocked": 16, "resolution_bindings": 16}
+        and isinstance(warning, Mapping)
+        and set(warning.get("projection_refs") or {})
+        == {
+            "active_state_next_action",
+            "latest_run_recommended_action",
+            "agent_lane_next_action",
+        }
+        and isinstance(lane_action, Mapping)
+        and "title" not in lane_action
+        and isinstance(route_hint, Mapping)
+        and route_hint.get("other_agent_next_action_count") == 24
+        and "other_agent_next_actions" not in route_hint
+    )
+    if not traverses_targeted_compactors:
+        raise ValueError(
+            "compaction-regression packet must traverse every targeted hot-path compactor"
+        )
+    if contract.get("selected_todo_id") != "todo_c0ffee123456":
+        raise ValueError("compaction regression must preserve the selected todo")
 
 
 def _scenario_contract(
@@ -564,6 +703,8 @@ def _scenario_contract(
             )
         if "todo_portfolio_monitor_schedule" not in str(action.get("primary_action")):
             raise ValueError("primary action must name the selected monitor repair")
+    if spec.scenario_id == "turn_quota_hot_path_compaction_regression":
+        _validate_quota_hot_path_compaction_regression(packet, contract)
     return contract
 
 

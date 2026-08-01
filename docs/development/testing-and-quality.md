@@ -361,7 +361,7 @@ results from an earlier commit cannot qualify a later tag.
 | `full_public` | Fleet receipt is ready with no failure or timeout / 全量集群 ready 且无失败或超时 |
 | `install_upgrade_host` | Install, upgrade, and host routes all passed / 安装、升级与 host 路径均通过 |
 | `public_boundary` | Zero public/private violations / 零公开私有边界违规 |
-| `doubao_actual_default` | The 12-scenario, 2-repeat actual-default one-arm portfolio passed all 24 calls / 12 场景、2 次重复的实际默认 one-arm 共 24 次调用全部通过 |
+| `doubao_actual_default` | The 13-scenario, 2-repeat actual-default one-arm portfolio passed all 26 calls / 13 场景、2 次重复的实际默认 one-arm 共 26 次调用全部通过 |
 
 Alongside repeated source identity and status, each receipt keeps only its
 result schema, result digest, completion time, and bounded counters. Result

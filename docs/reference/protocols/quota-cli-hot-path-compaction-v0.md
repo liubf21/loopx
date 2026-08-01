@@ -39,8 +39,12 @@ Model qualification is one-arm and actual-default. The shipped
 not the unprojected in-memory decision, to the Doubao actor. Its independent
 source oracle must still observe the expected selected todo, user gate,
 execution obligation, scheduler route, and vision/replan behavior on every
-repeat. The old full packet is not retained as a permanent second product
-contract; paired mode is reserved for explicit differential diagnosis.
+repeat. A dedicated compaction-regression scenario must exceed the JSON hot-path
+budget before projection, fit within the budget afterward, preserve the exact
+model semantic contract, and traverse capability candidates, next-action
+warning references, agent-lane deduplication, and peer-route compaction. The old
+full packet is not retained as a permanent second product contract; paired mode
+is reserved for explicit differential diagnosis.
 
 Live receipts may retain only bounded scenario outcomes and digests. Packets,
 prompts, raw model responses, credentials, and conversations remain outside the

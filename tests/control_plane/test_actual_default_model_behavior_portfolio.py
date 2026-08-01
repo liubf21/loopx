@@ -10,8 +10,10 @@ import pytest
 from loopx.bootstrap_command_pack import build_start_goal_guided_packet
 from loopx.control_plane.quota.turn_envelope import quota_action_signature_document
 from loopx.control_plane.testing.actual_default_model_behavior_portfolio import (
+    ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET,
     actual_default_model_behavior_scenario_catalog,
     build_actual_default_model_behavior_scenario_packets,
+    build_quota_hot_path_compaction_regression_source,
     run_actual_default_model_behavior_portfolio,
 )
 from loopx.control_plane.testing.model_behavior_qualification import (
@@ -230,6 +232,9 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
             "turn_capability_monitor_repair": production_packets[
                 "turn_capability_monitor_repair"
             ],
+            "turn_quota_hot_path_compaction_regression": production_packets[
+                "turn_quota_hot_path_compaction_regression"
+            ],
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
                 executable_todo_count=1,
@@ -396,6 +401,51 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
         capability_signature["contract_capsule"]["capability_monitor_fallback"]["mode"]
         == "monitor_schedule_metadata_repair"
     )
+    regression_source = build_quota_hot_path_compaction_regression_source()
+    regression = packets["turn_quota_hot_path_compaction_regression"]
+    assert (
+        len(
+            json.dumps(
+                regression_source,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            ).encode("utf-8")
+        )
+        > ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET
+    )
+    assert (
+        len(
+            json.dumps(
+                regression,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            ).encode("utf-8")
+        )
+        <= ACTUAL_DEFAULT_MODEL_BEHAVIOR_HOT_PATH_JSON_BUDGET
+    )
+    assert model_behavior_semantic_contract_from_packet(
+        regression_source,
+        arm="full_packet",
+    ) == model_behavior_semantic_contract_from_packet(
+        regression,
+        arm="full_packet",
+    )
+    regression_signature = quota_action_signature_document(regression)
+    assert regression_signature["action"]["selected_todo"]["todo_id"] == (
+        "todo_c0ffee123456"
+    )
+    assert regression["capability_gate"]["payload_compaction"][
+        "omitted_candidate_counts"
+    ] == {"runnable": 24, "blocked": 16, "resolution_bindings": 16}
+    assert set(regression["next_action_projection_warning"]["projection_refs"]) == {
+        "active_state_next_action",
+        "latest_run_recommended_action",
+        "agent_lane_next_action",
+    }
+    assert "title" not in regression["agent_lane_next_action"]
+    assert regression["goal_route_hint"]["other_agent_next_action_count"] == 24
     assert set(packets) == {
         item["scenario_id"]
         for item in actual_default_model_behavior_scenario_catalog()["scenarios"]
@@ -485,7 +535,7 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
     catalog = actual_default_model_behavior_scenario_catalog()
 
     assert catalog["topology"] == "actual_default_one_arm"
-    assert len(catalog["scenarios"]) == 12
+    assert len(catalog["scenarios"]) == 13
     assert all(
         scenario["packet_view"]
         == (
@@ -629,6 +679,39 @@ def test_portfolio_oracle_rejects_quiet_wait_for_required_vision_replan(
         item
         for item in result["scenarios"]
         if item["scenario_id"] == "turn_required_vision_replan"
+    )
+    assert result["qualification_passed"] is False
+    assert scenario["status"] == "failed"
+    assert scenario["repeats_completed"] == 2
+    assert "source_mismatch:decision" in scenario["failure_codes"]
+
+
+def test_portfolio_oracle_rejects_waiting_on_hot_path_compaction_refs(
+    tmp_path: Path,
+) -> None:
+    def waiting_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        result = _turn_actor(request)
+        signature = quota_action_signature_document(request["packet"])
+        selected = signature["action"].get("selected_todo") or {}
+        if selected.get("todo_id") == "todo_c0ffee123456":
+            result["decision"] = {
+                **result["decision"],
+                "decision": "wait",
+                "intended_action_kinds": ["wait"],
+            }
+        return result
+
+    result = run_actual_default_model_behavior_portfolio(
+        _scenario_packets(tmp_path),
+        qualification_id="actual-default-portfolio-compaction-regression-wait",
+        turn_actor=waiting_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    scenario = next(
+        item
+        for item in result["scenarios"]
+        if item["scenario_id"] == "turn_quota_hot_path_compaction_regression"
     )
     assert result["qualification_passed"] is False
     assert scenario["status"] == "failed"
