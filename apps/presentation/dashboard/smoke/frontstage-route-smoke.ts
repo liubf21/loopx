@@ -34,7 +34,7 @@ const catalogSource = readFileSync("../../../docs/showcases/showcase-catalog.jso
 const rolloutProjectionFixtureSource = readFileSync("../../../examples/fixtures/frontstage-rollout-projections.public.json", "utf8");
 const privateTrapFixtureSource = readFileSync("../../../examples/fixtures/frontstage-private-status-trap.public.json", "utf8");
 const readmeSource = readFileSync("README.md", "utf8");
-const selectionSource = readFileSync("../../../docs/dashboard-frontend-selection.md", "utf8");
+const selectionSource = readFileSync("../../../docs/product/roadmaps/dashboard-frontend-selection.md", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
 
 includes(routerSource, 'path: "/frontstage"', "frontstage route path");

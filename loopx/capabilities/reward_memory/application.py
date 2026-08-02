@@ -17,7 +17,7 @@ from ..context_providers.base import (
     opaque_provider_ref,
 )
 from .candidate_review import REWARD_MEMORY_REVIEW_SCHEMA_VERSION
-from .registry import normalize_reward_memory_corpus
+from .registry import IDENTITY_SCOPE_FIELDS, normalize_reward_memory_corpus
 
 
 REWARD_MEMORY_ACTIVE_RECORD_SCHEMA_VERSION = "reward_memory_active_record_v0"
@@ -120,6 +120,10 @@ def _scope_matches(record: Mapping[str, Any], corpus: Mapping[str, Any]) -> bool
     return (
         scope.get("workspace_ref") == corpus_scope["workspace_ref"]
         and scope.get("project_ref") == corpus_scope["project_ref"]
+        and all(
+            scope.get(field) == corpus_scope.get(field)
+            for field in IDENTITY_SCOPE_FIELDS
+        )
         and set(scope.get("surface_ids") or []).issubset(
             set(corpus_scope["surface_ids"])
         )
@@ -173,6 +177,10 @@ def build_active_reward_memory_record(
             json.dumps(identity, sort_keys=True).encode("utf-8")
         ).hexdigest()[:20]
     )
+    active_lifecycle: dict[str, Any] = {"state": "active"}
+    expires_at = record["lifecycle"].get("expires_at")
+    if expires_at:
+        active_lifecycle["expires_at"] = expires_at
     return {
         "schema_version": REWARD_MEMORY_ACTIVE_RECORD_SCHEMA_VERSION,
         "activation_ref": activation_ref,
@@ -191,7 +199,7 @@ def build_active_reward_memory_record(
             "guard_passed": True,
             "review_ref": reviewed_candidate["review"]["review_ref"],
         },
-        "lifecycle": {"state": "active"},
+        "lifecycle": active_lifecycle,
         "privacy": {"raw_content_captured": False},
         "provider_write_performed": False,
         "external_writes_performed": False,
@@ -214,6 +222,10 @@ def _authority_checkpoint(
         ),
         "source_ref": _optional_token(raw.get("source_ref"), "checkpoint.source_ref"),
     }
+    for field in IDENTITY_SCOPE_FIELDS:
+        expected_scope = corpus["scope"].get(field)
+        if expected_scope:
+            checkpoint[field] = _optional_token(raw.get(field), f"checkpoint.{field}")
     reasons: list[str] = []
     expected = {
         "corpus_id": corpus["corpus_id"],
@@ -222,6 +234,12 @@ def _authority_checkpoint(
         "surface_id": request["surface_id"],
         "read_authority": corpus["read_authority"],
     }
+    for field in IDENTITY_SCOPE_FIELDS:
+        expected_scope = corpus["scope"].get(field)
+        if expected_scope:
+            expected[field] = expected_scope
+            if request.get(field) != expected_scope:
+                reasons.append(f"read_authority_{field}_scope_mismatch")
     if checkpoint["verified"] is not True:
         reasons.append("read_authority_unverified")
     if not checkpoint["source_ref"]:
@@ -323,6 +341,10 @@ def build_reward_memory_recall_request(
         "observed_at": _observed_at(request.get("observed_at")),
         "conflict_state": str(request.get("conflict_state") or "").strip(),
     }
+    for field in IDENTITY_SCOPE_FIELDS:
+        value = _optional_token(request.get(field), field)
+        if value:
+            recall_request[field] = value
     query_kind = str(request.get("query_kind") or "business_recall").strip()
     if query_kind not in RECALL_QUERY_KINDS:
         raise ValueError("query_kind must be business_recall or ingest_verification")
@@ -350,6 +372,10 @@ def build_reward_memory_recall_request(
         reasons.append("workspace_scope_mismatch")
     if recall_request["project_ref"] != scope["project_ref"]:
         reasons.append("project_scope_mismatch")
+    for field in IDENTITY_SCOPE_FIELDS:
+        expected_scope = scope.get(field)
+        if expected_scope and recall_request.get(field) != expected_scope:
+            reasons.append(f"{field}_scope_mismatch")
     if surface not in scope["surface_ids"]:
         reasons.append("surface_scope_mismatch")
     if recall_request["conflict_state"] != "clear":
@@ -450,6 +476,7 @@ def _active_item(
     corpus: Mapping[str, Any],
     *,
     surface_id: str,
+    observed_at: str,
 ) -> RewardMemoryRecallItem | None:
     try:
         envelope = json.loads(item.content)
@@ -470,6 +497,15 @@ def _active_item(
         or lifecycle.get("state") != "active"
     ):
         return None
+    expires_at = lifecycle.get("expires_at")
+    if expires_at:
+        try:
+            expires = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if expires.tzinfo is None or observed.tzinfo is None or observed >= expires:
+            return None
     return RewardMemoryRecallItem(
         memory_ref=item.resource_ref,
         candidate_ref=_token(envelope.get("candidate_ref"), "candidate_ref"),
@@ -575,6 +611,7 @@ def execute_reward_memory_recall(
                 provider_item,
                 corpus,
                 surface_id=request["surface_id"],
+                observed_at=request["observed_at"],
             )
             if active is None:
                 continue

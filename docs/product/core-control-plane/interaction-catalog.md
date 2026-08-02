@@ -1,7 +1,7 @@
 # Interaction Catalog Lens
 
 The full interaction registry lives in
-[`docs/interaction-pattern-catalog.md`](../../interaction-pattern-catalog.md).
+[`docs/concepts/interaction-pattern-catalog.md`](../../concepts/interaction-pattern-catalog.md).
 This file is the core graph lens over that registry: it maps the hot-path
 patterns to state definitions and state-machine transitions so a product
 surface can explain the behavior without duplicating the entire catalog.

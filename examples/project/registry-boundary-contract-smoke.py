@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 import loopx.registry as registry_module  # noqa: E402
 from loopx.registry import inspect_registry_boundary  # noqa: E402
 
-DOC = REPO_ROOT / "docs" / "authority-source-registration.md"
+DOC = REPO_ROOT / "docs" / "operations" / "authority-source-registration.md"
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

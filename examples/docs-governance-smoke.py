@@ -4,10 +4,38 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS = REPO_ROOT / "docs"
+
+ROOT_DOCS = {
+    "README.md",
+    "architecture.md",
+    "heartbeat-automation-prompt.md",
+    "integration.md",
+    "project-agent-todo-contract.md",
+    "public-private-boundary.md",
+    "quota-allocation.md",
+    "state-interaction-model.md",
+    "status-data-contract.md",
+}
+
+PRODUCT_ROOT_DOCS = {
+    "README.md",
+    "domain-capability-packs.md",
+    "public-adoption-loop.md",
+    "release-readiness.md",
+    "scenario-capability-gap-map.md",
+    "vision.md",
+}
+
+LOCAL_LINK_PATTERNS = (
+    re.compile(r"!?\[[^\]]*\]\((<[^>]+>|[^)\s]+)"),
+    re.compile(r"^\s*\[[^\]]+\]:\s*(<[^>]+>|\S+)", re.MULTILINE),
+    re.compile(r"\b(?:href|src)=[\"']([^\"']+)[\"']"),
+)
 
 
 MOVED_PATHS = {
@@ -57,10 +85,42 @@ def compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def assert_local_doc_links_resolve() -> None:
+    for source in DOCS.rglob("*"):
+        if source.suffix.lower() not in {".md", ".html"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        for pattern in LOCAL_LINK_PATTERNS:
+            for match in pattern.finditer(text):
+                raw_target = match.group(1)
+                if raw_target.startswith("<") and raw_target.endswith(">"):
+                    raw_target = raw_target[1:-1]
+                if not raw_target or raw_target.startswith(
+                    (
+                        "#",
+                        "/",
+                        "http://",
+                        "https://",
+                        "mailto:",
+                        "data:",
+                        "javascript:",
+                    )
+                ):
+                    continue
+                relative_target = raw_target.split("#", 1)[0].split("?", 1)[0]
+                if not relative_target:
+                    continue
+                resolved = (source.parent / relative_target).resolve()
+                assert resolved.exists(), (
+                    f"broken local docs link: {source.relative_to(REPO_ROOT)} "
+                    f"-> {raw_target}"
+                )
+
+
 def main() -> int:
     docs_index = read("docs/README.md")
     auto_research_command_path = read("docs/guides/auto-research-command-path.md")
-    codex_cli_tui_loop = read("docs/product/codex-cli-tui-loop.md")
+    codex_cli_tui_loop = read("docs/product/runtimes/codex-cli/codex-cli-tui-loop.md")
     project_agent_contract = read("docs/project-agent-todo-contract.md")
     status_contract = read("docs/status-data-contract.md")
     compact_auto_research_command_path = compact(auto_research_command_path)
@@ -69,19 +129,18 @@ def main() -> int:
     compact_status_contract = compact(status_contract)
 
     for required in [
-        "## Start Here",
-        "## Stable Reference",
-        "## Governance Rules",
-        "docs/research/",
-        "docs/archive/",
-        "docs/outreach/",
-        "docs/product/",
-        "docs/development/",
-        "docs/reference/",
-        "docs/showcases/",
-        "product/codex-cli-tui-loop.md",
-        "guides/auto-research-command-path.md",
-        "guides/multi-agent-product-recipe.md",
+        "## Choose Your Path",
+        "## Core References",
+        "## Browse By Subject",
+        "## Documentation Policy",
+        "architecture/README.md",
+        "concepts/README.md",
+        "operations/README.md",
+        "integrations/README.md",
+        "product/README.md",
+        "development/README.md",
+        "reference/README.md",
+        "showcases/README.md",
         "development/testing-and-quality.md",
     ]:
         assert required in docs_index, required
@@ -90,17 +149,35 @@ def main() -> int:
         "docs/archive/README.md",
         "docs/archive/incidents/README.md",
         "docs/archive/release-readiness/README.md",
+        "docs/architecture/README.md",
+        "docs/architecture/rfcs/README.md",
+        "docs/architecture/rfcs/agent-im-openviking-collaboration-v0.md",
+        "docs/concepts/README.md",
         "docs/outreach/README.md",
+        "docs/operations/README.md",
         "docs/product/README.md",
+        "docs/product/foundations/README.md",
+        "docs/product/migrations/README.md",
+        "docs/product/roadmaps/README.md",
+        "docs/product/runtimes/README.md",
+        "docs/product/runtimes/codex-app/README.md",
+        "docs/product/runtimes/codex-cli/README.md",
+        "docs/product/surfaces/README.md",
+        "docs/product/use-cases/README.md",
         "docs/development/README.md",
+        "docs/development/documentation-layout.md",
         "docs/development/testing-and-quality.md",
+        "docs/guides/README.md",
         "docs/guides/auto-research-command-path.md",
         "docs/guides/multi-agent-product-recipe.md",
+        "docs/integrations/README.md",
         "docs/reference/README.md",
+        "docs/reference/contracts/README.md",
         "docs/reference/protocols/README.md",
+        "docs/research/README.md",
         "docs/research/long-horizon-agent-benchmarks/README.md",
         "docs/showcases/README.md",
-        "docs/product/codex-cli-tui-loop.md",
+        "docs/product/runtimes/codex-cli/codex-cli-tui-loop.md",
     ]:
         assert (REPO_ROOT / path).is_file(), path
 
@@ -121,8 +198,34 @@ def main() -> int:
     ]:
         assert required in quality_guide, required
 
-    root_markdown = sorted(DOCS.glob("*.md"))
-    assert len(root_markdown) <= 30, [path.name for path in root_markdown]
+    root_markdown = {path.name for path in DOCS.glob("*.md")}
+    assert root_markdown == ROOT_DOCS, sorted(root_markdown)
+
+    product_root_markdown = {
+        path.name for path in (DOCS / "product").glob("*.md")
+    }
+    assert product_root_markdown == PRODUCT_ROOT_DOCS, sorted(product_root_markdown)
+
+    assert_local_doc_links_resolve()
+
+    collaboration_rfc = read(
+        "docs/architecture/rfcs/agent-im-openviking-collaboration-v0.md"
+    )
+    for forbidden in [
+        "/Users/",
+        ".local/research/",
+        "source-synthesis.md",
+        "minutes scopes",
+        "目标群完整消息",
+        "逐字稿",
+    ]:
+        assert forbidden not in collaboration_rfc, forbidden
+    for required in [
+        "The direct runtime-to-LoopX path is primary",
+        "OpenViking receives scoped resources",
+        "Public References",
+    ]:
+        assert required in collaboration_rfc, required
 
     for old_path, new_path in MOVED_PATHS.items():
         assert not (REPO_ROOT / old_path).exists(), old_path
@@ -136,7 +239,10 @@ def main() -> int:
             read("docs/archive/README.md"),
             read("docs/outreach/README.md"),
             read("docs/product/README.md"),
+            read("docs/product/runtimes/codex-cli/README.md"),
+            read("docs/reference/README.md"),
             read("docs/reference/protocols/README.md"),
+            read("docs/research/README.md"),
             read("docs/research/long-horizon-agent-benchmarks/README.md"),
             read("docs/showcases/README.md"),
         ]

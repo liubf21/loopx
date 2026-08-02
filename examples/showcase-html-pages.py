@@ -306,7 +306,7 @@ CASE_DETAILS = {
                 "LoopX 的公开证据不是某个私有夜间截图，而是 todo lifecycle、successor/supersede、validation writeback 和 review-packet 这些已经在仓库里有文档和 smoke 的控制面。`todo-lifecycle-cli-smoke.py` 里能看到 successor、supersede、handoff 和 self-merge 的完整回归覆盖。",
             ],
             "evidence": [
-                ("successor path", "`docs/lark-kanban-control-plane-adapter.md` 明确 real successor 使用 `todo complete --next-*`，replacement 或 narrower split 使用 `todo supersede --next-agent-todo`。"),
+                ("successor path", "`docs/integrations/lark-kanban-control-plane-adapter.md` 明确 real successor 使用 `todo complete --next-*`，replacement 或 narrower split 使用 `todo supersede --next-agent-todo`。"),
                 ("peer completion", "`docs/heartbeat-automation-prompt.md` 要求非平凡完成创建 typed successor todo 或写 no-follow-up rationale。"),
                 ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、typed continuation、same-agent review rejection 和 peer self-merge evidence。"),
                 ("review shape", "`loopx review-packet` 把当前 open todo、claimed_by 和 handoff 状态打包成 reviewer 可读的 packet。"),
@@ -322,7 +322,7 @@ CASE_DETAILS = {
                 "项目可以继续快，但 review 面仍是人能处理的粒度。",
             ],
             "source_refs": [
-                ("kanban control-plane adapter", "docs/lark-kanban-control-plane-adapter.md"),
+                ("kanban control-plane adapter", "docs/integrations/lark-kanban-control-plane-adapter.md"),
                 ("heartbeat prompt contract", "docs/heartbeat-automation-prompt.md"),
                 ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
                 ("case narrative", "docs/showcases/cases/0623-overnight-project-refactor.md"),
@@ -334,7 +334,7 @@ CASE_DETAILS = {
                 "The public evidence is not a private overnight screenshot. It is the control-plane behavior already documented and smoke-tested in the repository: todo lifecycle, successor/supersede, validation writeback, and review packets. `todo-lifecycle-cli-smoke.py` carries regression coverage for successors, supersede, handoff, and self-merge.",
             ],
             "evidence": [
-                ("Successor path", "`docs/lark-kanban-control-plane-adapter.md` says real successors use `todo complete --next-*`, while replacements or narrower splits use `todo supersede --next-agent-todo`."),
+                ("Successor path", "`docs/integrations/lark-kanban-control-plane-adapter.md` says real successors use `todo complete --next-*`, while replacements or narrower splits use `todo supersede --next-agent-todo`."),
                 ("Peer completion", "`docs/heartbeat-automation-prompt.md` requires nontrivial completion to create a typed successor todo or a no-follow-up rationale."),
                 ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, typed continuation, same-agent review rejection, and peer self-merge evidence."),
                 ("Review shape", "`loopx review-packet` packages open todos, claimed_by, and handoff state for reviewer consumption."),
@@ -350,7 +350,7 @@ CASE_DETAILS = {
                 "The project can move quickly while the review surface remains human-sized.",
             ],
             "source_refs": [
-                ("kanban control-plane adapter", "docs/lark-kanban-control-plane-adapter.md"),
+                ("kanban control-plane adapter", "docs/integrations/lark-kanban-control-plane-adapter.md"),
                 ("heartbeat prompt contract", "docs/heartbeat-automation-prompt.md"),
                 ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
                 ("case narrative", "docs/showcases/cases/0623-overnight-project-refactor.md"),

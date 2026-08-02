@@ -33,7 +33,7 @@ ALLOWED_LEGACY_PATHS = {
     REPO_ROOT / "loopx" / "control_plane" / "todos" / "contract.py",
     REPO_ROOT / "docs" / "reference" / "protocols" / "peer-agent-runtime-v1.md",
     REPO_ROOT / "docs" / "project-agent-todo-contract.md",
-    REPO_ROOT / "docs" / "product" / "agent-profile-contract.md",
+    REPO_ROOT / "docs" / "product" / "foundations" / "agent-profile-contract.md",
 }
 LEGACY_PATTERN = re.compile(
     r"\bprimary_agent\b|\bprimary_review\b|\bside_agent\b|\bhandoff_agent\b|"

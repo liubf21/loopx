@@ -2439,7 +2439,7 @@ A first useful UI can be built from the export alone:
 
 Browser-side reward append is outside the default status server behavior. If a
 local server enables it, it must follow the explicit opt-in boundary in
-[dashboard-reward-write-boundary.md](dashboard-reward-write-boundary.md).
+[dashboard-reward-write-boundary.md](reference/contracts/dashboard-reward-write-boundary.md).
 
 Suggested badge mapping:
 
@@ -2465,7 +2465,7 @@ prototyping; it is not the product dashboard.
 The official dashboard direction is a React/Vite control-plane app that can
 render this same JSON contract with typed routes, filters, tables, charts, and
 drill-down pages. See
-[dashboard-frontend-selection.md](dashboard-frontend-selection.md).
+[dashboard-frontend-selection.md](product/roadmaps/dashboard-frontend-selection.md).
 
 ## Adapter Responsibilities
 

@@ -22,8 +22,8 @@ function readRepoFile(path) {
   return readFileSync(resolve(repoRoot, path), "utf8");
 }
 
-const productDoc = readRepoFile("docs/product/frontstage-dashboard-interaction-baseline.md");
-const productReadme = readRepoFile("docs/product/README.md");
+const productDoc = readRepoFile("docs/product/surfaces/frontstage-dashboard-interaction-baseline.md");
+const surfaceReadme = readRepoFile("docs/product/surfaces/README.md");
 const dashboardReadme = readRepoFile("apps/presentation/dashboard/README.md");
 const frontstageSource = readRepoFile("apps/presentation/dashboard/src/views/frontstage-page.tsx");
 const stylesSource = readRepoFile("apps/presentation/dashboard/src/styles.css");
@@ -52,7 +52,7 @@ includes(productDoc, "long-horizon-self-iteration-rollout-fixture-smoke.py", "fi
 includes(productDoc, "npm run smoke:frontstage-browser", "visual acceptance anchor");
 includes(productDoc, "npm run smoke:frontstage-design-baseline", "design smoke anchor");
 
-includes(productReadme, "frontstage-dashboard-interaction-baseline.md", "product README link");
+includes(surfaceReadme, "frontstage-dashboard-interaction-baseline.md", "surface README link");
 includes(dashboardReadme, "frontstage-dashboard-interaction-baseline.md", "dashboard README link");
 includes(dashboardReadme, "showcase mode is", "dashboard README surface split");
 includes(dashboardReadme, "mode=ops", "dashboard README ops route");

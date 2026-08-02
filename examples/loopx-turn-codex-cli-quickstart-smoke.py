@@ -7,17 +7,18 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-QUICKSTART = REPO_ROOT / "docs" / "product" / "loopx-turn-codex-cli-quickstart.md"
+QUICKSTART = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "loopx-turn-codex-cli-quickstart.md"
 README = REPO_ROOT / "README.md"
 
 
 def main() -> int:
     text = QUICKSTART.read_text(encoding="utf-8")
     compact_text = " ".join(text.split())
-    product_index = (REPO_ROOT / "docs" / "product" / "README.md").read_text(
+    runtime_index = (
+        REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+    ).read_text(
         encoding="utf-8"
     )
-    docs_index = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
 
     assert len(text.splitlines()) <= 110, "quickstart must remain one page"
@@ -59,9 +60,8 @@ def main() -> int:
         assert internal_concept not in opening, internal_concept
 
     link = "loopx-turn-codex-cli-quickstart.md"
-    assert link in product_index, "product index link"
-    assert f"product/{link}" in docs_index, "docs index link"
-    assert "docs/product/loopx-turn-codex-cli-quickstart.md" in readme
+    assert link in runtime_index, "runtime index link"
+    assert "docs/product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md" in readme
     assert "LoopX Turn for Codex CLI" in readme
 
     print("loopx-turn-codex-cli-quickstart-smoke ok")

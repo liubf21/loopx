@@ -345,6 +345,91 @@ def test_remote_refresh_fetches_only_configured_tracking_refs(
     )
 
 
+@pytest.mark.parametrize("relation", ["remote_ahead", "diverged"])
+def test_remote_refresh_reconciles_published_integration_head(
+    tmp_path: Path,
+    relation: str,
+) -> None:
+    consumer, publisher = _remote_repositories(tmp_path)
+    configure_integration_branch(
+        repo_path=consumer,
+        base_ref="origin/main",
+        integration_branch="codex/local-integration",
+        source_refs=["origin/feature-a", "origin/fix-b"],
+        execute=True,
+    )
+    initial = sync_integration_branch(repo_path=consumer, execute=True)
+    initial_head = str(initial["candidate_sha"])
+    _git(consumer, "push", "-u", "origin", "codex/local-integration")
+    local_head = initial_head
+    if relation == "diverged":
+        _git(consumer, "switch", "codex/local-integration")
+        _git(consumer, "commit", "--allow-empty", "-m", "local integration receipt")
+        local_head = _git(consumer, "rev-parse", "HEAD")
+        _git(consumer, "switch", "main")
+
+    _git(publisher, "fetch", "origin", "codex/local-integration")
+    _git(
+        publisher,
+        "switch",
+        "-c",
+        "codex/local-integration",
+        "--track",
+        "origin/codex/local-integration",
+    )
+    _git(publisher, "commit", "--allow-empty", "-m", "peer integration receipt")
+    peer_head = _git(publisher, "rev-parse", "HEAD")
+    _git(publisher, "push", "origin", "codex/local-integration")
+
+    stale = integration_branch_status(repo_path=consumer)
+    assert stale["status"] == ("in_sync" if relation == "remote_ahead" else "drifted")
+    refreshed = integration_branch_status(
+        repo_path=consumer,
+        refresh_remotes=True,
+    )
+    assert refreshed["status"] == "drifted"
+    assert refreshed["resolved"]["integration"]["remote"] == {
+        "remote": "origin",
+        "ref": "refs/remotes/origin/codex/local-integration",
+        "sha": peer_head,
+    }
+    remote_reason = next(
+        reason
+        for reason in refreshed["drift_reasons"]
+        if reason["kind"] == "integration_remote_head_moved"
+    )
+    assert remote_reason == {
+        "kind": "integration_remote_head_moved",
+        "branch": "codex/local-integration",
+        "remote_ref": "refs/remotes/origin/codex/local-integration",
+        "local_sha": local_head,
+        "remote_sha": peer_head,
+        "relation": relation,
+    }
+
+    with pytest.raises(IntegrationBranchError, match="integration remote"):
+        sync_integration_branch(
+            repo_path=consumer,
+            candidate_ref=local_head,
+            refresh_remotes=True,
+        )
+
+    reconciled = sync_integration_branch(
+        repo_path=consumer,
+        refresh_remotes=True,
+        execute=True,
+    )
+    assert reconciled["candidate_source"] == "remote_reconciled"
+    _git(
+        consumer,
+        "merge-base",
+        "--is-ancestor",
+        peer_head,
+        "codex/local-integration",
+    )
+    _git(consumer, "push", "origin", "codex/local-integration")
+
+
 def test_merge_conflict_keeps_previous_integration_head(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     _configure(repo)

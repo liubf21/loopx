@@ -139,14 +139,14 @@ move only after this read-model and work-lane parity remains characterized.
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
 manifests, experiment boards, validation surface maps, and gated handoff
-packets. See [field-derived-patterns.md](field-derived-patterns.md).
+packets. See [field-derived-patterns.md](concepts/field-derived-patterns.md).
 
 LoopX should also expose a human-friendly frontstage without moving the
 source of truth into chat. A goal can project as a channel, agents can project
 as workspace members, and task ownership can project as explicit leases; the
 registry, active state, run history, quota, gates, and lease events remain the
 backstage ledger. See
-[frontstage-channel-lease-roadmap.md](frontstage-channel-lease-roadmap.md).
+[frontstage-channel-lease-roadmap.md](product/roadmaps/frontstage-channel-lease-roadmap.md).
 
 LoopX should also grow a narrow host-integration surface. CLI commands
 remain the compatibility baseline, but long-running agent hosts benefit when
@@ -207,7 +207,7 @@ approval, outcome, and artifact summaries; produce `goal_state`,
 `run_projection`, `operator_gate`, `human_reward`, `work_lane_contract`,
 `quota_decision`, `handoff_packet`, and `dreaming_proposal` projections; then
 let the product surface display those projections. See
-[session-runtime-control-plane-adapter.md](session-runtime-control-plane-adapter.md).
+[session-runtime-control-plane-adapter.md](integrations/session-runtime-control-plane-adapter.md).
 
 ## Local Server / Daemon Roadmap
 
@@ -253,7 +253,7 @@ The server path should land in layers:
    spend delivery quota without a later normal `quota should-run` decision and
    goal-boundary approval. The compact contract is
    `server_managed_planning_contract_v0`; see
-   [dreaming-exploration-lane.md](dreaming-exploration-lane.md).
+   [dreaming-exploration-lane.md](product/roadmaps/dreaming-exploration-lane.md).
 6. **Host adapters**: expose the same contracts through MCP, hooks, or a small
    local HTTP API for Codex-like hosts. Host adapters should route agents to
    current state and valid writes; they should not embed stale project policy or
@@ -338,11 +338,11 @@ contract health. It should be the first thing a controller or future UI reads:
 - already-connected read-only goals with valid runs do not keep demanding
   redundant review.
 
-See [attention-queue.md](attention-queue.md).
+See [attention-queue.md](operations/attention-queue.md).
 
 The JSON export is the boundary for dashboards, heartbeat summaries, and future
 UI work. See [status-data-contract.md](status-data-contract.md). The product
 dashboard frontend should follow
-[dashboard-frontend-selection.md](dashboard-frontend-selection.md); the
+[dashboard-frontend-selection.md](product/roadmaps/dashboard-frontend-selection.md); the
 single-file HTML renderer remains a fallback for smoke tests and offline
 inspection.

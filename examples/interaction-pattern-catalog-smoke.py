@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CATALOG = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
+CATALOG = REPO_ROOT / "docs" / "concepts" / "interaction-pattern-catalog.md"
 STATE_MODEL = REPO_ROOT / "docs" / "state-interaction-model.md"
 SELF_REPAIR_PATTERNS = (
     REPO_ROOT

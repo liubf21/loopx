@@ -15,7 +15,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "doc-registry-authority-import-goal"
 SOURCE_ID = "external-doc-registry"
-DOC = REPO_ROOT / "docs" / "authority-source-registration.md"
+DOC = REPO_ROOT / "docs" / "operations" / "authority-source-registration.md"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:

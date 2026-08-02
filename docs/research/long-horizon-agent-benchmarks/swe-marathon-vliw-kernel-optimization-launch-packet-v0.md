@@ -39,7 +39,7 @@ Forbidden inputs for this packet:
 ## ECS Cloud-Host Alignment
 
 This packet is now aligned with the dedicated ECS benchmark-host route in
-`docs/benchmark-developer-workflow.md`. A future cloud run should use the same
+`docs/development/benchmark-developer-workflow.md`. A future cloud run should use the same
 case metadata and no-upload boundary, but first prove the shared host substrate:
 
 1. run `scripts/benchmark_ecs_bootstrap.py` on the benchmark host;

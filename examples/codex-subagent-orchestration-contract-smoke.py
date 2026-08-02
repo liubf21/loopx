@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs" / "codex-subagent-orchestration.md"
+DOC = REPO_ROOT / "docs" / "integrations" / "codex-subagent-orchestration.md"
 
 REQUIRED_PHRASES = (
     "shared control plane",

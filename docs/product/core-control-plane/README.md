@@ -20,7 +20,7 @@ LoopX learns a new long-running agent behavior:
 The older detailed documents remain the canonical reference for full protocol
 detail:
 
-- [`docs/interaction-pattern-catalog.md`](../../interaction-pattern-catalog.md)
+- [`docs/concepts/interaction-pattern-catalog.md`](../../concepts/interaction-pattern-catalog.md)
   is the complete interaction-pattern registry.
 - [`docs/state-interaction-model.md`](../../state-interaction-model.md) is the
   architecture-level state model.

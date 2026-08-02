@@ -22,6 +22,8 @@ not need these documents to start LoopX.
    the bounded context that owns the behavior.
 5. Check [Public/private boundaries](../public-private-boundary.md) before adding
    fixtures, examples, evidence, or provider-backed evaluation.
+6. Follow the [documentation layout policy](documentation-layout.md) before
+   adding or moving public documentation.
 
 1. 先阅读[贡献指南](../../CONTRIBUTING.md)，了解仓库边界和 PR 检查项。
 2. 按顺序学习[控制面开发者 9 讲](control-plane-course/README.md)，沿真实 CLI、
@@ -33,6 +35,8 @@ not need these documents to start LoopX.
    bounded context。
 5. 添加 fixture、示例、证据或模型测试前，检查
    [公开/私有边界](../public-private-boundary.md)。
+6. 新增或移动公开文档前，遵循
+   [文档布局规则](documentation-layout.md)。
 
 ## Core References / 核心参考
 
@@ -40,13 +44,13 @@ not need these documents to start LoopX.
 | --- | --- |
 | Control-plane code reading / 控制面代码领读 | [Nine-lecture developer course](control-plane-course/README.md) |
 | Quality layers and commands / 质量分层与命令 | [Testing and quality](testing-and-quality.md) |
-| Agent-facing size budgets / Agent 输出体积预算 | [Interface budget contract](../interface-budget-contract.md) |
+| Agent-facing size budgets / Agent 输出体积预算 | [Interface budget contract](../reference/contracts/interface-budget-contract.md) |
 | Status and decision payloads / 状态与决策载荷 | [Status data contract](../status-data-contract.md) |
 | Quota and spend semantics / Quota 与 spend 语义 | [Quota allocation](../quota-allocation.md) |
 | Model-behavior shadow qualification / 模型行为影子验证 | [Model behavior qualification v0](../reference/protocols/model-behavior-qualification-v0.md) |
 | Release outcome comparison / 发布结果基线 | [Release outcome baseline v0](../reference/protocols/release-outcome-baseline-v0.md) |
 | Release promotion / 发布晋级 | [Release readiness](../product/release-readiness.md) |
-| Benchmark development / Benchmark 开发 | [Benchmark developer workflow](../benchmark-developer-workflow.md) |
+| Benchmark development / Benchmark 开发 | [Benchmark developer workflow](benchmark-developer-workflow.md) |
 
 ## Change Loop / 变更闭环
 

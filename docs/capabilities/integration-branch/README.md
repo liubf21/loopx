@@ -56,10 +56,11 @@ loopx integration-branch status \
 ```
 
 LoopX fetches only the remote-tracking refs named by the configured base or
-source refs, then resolves exact SHAs. It does not prune unrelated refs or
-replace existing `FETCH_HEAD` evidence. This observes another worker's
-published branch intent; it does not guess unpushed work, read private review
-text, or infer that a draft is approved for integration.
+source refs, plus the integration branch's configured upstream when one
+exists, then resolves exact SHAs. It does not prune unrelated refs or replace
+existing `FETCH_HEAD` evidence. This observes another worker's published
+branch intent; it does not guess unpushed work, read private review text, or
+infer that a draft is approved for integration.
 
 ## Preview and sync
 
@@ -106,10 +107,10 @@ loopx integration-branch sync \
   --format json
 ```
 
-The supplied commit must contain the configured base and every exact source
-SHA as ancestors. LoopX does not choose or generate the resolution; it only
-verifies the immutable result before the normal local publication and
-readback flow.
+The supplied commit must contain the configured base, every exact source SHA,
+and any observed integration upstream head as ancestors. LoopX does not choose
+or generate the resolution; it only verifies the immutable result before the
+normal local publication and readback flow.
 
 When the supplied commit is already the integration branch head, execute only
 records the verified receipt. It does not reset or otherwise touch the checked
@@ -139,8 +140,8 @@ extension, not to this repository-neutral capability.
 The capability keeps a deliberately narrow write boundary:
 
 - by default it does not contact remotes; `--refresh-remotes` is read-only
-  against the remote repository and updates only configured local
-  remote-tracking refs;
+  against the remote repository and updates only configured base, source, and
+  integration-upstream remote-tracking refs;
 - it never pushes;
 - it never changes a source branch;
 - it never creates, retargets, approves, or merges a PR;

@@ -38,7 +38,7 @@ timeline, and truth contract lanes. Treat it as the product-path replacement for
 no-dependency static HTML renderer; the Python renderer remains the fallback
 demo/diagnostic surface.
 The product interaction baseline lives in
-`docs/product/frontstage-dashboard-interaction-baseline.md`: showcase mode is
+`docs/product/surfaces/frontstage-dashboard-interaction-baseline.md`: showcase mode is
 the public case-driven homepage surface, while `mode=ops` is the dense,
 read-only control-plane workspace.
 

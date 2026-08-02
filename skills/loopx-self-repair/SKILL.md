@@ -143,7 +143,7 @@ next quota check can enter replan.
   `references/upstream-issue-escalation.md`.
 - For user/agent/state channel semantics, read
   `../../docs/state-interaction-model.md` and
-  `../../docs/interaction-pattern-catalog.md`.
+  `../../docs/concepts/interaction-pattern-catalog.md`.
 - For quota and heartbeat decisions, read
   `../../docs/quota-allocation.md` and
   `../../docs/heartbeat-automation-prompt.md`.

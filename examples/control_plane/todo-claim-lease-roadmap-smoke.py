@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
-ROADMAP = REPO_ROOT / "docs" / "frontstage-channel-lease-roadmap.md"
+ROADMAP = REPO_ROOT / "docs" / "product" / "roadmaps" / "frontstage-channel-lease-roadmap.md"
 TODO_CONTRACT = REPO_ROOT / "docs" / "project-agent-todo-contract.md"
 REGISTRY_EXAMPLE = REPO_ROOT / "examples" / "registry.example.json"
 PEER_AGENTS_EXAMPLE = (

@@ -226,7 +226,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         ],
         "semantic_oracle": {
             "source_kind": "specification",
-            "refs": ["docs/interface-budget-contract.md"],
+            "refs": ["docs/reference/contracts/interface-budget-contract.md"],
             "independence_rationale": (
                 "The interface contract names required actions and semantic anchors; "
                 "current stdout is measured against that contract rather than copied into a golden."
@@ -308,7 +308,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         ],
         "semantic_oracle": {
             "source_kind": "specification",
-            "refs": ["docs/product/codex-cli-packaged-install.md"],
+            "refs": ["docs/product/runtimes/codex-cli/codex-cli-packaged-install.md"],
             "independence_rationale": (
                 "The packaged-install contract defines provenance, rollback, and no-system-mutation "
                 "requirements independently of installer output."

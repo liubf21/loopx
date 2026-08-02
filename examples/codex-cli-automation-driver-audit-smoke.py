@@ -7,13 +7,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs/product/codex-cli-automation-driver.md"
-PRODUCT_INDEX = REPO_ROOT / "docs/product/README.md"
+DOC = REPO_ROOT / "docs/product/runtimes/codex-cli/codex-cli-automation-driver.md"
+RUNTIME_INDEX = REPO_ROOT / "docs/product/runtimes/codex-cli/README.md"
 
 
 def main() -> int:
     doc = DOC.read_text()
-    index = PRODUCT_INDEX.read_text()
+    index = RUNTIME_INDEX.read_text()
 
     required_contracts = [
         "loopx_turn_v0",
@@ -51,7 +51,7 @@ def main() -> int:
     for phrase in unfinished_boundaries:
         assert phrase in doc, phrase
 
-    assert "codex-cli-automation-driver.md" in index, "product index link"
+    assert "codex-cli-automation-driver.md" in index, "runtime index link"
 
     print("codex-cli-automation-driver-audit-smoke ok")
     return 0

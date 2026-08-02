@@ -126,7 +126,7 @@ targeted wake 同屏可见。**
   [Blocked P0 安全侧路](docs/showcases/cases/0617-blocked-p0-safe-rotation.md)、
   [LoopX 自迭代](docs/showcases/cases/0619-loopx-self-iteration.md)和
   [动态工作流编排](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html)；
-- [跨 runtime 实现审阅演示](docs/product/cross-runtime-impl-review-demo.md)；
+- [跨 runtime 实现审阅演示](docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md)；
 - 公开[用户手册](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg)。
 
 <a id="快速开始"></a>
@@ -175,12 +175,12 @@ loopx start-goal --guided --project . --goal-text "你的长程目标"
 可直接粘贴的完整 setup message、host-specific 路由和故障恢复见
 [Getting Started](docs/guides/getting-started.md)。Host 集成还可以查看
 [Codex App host command registry](docs/reference/protocols/codex-app-host-command-registry-v0.md)、
-[Codex CLI packaged install](docs/product/codex-cli-packaged-install.md)和
+[Codex CLI packaged install](docs/product/runtimes/codex-cli/codex-cli-packaged-install.md)和
 [Claude Code adapter](loopx/claude_goal_mode/README.md)。
 
 自有 runner 请读
 [把 LoopX 嵌入你的 Agent Runner](docs/guides/custom-agent-runner-integration.zh-CN.md)
-与 [Worker Bridge Install Contract](docs/worker-bridge-install-contract.md)。
+与 [Worker Bridge Install Contract](docs/integrations/worker-bridge-install-contract.md)。
 核心 tick 很小：
 
 ```text
@@ -227,10 +227,10 @@ LoopX 把控制面归结为五个用户可以直接行动的问题：
 | Quota 与 interaction contract | 决定一轮应该执行、提问、等待、自修复还是静默。 | `loopx quota should-run`、[Quota Allocation](docs/quota-allocation.md) |
 | Agent runtime bridge | 让 Codex App、Codex CLI、Claude Code 和 generic worker 服从同一 guard。 | `loopx heartbeat-prompt`、`loopx codex-cli-bootstrap-message`、`loopx worker-bridge` |
 | Operator surface | 呈现紧凑状态，但不让浏览器成为状态事实源。 | `loopx serve-status`、[Dashboard](apps/presentation/dashboard/README.md)、[Frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
-| External projection | 把 todo / gate 投影到协作表面，同时保持 LoopX 权威。 | `loopx lark-kanban`、[Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
+| External projection | 把 todo / gate 投影到协作表面，同时保持 LoopX 权威。 | `loopx lark-kanban`、[Lark Kanban adapter](docs/integrations/lark-kanban-control-plane-adapter.md) |
 | Domain capability | 打包 Issue Fix、内容运营、value connector、ML 实验、benchmark 与 Explore 等可重复泳道。 | `loopx issue-fix`、`loopx content-ops`、`loopx value-connectors`、`loopx ml-experiment`、`loopx benchmark`、[Explore](docs/capabilities/explore/README.md) |
 | 实验性上下文学习 | 通过 ignored、默认关闭的项目配置，为明确注册的 agent 试用 provider-neutral Reward Memory；OpenViking 是 provider 之一，不是全局依赖。 | `loopx reward-memory experiment-status`、[Reward Memory 中文架构](docs/reference/protocols/reward-memory-architecture-v0.zh-CN.md) |
-| Governance pattern | 沉淀可复用的 routing、gate、evidence、projection 和 planning 形状。 | [Interaction Pattern Catalog](docs/interaction-pattern-catalog.md)、[State Model](docs/state-interaction-model.md) |
+| Governance pattern | 沉淀可复用的 routing、gate、evidence、projection 和 planning 形状。 | [Interaction Pattern Catalog](docs/concepts/interaction-pattern-catalog.md)、[State Model](docs/state-interaction-model.md) |
 
 这些能力共同提供 lifetime goal、具体 user gate、经过审计的安全侧路、平级 todo
 ownership、quota 与 steering、紧凑 run history、证据化 handoff、read-first 管理面、
@@ -270,7 +270,7 @@ loopx configure-goal --goal-id <goal-id>
 Dependency Sweeper 需要明确授权、隔离 worktree、verifier、quota/cost gate 和人工
 review。Auto Research 通过 proposer、executor、evaluator/promoter 协作，同时保持
 quota 和证据可见。详见
-[入门 Preset 指南](docs/product/beginner-loop-presets.md)和
+[入门 Preset 指南](docs/product/foundations/beginner-loop-presets.md)和
 [Auto Research Command Path](docs/guides/auto-research-command-path.md)。
 
 ```bash
@@ -285,7 +285,7 @@ loopx preset show daily-triage
 
 LoopX 可以根据 validated receipt、fresh quota state 和 provider-neutral budget
 生成一次纯函数、有界的 turn decision。当前 Codex CLI 启动路径和 activation contract
-见 [LoopX Turn Codex CLI Quickstart](docs/product/loopx-turn-codex-cli-quickstart.md)。
+见 [LoopX Turn Codex CLI Quickstart](docs/product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md)。
 
 ### Explore Graph / Harness
 
@@ -297,15 +297,15 @@ treatment 和 guardrail 的任务，不替代生产审批。先读
 ### 审阅 Agent 工作
 
 `loopx review-packet` 提供 owner-facing 的紧凑视图：决策、证据、验证和未解决 gate。
-[Intelligent Management Surface](docs/product/intelligent-management-surface.md)
-解释 operator model；[Project-Level Reward Model](docs/product/project-level-reward-model.md)
+[Intelligent Management Surface](docs/product/surfaces/intelligent-management-surface.md)
+解释 operator model；[Project-Level Reward Model](docs/product/foundations/project-level-reward-model.md)
 定义产出数量、质量、token cost 和 user attention cost 的保守价值信号。
 
 ### App 与 Projection
 
 - 本地 read-first UI：[Dashboard Guide](apps/presentation/dashboard/README.md)
 - Public-safe 产品视图：[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/)
-- 飞书投影：[Lark Kanban Adapter](docs/lark-kanban-control-plane-adapter.md)
+- 飞书投影：[Lark Kanban Adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - 通用 host 集成：[Integration Guide](docs/integration.md)
 - 自有 multi-agent runner：
   [Custom Runner 中文指南](docs/guides/custom-agent-runner-integration.zh-CN.md)
@@ -334,7 +334,7 @@ Scheduler cadence 跟随 `quota should-run.scheduler_hint`；Codex App automatio
 self-repair 和精确 operator 命令统一维护在
 [Getting Started](docs/guides/getting-started.md)、
 [Quota Allocation](docs/quota-allocation.md)和
-[Long-Task Cadence Policy](docs/long-task-cadence-policy.md)。
+[Long-Task Cadence Policy](docs/operations/long-task-cadence-policy.md)。
 
 公开发布前运行：
 
@@ -367,10 +367,10 @@ loopx check \
 - [Architecture](docs/architecture.md)：lifetime-goal invariant 与 kernel。
 - [State Interaction Model](docs/state-interaction-model.md)：actor、store、
   interaction contract 与 writeback。
-- [Interaction Pattern Catalog](docs/interaction-pattern-catalog.md)：可复用
+- [Interaction Pattern Catalog](docs/concepts/interaction-pattern-catalog.md)：可复用
   routing、gate、evidence、projection 与 planning pattern。
-- [Loop Engineering 原则与陷阱（中文）](docs/product/loop-engineering-principles-and-pitfalls.zh.md)
-  及[英文版](docs/product/loop-engineering-principles-and-pitfalls.md)。
+- [Loop Engineering 原则与陷阱（中文）](docs/product/foundations/loop-engineering-principles-and-pitfalls.zh.md)
+  及[英文版](docs/product/foundations/loop-engineering-principles-and-pitfalls.md)。
 - [控制面开发者 9 讲](docs/development/control-plane-course/README.md)。
 - [Product Vision](docs/product/vision.md)：更广义的 Loop Agent 产品方向。
 
@@ -378,19 +378,19 @@ loopx check \
 
 - [Integration Guide](docs/integration.md)
 - [Custom Agent Runner 中文指南](docs/guides/custom-agent-runner-integration.zh-CN.md)
-- [Worker Bridge Install Contract](docs/worker-bridge-install-contract.md)
+- [Worker Bridge Install Contract](docs/integrations/worker-bridge-install-contract.md)
 - [Extensions and Capabilities](docs/reference/extensions.md)
 - [Codex App Host Command Registry](docs/reference/protocols/codex-app-host-command-registry-v0.md)
 - [Heartbeat Automation Prompt](docs/heartbeat-automation-prompt.md)
-- [Lark Kanban Adapter](docs/lark-kanban-control-plane-adapter.md)
+- [Lark Kanban Adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - [Reward Memory 中文架构](docs/reference/protocols/reward-memory-architecture-v0.zh-CN.md)
 
 ### 验证与治理
 
 - [Quota Allocation](docs/quota-allocation.md)
 - [Public/Private Boundary](docs/public-private-boundary.md)
-- [Benchmark Developer Workflow](docs/benchmark-developer-workflow.md)
-- [Project-Level Reward Model](docs/product/project-level-reward-model.md)
+- [Benchmark Developer Workflow](docs/development/benchmark-developer-workflow.md)
+- [Project-Level Reward Model](docs/product/foundations/project-level-reward-model.md)
 - [Project Governance](GOVERNANCE.md)
 - [Authors and Contributors](AUTHORS.md)
 - [Project History](docs/project/history.md)

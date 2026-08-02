@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from loopx.capabilities.material_lifecycle import (
+    build_material_intake_ranking_settlement,
     build_material_lifecycle_architecture_packet,
     build_material_lifecycle_receipt,
     build_material_migration_plan,
@@ -55,6 +56,171 @@ def test_architecture_positions_material_lifecycle_as_default_off_sibling() -> N
     assert packet["provider_boundaries"]["raw_material_store"] == (
         "private_external_authority"
     )
+    assert "material_intake_ranking_settlement_v0" in packet["contract_schemas"]
+    assert (
+        "high_value_candidate_intake_requires_verified_ranked_membership"
+        in packet["invariants"]
+    )
+
+
+def test_high_value_intake_settles_into_top_window() -> None:
+    settlement = build_material_intake_ranking_settlement(
+        goal_id="goal:material-example",
+        settlement_id="settlement:material-42",
+        material_ref="material:42",
+        observed_at=OBSERVED_AT,
+        decision_evidence_ref="decision-evidence:42",
+        value_classification="high_value",
+        ranking_disposition="top_window",
+        intake_before_revision="revision:41",
+        intake_after_revision="revision:42",
+        ranking_before_revision="revision:42",
+        ranking_after_revision="revision:43",
+        intake_receipt_ref="receipt:intake-42",
+        ranking_receipt_ref="receipt:ranking-42",
+        owner_gate_ref="gate:ranking-42",
+        validation_ref="validation:ranking-42",
+        top_window_size=30,
+        target_rank=7,
+        authority_readback_verified=True,
+        ranking_source_contains_material_verified=True,
+        ranked_membership_verified=True,
+        projection_receipt_ref="receipt:projection-43",
+        rollback_ref="revision:42",
+        displaced_to_backlog_refs=["material:old-30"],
+    )
+
+    assert settlement["status"] == "settled"
+    assert settlement["ranking_disposition"] == "top_window"
+    assert settlement["verification"]["ranked_membership_verified"] is True
+    assert settlement["displaced_to_backlog_refs"] == ["material:old-30"]
+
+
+def test_standard_intake_can_settle_as_a_reasoned_no_change() -> None:
+    settlement = build_material_intake_ranking_settlement(
+        goal_id="goal:material-example",
+        settlement_id="settlement:material-42",
+        material_ref="material:42",
+        observed_at=OBSERVED_AT,
+        decision_evidence_ref="decision-evidence:42",
+        value_classification="standard",
+        ranking_disposition="no_change",
+        intake_before_revision="revision:41",
+        intake_after_revision="revision:42",
+        ranking_before_revision="revision:42",
+        ranking_after_revision="revision:42",
+        intake_receipt_ref="receipt:intake-42",
+        ranking_receipt_ref="receipt:ranking-no-change-42",
+        owner_gate_ref="gate:ranking-42",
+        validation_ref="validation:ranking-42",
+        top_window_size=30,
+        authority_readback_verified=True,
+        ranking_source_contains_material_verified=True,
+        ranked_membership_verified=False,
+        no_change_reason="Substantially overlaps an already ranked action unit.",
+    )
+
+    assert settlement["ranking_disposition"] == "no_change"
+    assert settlement["ranking_before_revision"] == settlement["ranking_after_revision"]
+    assert settlement["no_change_reason"].startswith("Substantially overlaps")
+
+
+def test_high_value_intake_cannot_settle_without_ranked_membership() -> None:
+    with pytest.raises(ValueError, match="requires ranked membership"):
+        build_material_intake_ranking_settlement(
+            goal_id="goal:material-example",
+            settlement_id="settlement:material-42",
+            material_ref="material:42",
+            observed_at=OBSERVED_AT,
+            decision_evidence_ref="decision-evidence:42",
+            value_classification="high_value",
+            ranking_disposition="no_change",
+            intake_before_revision="revision:41",
+            intake_after_revision="revision:42",
+            ranking_before_revision="revision:42",
+            ranking_after_revision="revision:42",
+            intake_receipt_ref="receipt:intake-42",
+            ranking_receipt_ref="receipt:ranking-no-change-42",
+            owner_gate_ref="gate:ranking-42",
+            validation_ref="validation:ranking-42",
+            top_window_size=30,
+            authority_readback_verified=True,
+            ranking_source_contains_material_verified=True,
+            ranked_membership_verified=False,
+            no_change_reason="No movement requested.",
+        )
+
+
+def test_ranking_settlement_enforces_source_containment_and_rank_window() -> None:
+    common = {
+        "goal_id": "goal:material-example",
+        "settlement_id": "settlement:material-42",
+        "material_ref": "material:42",
+        "observed_at": OBSERVED_AT,
+        "decision_evidence_ref": "decision-evidence:42",
+        "value_classification": "high_value",
+        "ranking_disposition": "ranked_backlog",
+        "intake_before_revision": "revision:41",
+        "intake_after_revision": "revision:42",
+        "ranking_before_revision": "revision:41",
+        "ranking_after_revision": "revision:43",
+        "intake_receipt_ref": "receipt:intake-42",
+        "ranking_receipt_ref": "receipt:ranking-42",
+        "owner_gate_ref": "gate:ranking-42",
+        "validation_ref": "validation:ranking-42",
+        "top_window_size": 30,
+        "target_rank": 31,
+        "authority_readback_verified": True,
+        "ranking_source_contains_material_verified": False,
+        "ranked_membership_verified": True,
+        "projection_receipt_ref": "receipt:projection-43",
+        "rollback_ref": "revision:42",
+    }
+    with pytest.raises(ValueError, match="must contain"):
+        build_material_intake_ranking_settlement(**common)
+
+    common["ranking_source_contains_material_verified"] = True
+    common["target_rank"] = 30
+    with pytest.raises(ValueError, match="must follow the top window"):
+        build_material_intake_ranking_settlement(**common)
+
+    common["target_rank"] = 31
+    common["ranked_membership_verified"] = "yes"
+    with pytest.raises(TypeError, match="must be a boolean"):
+        build_material_intake_ranking_settlement(**common)
+
+
+def test_no_change_can_share_a_batch_rerank_revision() -> None:
+    settlement = build_material_intake_ranking_settlement(
+        goal_id="goal:material-example",
+        settlement_id="settlement:material-42",
+        material_ref="material:42",
+        observed_at=OBSERVED_AT,
+        decision_evidence_ref="decision-evidence:42",
+        value_classification="standard",
+        ranking_disposition="no_change",
+        intake_before_revision="revision:39",
+        intake_after_revision="revision:40",
+        ranking_before_revision="revision:42",
+        ranking_after_revision="revision:43",
+        intake_receipt_ref="receipt:intake-42",
+        ranking_receipt_ref="receipt:shared-ranking-43",
+        owner_gate_ref="gate:ranking-43",
+        validation_ref="validation:ranking-43",
+        top_window_size=30,
+        authority_readback_verified=True,
+        ranking_source_contains_material_verified=True,
+        ranked_membership_verified=False,
+        projection_receipt_ref="receipt:projection-43",
+        rollback_ref="revision:42",
+        no_change_reason="Substantially overlaps an already ranked action unit.",
+    )
+
+    assert settlement["ranking_before_revision"] == "revision:42"
+    assert settlement["ranking_after_revision"] == "revision:43"
+    assert settlement["verification"][
+        "ranking_source_contains_material_verified"
+    ] is True
 
 
 def test_inventory_is_deterministic_read_only_and_content_free() -> None:

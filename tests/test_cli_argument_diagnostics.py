@@ -141,7 +141,41 @@ def test_quota_include_detail_rejects_non_should_run_command(
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert payload["error"] == (
-        "--include-detail is only valid with `quota should-run`"
+        "--include-detail is only valid with `quota should-run` or "
+        "`quota monitor-poll`"
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "section"),
+    [
+        ("should-run", "decisions"),
+        ("monitor-poll", "scheduler"),
+    ],
+)
+def test_quota_include_detail_rejects_other_command_sections(
+    command: str,
+    section: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "--format",
+            "json",
+            "quota",
+            command,
+            "--goal-id",
+            "example-goal",
+            "--include-detail",
+            section,
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["reason"] == (
+        f"`quota {command}` does not accept --include-detail {section}"
     )
 
 

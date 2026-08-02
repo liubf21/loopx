@@ -20,8 +20,9 @@ def compact(text: str) -> str:
 def main() -> int:
     readme = read("README.md")
     readme_zh = read("README.zh-CN.md")
-    demo = read("docs/product/cross-runtime-impl-review-demo.md")
+    demo = read("docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md")
     product_index = read("docs/product/README.md")
+    cross_runtime_index = read("docs/product/use-cases/cross-runtime/README.md")
     getting_started = read("docs/guides/getting-started.md")
     compact_readme = compact(readme)
     compact_demo = compact(demo)
@@ -43,7 +44,7 @@ def main() -> int:
         "Claude Code",
         "Cursor, shell, or custom runner",
         "Claude implements and Codex reviews",
-        "docs/product/cross-runtime-impl-review-demo.md",
+        "docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md",
         "## Advanced Paths",
         "200+ hours of elapsed loop lifetime",
         "200+ hour public contribution arc",
@@ -120,8 +121,8 @@ def main() -> int:
     ]:
         assert required in compact_demo, required
 
-    assert "Cross-runtime implement/review demo" in product_index
-    assert "cross-runtime-impl-review-demo.md" in product_index
+    assert "use-cases/README.md" in product_index
+    assert "cross-runtime-impl-review-demo.md" in cross_runtime_index
     assert "### Recover History Index Collisions" in getting_started
     assert "history rebuild-index-collisions" in getting_started
     assert "--review-plan-json reviewed-plan.json" in getting_started

@@ -91,7 +91,7 @@ def main() -> int:
     )
     require(
         docs_index,
-        ["Host integration surface v0", "reference/protocols/host-integration-surface-v0.md"],
+        ["reference/README.md"],
         source=DOCS_INDEX,
     )
     require(

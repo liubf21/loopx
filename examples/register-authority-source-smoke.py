@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "authority-source-registration-goal"
 SOURCE_ID = "product-vision"
 SOURCE_REF = "https://example.invalid/private/product-vision"
-DOC = REPO_ROOT / "docs" / "authority-source-registration.md"
+DOC = REPO_ROOT / "docs" / "operations" / "authority-source-registration.md"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
-CATALOG = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
+CATALOG = REPO_ROOT / "docs" / "concepts" / "interaction-pattern-catalog.md"
 
 from loopx.canary.planner import (  # noqa: E402
     build_catalog_canary_coverage_audit,
@@ -627,7 +627,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         changed_files=[
             "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
-            "docs/product/cross-runtime-impl-review-demo.md",
+            "docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md",
         ],
         surfaces=[
             "loopx demo impl-review claude implements codex reviews "
@@ -694,7 +694,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert onboarding_profile["deep_checks_included"] is False, onboarding_profile
 
     runtime_connector_payload = build_catalog_canary_plan(
-        changed_files=["docs/runtime-connector-catalog.md"],
+        changed_files=["docs/integrations/runtime-connector-catalog.md"],
         surfaces=[
             "runtime connector catalog codex app heartbeat codex cli tui "
             "claude code loop worker bridge scheduler_hint scoped identity"

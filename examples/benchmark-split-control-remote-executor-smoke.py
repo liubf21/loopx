@@ -465,7 +465,7 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
 
 
 def test_split_control_retirement_policy_matches_workflow_docs() -> None:
-    workflow = (REPO_ROOT / "docs/benchmark-developer-workflow.md").read_text(
+    workflow = (REPO_ROOT / "docs/development/benchmark-developer-workflow.md").read_text(
         encoding="utf-8"
     )
     assert "The split-control route is now a fallback and research route" in workflow

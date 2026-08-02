@@ -100,7 +100,7 @@ def main() -> int:
     ]:
         assert_contains(contract, needle, "contract")
     assert_contains(protocol_index, "local_agent_launch_plan_v1", "protocol index")
-    assert_contains(docs_index, "Local agent launch plan v1", "docs index")
+    assert_contains(docs_index, "reference/README.md", "docs index")
     assert_contains(status_contract, "local_agent_launch_plan_v1", "status contract")
     assert_contains(host_surface, "local_agent_launch_plan_v1", "host surface")
 

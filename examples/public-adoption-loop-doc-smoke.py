@@ -70,7 +70,7 @@ def main() -> None:
 
     docs_index = read(DOCS_INDEX)
     product_index = read(PRODUCT_INDEX)
-    assert_contains(docs_index, "product/public-adoption-loop.md", "docs index")
+    assert_contains(docs_index, "product/README.md", "docs index")
     assert_contains(product_index, "public-adoption-loop.md", "product index")
 
     print("public-adoption-loop-doc-smoke ok")

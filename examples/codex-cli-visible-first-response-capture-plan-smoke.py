@@ -23,8 +23,10 @@ from loopx.codex_cli_probe import (  # noqa: E402
 PROJECT = Path("/tmp/public-codex-cli-project")
 GOAL_ID = "public-codex-cli-goal"
 AGENT_ID = "codex-side-bypass"
-DOC = REPO_ROOT / "docs" / "product" / "codex-cli-live-tui-first-message-pilot.md"
-PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
+DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-live-tui-first-message-pilot.md"
+PRODUCT_README = (
+    REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+)
 
 
 def run_cli(*extra_args: str) -> str:

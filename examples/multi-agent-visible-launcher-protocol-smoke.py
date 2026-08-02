@@ -205,7 +205,7 @@ def main() -> int:
     )
     require(
         docs_index,
-        ["Multi-agent visible launcher v0", "reference/protocols/multi-agent-visible-launcher-v0.md"],
+        ["reference/README.md"],
         source=DOCS_INDEX,
     )
 

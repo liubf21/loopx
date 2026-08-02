@@ -10,7 +10,7 @@ state it writes, the owner of that write, and how the dashboard proves it, the
 feature is not ready.
 
 For concrete recurring situations, maintain
-[Interaction Pattern Catalog](interaction-pattern-catalog.md). The state model
+[Interaction Pattern Catalog](concepts/interaction-pattern-catalog.md). The state model
 defines actor boundaries and stores; the pattern catalog records good cases,
 bad cases, expected user/agent channels, and validation references.
 
