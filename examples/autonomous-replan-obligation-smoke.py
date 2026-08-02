@@ -651,7 +651,7 @@ def assert_watch_replan_ack_requires_bounded_state_evidence() -> None:
         state_path.write_text(
             state_path.read_text(encoding="utf-8").replace(
                 "next_due_at=2026-08-01T13:00:00Z",
-                "next_due_at=2026-08-01T13:00:00Z expires_at=2026-08-02T13:00:00Z",
+                "next_due_at=2026-08-01T13:00:00Z expires_at=2099-08-02T13:00:00Z",
             ),
             encoding="utf-8",
         )
