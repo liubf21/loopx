@@ -44,11 +44,32 @@ LoopX records the exact base, source, and integration SHAs. A later rebase,
 review fix, or additional source commit becomes `base_ref_moved`,
 `source_ref_moved`, or `integration_head_changed`.
 
+Remote-tracking refs do not move until Git observes the publisher's update. To
+make that observation part of the same typed operation, opt in to a
+remote-read-only refresh:
+
+```bash
+loopx integration-branch status \
+  --repo-path . \
+  --refresh-remotes \
+  --format json
+```
+
+LoopX fetches only the remote-tracking refs named by the configured base or
+source refs, then resolves exact SHAs. It does not prune unrelated refs or
+replace existing `FETCH_HEAD` evidence. This observes another worker's
+published branch intent; it does not guess unpushed work, read private review
+text, or infer that a draft is approved for integration.
+
 ## Preview and sync
 
 ```bash
 loopx integration-branch sync --repo-path . --format json
-loopx integration-branch sync --repo-path . --execute --format json
+loopx integration-branch sync \
+  --repo-path . \
+  --refresh-remotes \
+  --execute \
+  --format json
 ```
 
 After the first sync, a source branch that only advances to a descendant is
@@ -94,16 +115,38 @@ When the supplied commit is already the integration branch head, execute only
 records the verified receipt. It does not reset or otherwise touch the checked
 out worktree.
 
+## Periodic or event-driven reconcile
+
+Use the same command for timer-driven and provider-event-driven checks:
+
+```bash
+loopx integration-branch sync \
+  --repo-path . \
+  --refresh-remotes \
+  --execute \
+  --format json
+```
+
+For LoopX-managed work, register that operation as a `continuous_monitor` Todo
+with a project-selected cadence and `next_due_at`. A host can wake on that
+deadline, run the command, and write back the returned exact-SHA evidence. A Git
+provider webhook may invoke the same command after a ref event for lower
+latency. Webhook authentication and event delivery belong to the provider
+extension, not to this repository-neutral capability.
+
 ## Boundary
 
-The capability is deliberately local:
+The capability keeps a deliberately narrow write boundary:
 
-- it never fetches or pushes;
+- by default it does not contact remotes; `--refresh-remotes` is read-only
+  against the remote repository and updates only configured local
+  remote-tracking refs;
+- it never pushes;
 - it never changes a source branch;
 - it never creates, retargets, approves, or merges a PR;
 - it never updates a protected base branch;
 - v0 uses ordered merge commits and does not squash or rewrite source history.
 
-Fetch or update source refs through the repository's normal workflow before
-running `status` or `sync`. Human review and aggregate merge authority remain
-outside this capability.
+Without `--refresh-remotes`, fetch or update source refs through the
+repository's normal workflow before running `status` or `sync`. Human review
+and aggregate merge authority remain outside this capability.

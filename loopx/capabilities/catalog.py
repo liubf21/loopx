@@ -4,10 +4,9 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .registry import CapabilityRegistry
-from .issue_fix.workflow_plan import build_issue_fix_pr_lifecycle_command
-
 from ..extensions.runtime import extension_catalog_entries
+from .issue_fix.workflow_plan import build_issue_fix_pr_lifecycle_command
+from .registry import CapabilityRegistry
 
 CAPABILITY_CATALOG_SCHEMA_VERSION = "loopx_capability_catalog_v0"
 CAPABILITY_DETAIL_SCHEMA_VERSION = "loopx_capability_detail_v0"
@@ -43,18 +42,19 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "command": (
-                    "loopx integration-branch status --repo-path <repo> --format json"
+                    "loopx integration-branch status --repo-path <repo> "
+                    "[--refresh-remotes] --format json"
                 ),
-                "purpose": "Compare current base, source, and integration heads with the last successful sync.",
-                "write_boundary": "read-only local git refs and ignored plan",
+                "purpose": "Optionally refresh remote-tracking refs, then compare exact base, source, and integration heads with the last successful sync.",
+                "write_boundary": "remote-read-only inputs; optional fetch updates configured local remote-tracking refs only",
             },
             {
                 "command": (
                     "loopx integration-branch sync --repo-path <repo> "
-                    "[--execute] --format json"
+                    "[--refresh-remotes] [--execute] --format json"
                 ),
                 "purpose": "Preview or atomically publish an ordered merge candidate to the local integration branch.",
-                "write_boundary": "local integration branch and ignored receipt only; no source or remote write",
+                "write_boundary": "local integration branch, ignored receipt, and optional configured remote-tracking refs only; no source-branch or remote-repository write",
             },
         ],
         "implemented_protocols": [
@@ -80,7 +80,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The plan is project-local and ignored; it records refs and sync receipts, not credentials, review bodies, or private evidence.",
             "Sync uses exact resolved source heads and updates only the configured local integration branch after every ordered merge succeeds.",
             "Dirty checked-out integration worktrees, merge conflicts, missing refs, and concurrent plan/input/integration movement fail closed before publication.",
-            "The capability never fetches, pushes, force-pushes, retargets PRs, merges protected branches, or changes source refs.",
+            "Remote refresh is explicit and remote-read-only; it updates only configured local remote-tracking refs and never pushes, force-pushes, retargets PRs, merges protected branches, or changes source branches.",
             "v0 uses ordered merge commits; it does not rewrite or squash source history.",
         ],
         "next_real_step": (

@@ -22,6 +22,10 @@ def _render(payload: dict[str, object]) -> str:
         for reason in reasons:
             if isinstance(reason, dict):
                 lines.append(f"  - `{reason.get('kind')}`")
+    remote_refresh = payload.get("remote_refresh")
+    if isinstance(remote_refresh, dict) and remote_refresh.get("requested"):
+        remotes = remote_refresh.get("remotes")
+        lines.append(f"- refreshed_remotes: `{remotes}`")
     return "\n".join(lines) + "\n"
 
 
@@ -63,6 +67,14 @@ def register_integration_branch_commands(
     )
     add_subcommand_format(status)
     _add_common_arguments(status)
+    status.add_argument(
+        "--refresh-remotes",
+        action="store_true",
+        help=(
+            "Fetch only configured remote-tracking refs before resolving base "
+            "and source refs; never pushes or changes source branches."
+        ),
+    )
 
     sync = commands.add_parser(
         "sync",
@@ -75,6 +87,14 @@ def register_integration_branch_commands(
         help=(
             "Use a manually resolved candidate commit after verifying it contains "
             "the configured base and every exact source head."
+        ),
+    )
+    sync.add_argument(
+        "--refresh-remotes",
+        action="store_true",
+        help=(
+            "Fetch only configured remote-tracking refs before building or "
+            "verifying the candidate; never pushes or changes source branches."
         ),
     )
     sync.add_argument("--execute", action="store_true")
@@ -103,12 +123,14 @@ def handle_integration_branch_command(
             payload = integration_branch_status(
                 repo_path=args.repo_path,
                 plan_file=args.plan_file,
+                refresh_remotes=args.refresh_remotes,
             )
         else:
             payload = sync_integration_branch(
                 repo_path=args.repo_path,
                 plan_file=args.plan_file,
                 candidate_ref=args.candidate_ref,
+                refresh_remotes=args.refresh_remotes,
                 execute=args.execute,
             )
     except IntegrationBranchError as exc:
