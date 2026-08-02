@@ -418,6 +418,89 @@ def test_goal_runtime_defer_uses_user_gate_deadline_before_monitors() -> None:
     ] == "user_gate"
 
 
+def test_quota_human_gate_uses_future_user_gate_deadline_before_monitor() -> None:
+    from loopx.control_plane.scheduler import monitor_todo as monitor_todo_mod
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    agent_id = "human-gate-frontier-agent"
+    status = quota_status_payload(
+        goal_id="human-gate-frontier-fixture",
+        status="active",
+        recommended_action="Wait for owner approval.",
+        agent_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "Agent Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "deferred_count": 0,
+            "monitor_open_items": [
+                {
+                    "todo_id": "todo_ci",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] CI monitor",
+                    "target_key": "pr-ci",
+                    "cadence": "60m",
+                    "next_due_at": (now + timedelta(minutes=45)).isoformat(),
+                }
+            ],
+        },
+        user_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "User Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "deferred_count": 0,
+            "resume_blocked_items": [
+                {
+                    "todo_id": "todo_owner_gate",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "user_gate",
+                    "text": "[P0] Owner approval",
+                    "resume_when": "external:approval",
+                    "resume_ready": False,
+                    "next_due_at": (now + timedelta(minutes=7)).isoformat(),
+                }
+            ],
+        },
+        coordination={"registered_agents": [agent_id]},
+        claim_scope_agent_id=agent_id,
+    )
+
+    original_scheduler_now = scheduler_hint_mod.now_utc
+    original_monitor_now = monitor_todo_mod.now_utc
+    original_quota_now = quota_summary_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    monitor_todo_mod.now_utc = lambda: now
+    quota_summary_mod.now_utc = lambda: now
+    try:
+        quota = build_quota_should_run(
+            status,
+            goal_id="human-gate-frontier-fixture",
+            agent_id=agent_id,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_scheduler_now
+        monitor_todo_mod.now_utc = original_monitor_now
+        quota_summary_mod.now_utc = original_quota_now
+
+    continuation = quota["scheduler_hint"]["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert continuation["reason_code"] == "interaction_blocking_user_gate"
+    assert continuation["recheck_after_seconds"] == 7 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
 def test_quota_payload_compaction_preserves_earliest_frontier_deadline() -> None:
     from loopx.control_plane.scheduler import monitor_todo as monitor_todo_mod
     from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod

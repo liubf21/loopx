@@ -1202,6 +1202,10 @@ def build_scheduler_hint(
         return result
 
     if arbitration.disposition == SchedulerDisposition.HUMAN_GATE:
+        frontier_recheck = _frontier_recheck_plan(
+            payload,
+            current_time=now_utc(),
+        )
         return builder.build(
             action="backoff_waiting_for_user",
             cadence_class="human_gate",
@@ -1213,6 +1217,12 @@ def build_scheduler_hint(
             codex_max=120,
             cli_limit=3,
             claude_limit=3,
+            cadence_context_detail=frontier_recheck,
+            frontier_recheck_after_seconds=(
+                frontier_recheck.get("frontier_recheck_after_seconds")
+                if isinstance(frontier_recheck, dict)
+                else None
+            ),
         )
 
     if arbitration.disposition == SchedulerDisposition.ACTIVE_WORK:
