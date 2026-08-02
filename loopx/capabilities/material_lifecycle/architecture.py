@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from .decision_planning import MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION
-from .inventory import (
-    MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
-    MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
-)
 from .intake import (
     MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION,
     MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION,
     MATERIAL_CANDIDATE_INTAKE_ROLLBACK_RECEIPT_SCHEMA_VERSION,
+)
+from .inventory import (
+    MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
+    MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
 )
 from .lifecycle import MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION
 from .ranking import (
@@ -24,6 +24,7 @@ from .rebuild import (
     MATERIAL_RANKED_ENTRY_REBUILD_APPLY_RECEIPT_SCHEMA_VERSION,
     MATERIAL_RANKED_ENTRY_REBUILD_PLAN_SCHEMA_VERSION,
 )
+from .settlement import MATERIAL_INTAKE_RANKING_SETTLEMENT_SCHEMA_VERSION
 
 MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION = "material_lifecycle_architecture_v0"
 
@@ -45,6 +46,7 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION,
             MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION,
             MATERIAL_CANDIDATE_INTAKE_ROLLBACK_RECEIPT_SCHEMA_VERSION,
+            MATERIAL_INTAKE_RANKING_SETTLEMENT_SCHEMA_VERSION,
             MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
             MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
             MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION,
@@ -76,6 +78,9 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "candidate_intake_adapter": (
                 "source_backed_owner_gated_append_apply_and_rollback"
             ),
+            "ranking_settlement": (
+                "project_classified_completion_receipt_joining_intake_and_ranking"
+            ),
         },
         "lifecycle": [
             "snapshot",
@@ -87,6 +92,7 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "lossless_ranked_entry_rebuild",
             "bounded_explore_intent",
             "source_backed_candidate_intake",
+            "candidate_intake_ranking_settlement",
             "audited_apply",
         ],
         "invariants": [
@@ -107,6 +113,9 @@ def build_material_lifecycle_architecture_packet() -> dict[str, object]:
             "proposal_and_apply_receipt_remain_separate",
             "candidate_intake_requires_exact_read_content_backing_and_cas",
             "candidate_intake_appends_exactly_one_without_rewriting_existing_records",
+            "every_candidate_intake_records_one_ranking_disposition",
+            "high_value_candidate_intake_requires_verified_ranked_membership",
+            "intake_and_ranking_keep_separate_receipts_and_authority_transitions",
             "automation_prompts_do_not_own_source_lists_or_ranking_rules",
         ],
         "next_stage": ("private_decision_driven_rerank_dogfood_then_owner_gated_apply"),
