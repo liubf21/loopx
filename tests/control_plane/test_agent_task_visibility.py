@@ -8,6 +8,7 @@ from loopx.control_plane.testing.quota_fixtures import (
     quota_todo_item,
     quota_todo_summary,
 )
+from loopx.control_plane.todos.summary_item import compact_todo_summary_item
 from loopx.quota import build_quota_should_run
 
 
@@ -26,6 +27,9 @@ def _decision() -> dict[str, Any]:
             action_kind="issue_fix_branch_validation",
             target_key="issue-fix:owner/repo:issue_42",
             required_capabilities=["shell"],
+            note=(
+                "The implementation is already review-ready; next run the restart canary."
+            ),
         ),
         quota_todo_item(
             todo_id="todo_unclaimed",
@@ -79,6 +83,19 @@ def test_quota_projects_goal_scoped_read_and_execution_boundary() -> None:
     assert decision["selected_todo"]["target_key"] == (
         "issue-fix:owner/repo:issue_42"
     )
+    assert decision["selected_todo"]["continuation_hint"] == (
+        "The implementation is already review-ready; next run the restart canary."
+    )
+
+
+def test_todo_continuation_hint_drops_secret_bearing_note() -> None:
+    item = quota_todo_item(
+        todo_id="todo_secret",
+        title="Resume the current task.",
+        note="api_key=must-not-project; next run the canary.",
+    )
+
+    assert "continuation_hint" not in compact_todo_summary_item(item)
 
 
 def test_turn_envelope_retains_agent_task_visibility_contract() -> None:

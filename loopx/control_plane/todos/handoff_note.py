@@ -18,7 +18,10 @@ from .contract import (
 
 
 TODO_HANDOFF_NOTE_SCHEMA_VERSION = "handoff_note_v0"
-_AK_SK_PATTERN = re.compile(r"(?i)\b(?:ak|sk|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+")
+TODO_CONTINUATION_HINT_MAX_CHARS = 280
+_AK_SK_PATTERN = re.compile(
+    r"(?i)\b(?:ak|sk|api[_-]?key|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+"
+)
 
 
 def _compact_text(value: Any, *, limit: int = 220) -> str | None:
@@ -60,6 +63,19 @@ def _first_text(item: dict[str, Any], *keys: str, limit: int = 220) -> str | Non
         if text:
             return text
     return None
+
+
+def compact_todo_continuation_hint(item: dict[str, Any]) -> str | None:
+    """Project the current bounded continuation without copying raw evidence."""
+
+    return _first_text(
+        item,
+        "continuation_hint",
+        "suggested_next_action",
+        "note",
+        "reason",
+        limit=TODO_CONTINUATION_HINT_MAX_CHARS,
+    )
 
 
 def _evidence_refs(item: dict[str, Any], *, todo_id: str | None) -> list[str]:

@@ -26,6 +26,7 @@ SELECTED_TODO_COMPACT_FIELDS = (
     "target_key",
     "next_due_at",
     "expires_at",
+    "continuation_hint",
 )
 SELECTED_TODO_AGENT_FIELDS = (
     "agent_id",
