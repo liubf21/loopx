@@ -373,6 +373,96 @@ def test_goal_runtime_defer_uses_earliest_frontier_transition() -> None:
     assert "frontier_recheck" not in hint
 
 
+def test_goal_runtime_defer_uses_user_gate_deadline_before_monitors() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_ci",
+                "target_key": "pr-ci",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=45)).isoformat(),
+            }
+        ],
+        "gate_open_items": [
+            {
+                "todo_id": "todo_gate",
+                "task_class": "user_gate",
+                "next_due_at": (now + timedelta(minutes=10)).isoformat(),
+            }
+        ],
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            include_detail=True,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["recheck_after_seconds"] == 10 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert hint["cold_path_detail"]["cadence_context"][
+        "frontier_recheck_source"
+    ] == "user_gate"
+
+
+def test_goal_runtime_defer_uses_non_monitor_frontier_without_monitor_deadline() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_monitor",
+                "target_key": "pr-review",
+                "cadence": "60m",
+            }
+        ],
+        "deferred_resume_candidates": [
+            {
+                "todo_id": "todo_resume",
+                "task_class": "advancement_task",
+                "resume_ready": True,
+                "next_due_at": (now + timedelta(minutes=7)).isoformat(),
+            }
+        ],
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            include_detail=True,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["recheck_after_seconds"] == 7 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert hint["cold_path_detail"]["cadence_context"][
+        "frontier_recheck_source"
+    ] == "advancement_task"
+
+
 def test_goal_runtime_defer_uses_exact_due_inside_host_floor() -> None:
     from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
 

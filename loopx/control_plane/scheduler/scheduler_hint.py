@@ -319,6 +319,42 @@ def _monitor_cadence_minutes(value: Any) -> int | None:
     return amount
 
 
+FRONTIER_RECHECK_SUMMARY_KEYS = (
+    "current_agent_claimed_monitor_items",
+    "monitor_open_items",
+    "gate_open_items",
+    "deferred_resume_candidates",
+    "current_agent_deferred_resume_candidates",
+    "resume_blocked_items",
+    "current_agent_monitor_blocked_resume_candidates",
+    "current_agent_handoff_gates",
+)
+
+
+def _todo_summary_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for summary_key in ("agent_todo_summary", "user_todo_summary"):
+        summary = payload.get(summary_key)
+        if not isinstance(summary, dict):
+            continue
+        for key in FRONTIER_RECHECK_SUMMARY_KEYS:
+            values = summary.get(key)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if not isinstance(value, dict):
+                    continue
+                todo_id = str(value.get("todo_id") or "")
+                target_key = str(value.get("target_key") or "")
+                identity = (todo_id, target_key, str(value.get("index") or ""))
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                items.append(value)
+    return items
+
+
 def _monitor_wait_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     summary = payload.get("agent_todo_summary")
     if not isinstance(summary, dict):
@@ -339,6 +375,50 @@ def _monitor_wait_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 seen_ids.add(todo_id)
             items.append(value)
     return items
+
+
+def _frontier_transition_item_identity(item: dict[str, Any]) -> str:
+    for key in ("todo_id", "target_key", "action_kind", "title", "text"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            return value
+    return str(item.get("index") or "frontier_transition")
+
+
+def _frontier_recheck_plan(
+    payload: dict[str, Any],
+    *,
+    current_time: datetime,
+) -> dict[str, Any] | None:
+    deadlines: list[dict[str, Any]] = []
+    for item in _todo_summary_items(payload):
+        timestamp = _parse_monitor_timestamp(item.get("next_due_at"))
+        if timestamp is None or timestamp <= current_time:
+            continue
+        task_class = str(item.get("task_class") or "").strip()
+        if not task_class:
+            action_kind = str(item.get("action_kind") or "").strip().lower()
+            if "monitor" in action_kind:
+                task_class = "continuous_monitor"
+            elif "gate" in action_kind or "approval" in action_kind:
+                task_class = "user_gate"
+        deadlines.append(
+            {
+                "identity": _frontier_transition_item_identity(item),
+                "source": task_class or "frontier_todo",
+                "next_due_at": timestamp.isoformat(),
+                "seconds_until_due": _seconds_until(timestamp, current_time),
+            }
+        )
+    if not deadlines:
+        return None
+    selected = min(deadlines, key=lambda item: item["seconds_until_due"])
+    return {
+        "frontier_recheck_after_seconds": selected["seconds_until_due"],
+        "frontier_recheck_source": selected["source"],
+        "frontier_recheck_identity": selected["identity"],
+        "frontier_recheck_candidate_count": len(deadlines),
+    }
 
 
 def _monitor_item_identity(item: dict[str, Any]) -> str:
@@ -465,6 +545,7 @@ def _monitor_wait_cadence_plan(payload: dict[str, Any]) -> dict[str, Any] | None
             continue
         plans.append(plan)
 
+    frontier_recheck = _frontier_recheck_plan(payload, current_time=current_time)
     if not plans:
         if expired_count:
             return {
@@ -474,8 +555,9 @@ def _monitor_wait_cadence_plan(payload: dict[str, Any]) -> dict[str, Any] | None
                 "base_progression_minutes": MONITOR_WAIT_PROGRESSION_MINUTES,
                 "progression_minutes": None,
                 "reset_profile": None,
+                **(frontier_recheck or {}),
             }
-        return None
+        return frontier_recheck
 
     selected = min(
         plans,
@@ -485,17 +567,41 @@ def _monitor_wait_cadence_plan(payload: dict[str, Any]) -> dict[str, Any] | None
             str(plan.get("selected_monitor_identity") or ""),
         ),
     )
+    monitor_recheck_after_seconds = min(
+        (
+            int(plan["seconds_until_due"])
+            for plan in plans
+            if isinstance(plan.get("seconds_until_due"), int)
+            and int(plan["seconds_until_due"]) > 0
+        ),
+        default=None,
+    )
+    if (
+        isinstance(frontier_recheck, dict)
+        and isinstance(frontier_recheck.get("frontier_recheck_after_seconds"), int)
+    ):
+        frontier_recheck_after_seconds = int(
+            frontier_recheck["frontier_recheck_after_seconds"]
+        )
+        if (
+            monitor_recheck_after_seconds is None
+            or frontier_recheck_after_seconds < monitor_recheck_after_seconds
+        ):
+            monitor_recheck_after_seconds = frontier_recheck_after_seconds
+        else:
+            frontier_recheck["frontier_recheck_after_seconds"] = (
+                monitor_recheck_after_seconds
+            )
+            frontier_recheck["frontier_recheck_source"] = "continuous_monitor"
+            frontier_recheck["frontier_recheck_identity"] = selected[
+                "selected_monitor_identity"
+            ]
+    else:
+        frontier_recheck = {}
     return {
         **selected,
-        "frontier_recheck_after_seconds": min(
-            (
-                int(plan["seconds_until_due"])
-                for plan in plans
-                if isinstance(plan.get("seconds_until_due"), int)
-                and int(plan["seconds_until_due"]) > 0
-            ),
-            default=None,
-        ),
+        **frontier_recheck,
+        "frontier_recheck_after_seconds": monitor_recheck_after_seconds,
         "base_progression_minutes": MONITOR_WAIT_PROGRESSION_MINUTES,
         "candidate_count": len(plans),
         "expired_monitor_count": expired_count,
