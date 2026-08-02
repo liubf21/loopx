@@ -121,6 +121,7 @@ def _run(
     classification: str,
     agent_id: str | None = None,
     delivery_outcome: str | None = None,
+    refresh_state: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "generated_at": generated_at,
@@ -131,6 +132,14 @@ def _run(
         payload["agent_id"] = agent_id
     if delivery_outcome:
         payload["delivery_outcome"] = delivery_outcome
+    if refresh_state:
+        payload.update(
+            {
+                "recommended_action_source": "explicit_arg",
+                "runtime_projection_route": {"schema_version": "runtime_projection_route_v0"},
+                "state": {"sha256_16": "fixture"},
+            }
+        )
     return payload
 
 
@@ -157,7 +166,7 @@ def test_safe_bypass_rejects_no_accountable_writeback(
 
 
 @pytest.mark.parametrize("before_overrides", SAFE_BYPASS_CASES)
-def test_safe_bypass_consumes_accountable_writeback_once(
+def test_safe_bypass_consumes_accountable_writeback_once_across_neutral_refresh(
     tmp_path: Path,
     before_overrides: dict[str, Any],
 ) -> None:
@@ -167,10 +176,12 @@ def test_safe_bypass_consumes_accountable_writeback_once(
         classification="validated_fallback",
         delivery_outcome="outcome_progress",
     )
-    _write_run_index(
-        runtime,
-        [delivery],
+    neutral_refresh = _run(
+        "2026-01-01T00:02:00+00:00",
+        classification="quality_qualification_vision_checkpoint_ack",
+        refresh_state=True,
     )
+    _write_run_index(runtime, [delivery, neutral_refresh])
 
     preview = _preview(runtime, before_overrides=before_overrides)
 
@@ -191,7 +202,11 @@ def test_safe_bypass_consumes_accountable_writeback_once(
 
     _write_run_index(
         runtime,
-        [delivery, _spent("2026-01-01T00:02:00+00:00")],
+        [
+            delivery,
+            neutral_refresh,
+            _spent("2026-01-01T00:03:00+00:00"),
+        ],
     )
     assert _preview(runtime, before_overrides=before_overrides)["ok"] is False
 
@@ -307,6 +322,45 @@ def test_explicit_non_accountable_refresh_still_fails_closed(tmp_path: Path) -> 
                 agent_id=AGENT_A,
                 delivery_outcome="surface_only",
             ),
+        ],
+    )
+
+    assert _preview(runtime, agent_id=AGENT_A)["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "later_run",
+    [
+        _run(
+            "2026-01-01T00:02:00+00:00",
+            classification="custom_refresh_with_surface_outcome",
+            agent_id=AGENT_A,
+            delivery_outcome="surface_only",
+            refresh_state=True,
+        ),
+        _run(
+            "2026-01-01T00:02:00+00:00",
+            classification="operator_note_with_partial_refresh_shape",
+            agent_id=AGENT_A,
+        )
+        | {"state": {"sha256_16": "fixture"}},
+    ],
+    ids=["explicit-non-accountable-outcome", "partial-refresh-shape"],
+)
+def test_custom_non_neutral_event_still_fails_closed(
+    tmp_path: Path,
+    later_run: dict[str, Any],
+) -> None:
+    runtime = tmp_path / "runtime"
+    _write_run_index(
+        runtime,
+        [
+            _poll(
+                "2026-01-01T00:01:00+00:00",
+                material=True,
+                agent_id=AGENT_A,
+            ),
+            later_run,
         ],
     )
 
