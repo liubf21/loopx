@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..control_plane.quota.cli_projection import (
+    compact_quota_monitor_poll_cli_payload,
     compact_quota_should_run_cli_payload,
 )
 from ..control_plane.quota.heartbeat_receipt import (
@@ -64,12 +65,17 @@ PrintPayload = Callable[
     None,
 ]
 RolloutEventAppender = Callable[..., dict[str, object]]
-QUOTA_DETAIL_SECTIONS = (
+QUOTA_SHOULD_RUN_DETAIL_SECTIONS = (
     "scheduler",
     "agent-todos",
     "user-todos",
     "goal-boundary",
     "vision",
+)
+QUOTA_MONITOR_POLL_DETAIL_SECTIONS = ("decisions",)
+QUOTA_DETAIL_SECTIONS = (
+    *QUOTA_SHOULD_RUN_DETAIL_SECTIONS,
+    *QUOTA_MONITOR_POLL_DETAIL_SECTIONS,
 )
 QUOTA_EVENT_KINDS = {
     "should-run": "quota_should_run",
@@ -133,7 +139,11 @@ def _quota_detail_sections_from_args(args: argparse.Namespace) -> frozenset[str]
     if bool(getattr(args, "include_scheduler_detail", False)):
         sections.add("scheduler")
     if "all" in sections:
-        sections.update(QUOTA_DETAIL_SECTIONS)
+        sections.update(
+            QUOTA_MONITOR_POLL_DETAIL_SECTIONS
+            if args.quota_command == "monitor-poll"
+            else QUOTA_SHOULD_RUN_DETAIL_SECTIONS
+        )
         sections.discard("all")
     return frozenset(sections)
 
@@ -226,9 +236,10 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         action="append",
         choices=[*QUOTA_DETAIL_SECTIONS, "all"],
         help=(
-            "Include one cold-path `quota should-run` detail section. Repeat for "
-            "multiple sections or use `all`. Canonical sections: scheduler, "
-            "agent-todos, user-todos, goal-boundary, and vision."
+            "Include one command-specific cold-path detail section. For `quota "
+            "should-run`: scheduler, agent-todos, user-todos, goal-boundary, or "
+            "vision. For `quota monitor-poll`: decisions. Repeat for multiple "
+            "sections or use `all`."
         ),
     )
     quota_parser.add_argument(
@@ -414,8 +425,24 @@ def _prepare_quota_command_context(
     command = args.quota_command
     if bool(getattr(args, "turn_envelope", False)) and command != "should-run":
         raise ValueError("--turn-envelope is only valid with `quota should-run`")
-    if bool(getattr(args, "include_details", None)) and command != "should-run":
-        raise ValueError("--include-detail is only valid with `quota should-run`")
+    requested_details = set(getattr(args, "include_details", None) or ())
+    if requested_details and command not in {"should-run", "monitor-poll"}:
+        raise ValueError(
+            "--include-detail is only valid with `quota should-run` or "
+            "`quota monitor-poll`"
+        )
+    if requested_details and "all" not in requested_details:
+        allowed_details = set(
+            QUOTA_MONITOR_POLL_DETAIL_SECTIONS
+            if command == "monitor-poll"
+            else QUOTA_SHOULD_RUN_DETAIL_SECTIONS
+        )
+        unsupported_details = sorted(requested_details - allowed_details)
+        if unsupported_details:
+            raise ValueError(
+                f"`quota {command}` does not accept --include-detail "
+                f"{', '.join(unsupported_details)}"
+            )
     if (
         bool(getattr(args, "include_scheduler_detail", False))
         and command != "should-run"
@@ -971,6 +998,11 @@ def handle_quota_command(
             include_user_todo_summary_detail="user-todos" in detail_sections,
             include_goal_boundary_detail="goal-boundary" in detail_sections,
             include_vision_detail="vision" in detail_sections,
+        )
+    elif args.quota_command == "monitor-poll":
+        payload = compact_quota_monitor_poll_cli_payload(
+            payload,
+            include_decision_detail="decisions" in detail_sections,
         )
     print_payload(payload, args.format, _quota_renderer(args))
     return 0 if payload.get("ok") else 1

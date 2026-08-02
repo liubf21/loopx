@@ -1236,10 +1236,8 @@ def main() -> int:
             "external_monitor_observed_without_material_transition"
         ), poll
         assert poll["monitor_event"]["before"]["effective_action"] == "normal_run", poll
-        assert poll["before"]["work_lane_contract"]["reason_codes"] == [
-            "open_agent_todo",
-            "external_monitor_context",
-        ], poll
+        assert "work_lane_contract" not in poll["before"], poll
+        assert poll["before"]["should_run"] is True, poll
         assert poll["after"]["effective_action"] == "normal_run", poll
         assert count_spend_events(runtime) == 0, poll
         assert count_events(runtime, "quota_monitor_poll") == 1, poll
