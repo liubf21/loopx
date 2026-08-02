@@ -23,6 +23,9 @@ from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
 )
+from loopx.control_plane.todos.quota_summary import (
+    compact_quota_todo_summary_for_payload,
+)
 from loopx.control_plane.work_items.interaction_contract import (
     interaction_next_cli_actions,
 )
@@ -452,6 +455,7 @@ def test_goal_runtime_defer_uses_earliest_frontier_transition() -> None:
     try:
         hint = build_scheduler_hint(
             payload,
+            include_detail=True,
             scheduler_execution_context=context,
         )
     finally:
@@ -464,6 +468,9 @@ def test_goal_runtime_defer_uses_earliest_frontier_transition() -> None:
     assert continuation["recheck_after_seconds"] == 20 * 60
     assert continuation["recheck_source"] == "frontier_earliest_material_transition"
     assert continuation["wake_policy"] == "state_change_or_deadline"
+    assert hint["cold_path_detail"]["frontier_recheck"][
+        "frontier_recheck_source"
+    ] == "continuous_monitor"
     assert "frontier_recheck" not in hint
 
 
@@ -507,7 +514,7 @@ def test_goal_runtime_defer_uses_user_gate_deadline_before_monitors() -> None:
     continuation = hint["goal_runtime_continuation"]
     assert continuation["recheck_after_seconds"] == 10 * 60
     assert continuation["recheck_source"] == "frontier_earliest_material_transition"
-    assert hint["cold_path_detail"]["cadence_context"][
+    assert hint["cold_path_detail"]["frontier_recheck"][
         "frontier_recheck_source"
     ] == "user_gate"
 
@@ -685,18 +692,56 @@ def test_quota_payload_compaction_preserves_earliest_frontier_deadline() -> None
         monitor_todo_mod.now_utc = original_monitor_now
         quota_summary_mod.now_utc = original_quota_now
 
-    compacted_monitors = quota["agent_todo_summary"]["monitor_open_items"]
+    compacted_summary = quota["agent_todo_summary"]
+    compacted_monitors = compacted_summary["monitor_open_items"]
     assert [item["todo_id"] for item in compacted_monitors] == [
-        "todo_earliest_monitor",
         "todo_unscheduled_monitor_a",
+        "todo_unscheduled_monitor_b",
     ]
+    assert compacted_summary["frontier_deadline"]["identity"] == (
+        "todo_earliest_monitor"
+    )
     continuation = quota["scheduler_hint"]["goal_runtime_continuation"]
     assert continuation["disposition"] == "defer"
     assert continuation["recheck_after_seconds"] == 10 * 60
     assert continuation["recheck_source"] == "frontier_earliest_material_transition"
 
 
-def test_goal_runtime_defer_uses_non_monitor_frontier_without_monitor_deadline() -> None:
+def test_frontier_deadline_projection_does_not_reorder_selection_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(quota_summary_mod, "now_utc", lambda: now)
+    summary = {
+        "first_executable_items": [
+            {"todo_id": "selected_first", "index": 0},
+            {
+                "todo_id": "deadline_second",
+                "index": 1,
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            },
+        ],
+        "monitor_open_items": [
+            {
+                "todo_id": "deadline_second",
+                "index": 1,
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            }
+        ],
+    }
+
+    compacted = compact_quota_todo_summary_for_payload(summary)
+
+    assert [item["todo_id"] for item in compacted["first_executable_items"]] == [
+        "selected_first",
+        "deadline_second",
+    ]
+    assert compacted["frontier_deadline"]["identity"] == "deadline_second"
+
+
+def test_goal_runtime_quiet_wait_uses_non_monitor_frontier_deadline() -> None:
     from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
 
     context = scheduler_execution_context_for_runtime_profile(
@@ -704,6 +749,7 @@ def test_goal_runtime_defer_uses_non_monitor_frontier_without_monitor_deadline()
     )
     now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
     payload = _monitor_wait_payload()
+    payload["interaction_contract"]["mode"] = "quiet_skip"
     payload["agent_todo_summary"] = {
         "monitor_open_items": [
             {
@@ -734,9 +780,10 @@ def test_goal_runtime_defer_uses_non_monitor_frontier_without_monitor_deadline()
         scheduler_hint_mod.now_utc = original_now
 
     continuation = hint["goal_runtime_continuation"]
+    assert hint["action"] == "backoff_until_state_change"
     assert continuation["recheck_after_seconds"] == 7 * 60
     assert continuation["recheck_source"] == "frontier_earliest_material_transition"
-    assert hint["cold_path_detail"]["cadence_context"][
+    assert hint["cold_path_detail"]["frontier_recheck"][
         "frontier_recheck_source"
     ] == "advancement_task"
 
