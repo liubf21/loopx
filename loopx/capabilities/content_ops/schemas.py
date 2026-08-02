@@ -25,6 +25,15 @@ CONTENT_OPS_CHATVIEW_CONNECTOR_REPORT_SCHEMA_VERSION = (
 CONTENT_OPS_WALKTHROUGH_ARTIFACT_SCHEMA_VERSION = (
     "content_ops_walkthrough_artifact_v0"
 )
+CONTENT_OPS_ITEM_SCHEMA_VERSION = "content_ops_item_v0"
+CONTENT_OPS_ITEM_PACKET_SCHEMA_VERSION = "content_ops_item_packet_v0"
+CONTENT_OPS_ITEM_TRANSITION_PACKET_SCHEMA_VERSION = (
+    "content_ops_item_transition_packet_v0"
+)
+CONTENT_OPS_ITEM_TRANSITION_RECEIPT_SCHEMA_VERSION = (
+    "content_ops_item_transition_receipt_v0"
+)
+CONTENT_OPS_ITEM_PROJECTION_SCHEMA_VERSION = "content_ops_item_projection_v0"
 CONTENT_OPS_EXPLORATION_PLAN_PACKET_SCHEMA_VERSION = (
     "content_ops_exploration_plan_packet_v0"
 )
