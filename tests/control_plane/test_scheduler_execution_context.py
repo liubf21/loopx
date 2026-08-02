@@ -16,9 +16,14 @@ from loopx.control_plane.scheduler.execution_context import (
     scheduler_runtime_profile_for_execution_context,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from loopx.control_plane.testing.quota_fixtures import (
+    quota_status_payload,
+    quota_todo_item,
+)
 from loopx.control_plane.work_items.interaction_contract import (
     interaction_next_cli_actions,
 )
+from loopx.quota import build_quota_should_run
 
 VALID_COMBINATIONS = {
     ("ark_managed_agent", "goal_runtime", "interactive"),
@@ -274,8 +279,53 @@ def test_goal_runtime_projects_typed_defer_with_recheck_delay() -> None:
     continuation = hint["goal_runtime_continuation"]
     assert continuation["disposition"] == "defer"
     assert continuation["recheck_after_seconds"] == 15 * 60
+    assert continuation["wake_policy"] == {
+        "schema_version": "goal_runtime_wake_policy_v0",
+        "mode": "state_change_or_deadline",
+        "state_change_source": "fresh_quota_state_identity",
+    }
     assert continuation["state_identity"]["reset_token"]
     assert hint["execution_phase"]["disposition"] == "goal_runtime_owned"
+
+
+def test_goal_runtime_mixed_frontier_continues_runnable_advancement() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    status = quota_status_payload(
+        goal_id="mixed-frontier-fixture",
+        status="active",
+        recommended_action="Fix the next issue while the PR monitor is quiet.",
+        agent_todo_items=[
+            quota_todo_item(
+                todo_id="todo_next_issue",
+                title="Fix the next independent issue.",
+                task_class="advancement_task",
+                priority="P0",
+            ),
+            quota_todo_item(
+                todo_id="todo_pr_monitor",
+                title="Monitor the earlier PR for CI and review changes.",
+                task_class="continuous_monitor",
+                priority="P1",
+                target_key="github-pr-state-open",
+                cadence="30m",
+                next_due_at="2099-01-01T00:00:00+00:00",
+            ),
+        ],
+    )
+
+    quota = build_quota_should_run(
+        status,
+        goal_id="mixed-frontier-fixture",
+        scheduler_execution_context=context,
+    )
+
+    assert quota["work_lane_contract"]["lane"] == "advancement_task"
+    assert quota["goal_frontier_projection"]["monitor_only_lanes"]["present"] is False
+    assert quota["scheduler_hint"]["goal_runtime_continuation"]["disposition"] == (
+        "continue_now"
+    )
 
 
 def test_non_goal_runtime_does_not_receive_goal_continuation() -> None:

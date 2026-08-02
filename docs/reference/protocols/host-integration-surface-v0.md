@@ -134,11 +134,19 @@ should-run.interaction_contract`, active state, todos, vision, and writeback.
 For `--runtime-profile ark_managed_agent_goal`, the same quota read also emits
 `scheduler_hint.goal_runtime_continuation` with schema
 `goal_runtime_continuation_v0`. Its disposition is `continue_now`, `defer`, or
-`complete`; deferred results include a bounded `recheck_after_seconds`, while
-`state_identity` lets the host discard a stale timer after the frontier
-changes. This is the machine continuation contract. The Goal prompt is not
-rewritten to teach waiting policy, and the model is not asked to infer a wake
-time from prose.
+`complete`. A deferred result includes a bounded `recheck_after_seconds` and a
+typed `wake_policy=state_change_or_deadline`: the host reruns quota when a
+durable frontier write changes the fresh `state_identity`, or no later than the
+recheck deadline. The deadline makes a due monitor runnable even without a push
+signal; provider-specific CI/review observation remains owned by its capability
+connector. This is the machine continuation contract. The Goal prompt is not
+rewritten to teach waiting policy, and the model is not used as a mechanical
+polling loop.
+
+`defer` is a whole-frontier decision, not a per-PR wait. A quiet CI/review
+monitor remains auxiliary context while any independent advancement todo is
+runnable, so that mixed frontier projects `continue_now`. Only a frontier with
+no executable advancement or due monitor may enter the deferred wake policy.
 
 A dependent work step may begin only after material upstream results have
 crossed the durable boundary: update the current todo evidence and the next

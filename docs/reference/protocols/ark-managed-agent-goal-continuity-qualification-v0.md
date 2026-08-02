@@ -17,7 +17,7 @@ an execution envelope.
 | Goal boundary, todo frontier, claims, evidence, quota, and leases | LoopX registry, active state, and event/runtime stores | Run a fresh `quota should-run`; never reconstruct the frontier from chat memory or an old prompt. |
 | Installed LoopX CLI and workflow skills | One fixed installer release | Read back one CLI/skills revision. Codex and Managed Agent differ only in the installer target root. |
 | Goal evaluation phase and terminal result | Goal host durable journal and event readback | Rehydrate before evaluating another completion. A journal existing on disk is not by itself proof that rehydration occurred. |
-| Continue, defer, or complete decision | `quota should-run.scheduler_hint.goal_runtime_continuation` | Consume the typed disposition and state identity; never derive wake behavior from the Goal prompt or evaluator prose. |
+| Continue, defer, or complete decision | `quota should-run.scheduler_hint.goal_runtime_continuation` | Consume the typed disposition, state identity, and defer wake policy; never derive wake behavior from the Goal prompt or evaluator prose. |
 | Host session id and in-memory transcript | Host session | Non-authoritative. It may help locate events, but its survival is not a continuity requirement. |
 
 ## Recovery sequence
@@ -28,7 +28,8 @@ After a pause, host replacement, or ambiguous transport failure:
 2. run installer/doctor readback and reject mixed CLI/skill revisions;
 3. read current LoopX status and run `quota should-run`;
 4. consume `goal_runtime_continuation_v0`; continue immediately, durably defer
-   for its bounded recheck, or complete the host Goal as directed;
+   until a fresh quota identity changes or the bounded recheck deadline arrives,
+   or complete the host Goal as directed;
 5. reconcile the selected todo, claim or lease, evidence, and workspace diff;
 6. inspect Goal-host events before retrying an activation whose admission is
    unknown;

@@ -6,6 +6,7 @@ from typing import Any
 
 from .control_plane.scheduler.execution_context import (
     GOAL_RUNTIME_CONTINUATION_SCHEMA_VERSION,
+    GOAL_RUNTIME_WAKE_POLICY_SCHEMA_VERSION,
 )
 from .control_plane.work_items.runtime_capability_reentry import (
     RUNTIME_CAPABILITY_REENTRY_SCHEMA_VERSION,
@@ -37,6 +38,9 @@ def build_ark_managed_agent_host_contract() -> dict[str, Any]:
             "source_ref": "quota_should_run.scheduler_hint.goal_runtime_continuation",
             "packet_schema_version": GOAL_RUNTIME_CONTINUATION_SCHEMA_VERSION,
             "dispositions": ["continue_now", "defer", "complete"],
+            "defer_wake_policy_schema_version": (
+                GOAL_RUNTIME_WAKE_POLICY_SCHEMA_VERSION
+            ),
             "goal_prompt_mutated": False,
         },
         "runtime_capability_reentry": {

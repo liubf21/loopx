@@ -8,6 +8,7 @@ from typing import Any
 
 SCHEDULER_EXECUTION_CONTEXT_SCHEMA_VERSION = "scheduler_execution_context_v0"
 GOAL_RUNTIME_CONTINUATION_SCHEMA_VERSION = "goal_runtime_continuation_v0"
+GOAL_RUNTIME_WAKE_POLICY_SCHEMA_VERSION = "goal_runtime_wake_policy_v0"
 
 
 class HostSurface(str, Enum):
@@ -436,6 +437,11 @@ def build_goal_runtime_continuation(
         recommended_interval = host_cadence.get("recommended_interval_minutes")
         if isinstance(recommended_interval, int) and recommended_interval > 0:
             continuation["recheck_after_seconds"] = recommended_interval * 60
+            continuation["wake_policy"] = {
+                "schema_version": GOAL_RUNTIME_WAKE_POLICY_SCHEMA_VERSION,
+                "mode": "state_change_or_deadline",
+                "state_change_source": "fresh_quota_state_identity",
+            }
     return continuation
 
 
