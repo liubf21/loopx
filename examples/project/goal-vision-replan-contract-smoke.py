@@ -216,7 +216,7 @@ def main() -> int:
     )
     require(
         docs_index,
-        ["Goal vision replan contract v0", "reference/protocols/goal-vision-replan-contract-v0.md"],
+        ["reference/README.md"],
         source=DOCS_INDEX,
     )
 

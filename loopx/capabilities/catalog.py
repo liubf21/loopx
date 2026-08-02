@@ -4,10 +4,9 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .registry import CapabilityRegistry
-from .issue_fix.workflow_plan import build_issue_fix_pr_lifecycle_command
-
 from ..extensions.runtime import extension_catalog_entries
+from .issue_fix.workflow_plan import build_issue_fix_pr_lifecycle_command
+from .registry import CapabilityRegistry
 
 CAPABILITY_CATALOG_SCHEMA_VERSION = "loopx_capability_catalog_v0"
 CAPABILITY_DETAIL_SCHEMA_VERSION = "loopx_capability_detail_v0"
@@ -43,18 +42,19 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
             {
                 "command": (
-                    "loopx integration-branch status --repo-path <repo> --format json"
+                    "loopx integration-branch status --repo-path <repo> "
+                    "[--refresh-remotes] --format json"
                 ),
-                "purpose": "Compare current base, source, and integration heads with the last successful sync.",
-                "write_boundary": "read-only local git refs and ignored plan",
+                "purpose": "Optionally refresh remote-tracking refs, then compare exact base, source, and integration heads with the last successful sync.",
+                "write_boundary": "remote-read-only inputs; optional fetch updates configured local remote-tracking refs only",
             },
             {
                 "command": (
                     "loopx integration-branch sync --repo-path <repo> "
-                    "[--execute] --format json"
+                    "[--refresh-remotes] [--execute] --format json"
                 ),
                 "purpose": "Preview or atomically publish an ordered merge candidate to the local integration branch.",
-                "write_boundary": "local integration branch and ignored receipt only; no source or remote write",
+                "write_boundary": "local integration branch, ignored receipt, and optional configured remote-tracking refs only; no source-branch or remote-repository write",
             },
         ],
         "implemented_protocols": [
@@ -80,7 +80,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The plan is project-local and ignored; it records refs and sync receipts, not credentials, review bodies, or private evidence.",
             "Sync uses exact resolved source heads and updates only the configured local integration branch after every ordered merge succeeds.",
             "Dirty checked-out integration worktrees, merge conflicts, missing refs, and concurrent plan/input/integration movement fail closed before publication.",
-            "The capability never fetches, pushes, force-pushes, retargets PRs, merges protected branches, or changes source refs.",
+            "Remote refresh is explicit and remote-read-only; it updates only configured local remote-tracking refs and never pushes, force-pushes, retargets PRs, merges protected branches, or changes source branches.",
             "v0 uses ordered merge commits; it does not rewrite or squash source history.",
         ],
         "next_real_step": (
@@ -755,6 +755,80 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "next_real_step": (
             "Dogfood one exact-read semantic rebuild through owner-gated apply "
             "while preserving complete source bytes and canonical records."
+        ),
+    },
+    {
+        "id": "agent-turn-recall",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Autonomous agent turn recall",
+        "status": "active-preview",
+        "default_enabled": False,
+        "real_world_anchor": (
+            "long-running autonomous agent turns without a fresh user prompt"
+        ),
+        "user_value": (
+            "Recall temporary agent-scoped guidance from the current Goal, Todo, "
+            "phase, recent outcome, and next intent before autonomous work begins."
+        ),
+        "entry_command": (
+            "loopx agent-turn-recall --goal-id <goal-id> --agent-id <agent-id> "
+            "--turn-instance-id <id> --quota-decision-json <quota.json> "
+            "--execute --format json"
+        ),
+        "commands": [
+            {
+                "command": (
+                    "loopx agent-turn-recall --goal-id <goal-id> --agent-id "
+                    "<agent-id> --turn-instance-id <id> --quota-decision-json "
+                    "<quota.json> --format json"
+                ),
+                "purpose": "Preview the bounded situation, semantic query identity, and exact opt-in route without provider access.",
+                "write_boundary": "read-only status/quota/config projection; no provider, receipt, quota, or external write",
+            },
+            {
+                "command": (
+                    "loopx agent-turn-recall --goal-id <goal-id> --agent-id "
+                    "<agent-id> --turn-instance-id <id> --quota-decision-json "
+                    "<quota.json> --execute --format json"
+                ),
+                "purpose": "Recall exact-scope guidance and inject it into one private turn context.",
+                "write_boundary": "provider read plus one ignored local same-turn receipt; no quota spend or external sink delivery",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "agent_turn_situation_v0",
+                "module": "loopx.capabilities.agent_turn_recall.core",
+                "doc": "docs/capabilities/agent-turn-recall/README.md",
+            },
+            {
+                "schema_version": "agent_turn_recall_context_v0",
+                "module": "loopx.capabilities.agent_turn_recall.core",
+                "doc": "docs/capabilities/agent-turn-recall/README.md",
+            },
+            {
+                "schema_version": "agent_turn_recall_v0",
+                "module": "loopx.capabilities.agent_turn_recall.core",
+                "doc": "docs/capabilities/agent-turn-recall/README.md",
+            },
+        ],
+        "smokes": [
+            "python -m pytest tests/capabilities/test_agent_turn_recall.py -q"
+        ],
+        "docs": ["docs/capabilities/agent-turn-recall/README.md"],
+        "boundaries": [
+            "The capability is default-off and reuses reward-memory corpus, scope, freshness, authority, and provider guards.",
+            "The semantic query is built from durable turn state; a user prompt is neither required nor copied into the situation.",
+            "Provider content is injected only into the private agent context, is suppressed from external sinks, and grants no new action authority.",
+            "A matching receipt deduplicates retries inside one turn; a new turn instance recalls again even when the material situation is unchanged.",
+            "Provider, application, and receipt failures are fail-open, are not user gates, and never spend quota.",
+            "Project-specific habits, task ids, PR rules, provider URIs, and credentials stay in ignored local config or provider-owned memory.",
+        ],
+        "next_real_step": (
+            "Promote the dogfooded host hook after repeated turn-admission "
+            "readback confirms exact scope, expiry, and retry deduplication."
         ),
     },
     {
@@ -1451,7 +1525,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "docs": [
             "docs/guides/auto-research-command-path.md",
-            "docs/product/decentralized-auto-research-showcase.md",
+            "docs/product/use-cases/auto-research/decentralized-auto-research-showcase.md",
         ],
         "boundaries": [
             "The preset reuses shared control-plane and multi-agent contracts; it is not a second scheduler or runner.",

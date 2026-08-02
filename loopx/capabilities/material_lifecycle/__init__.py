@@ -29,13 +29,6 @@ from .explore_execution import (
     MaterialExploreExecution,
     execute_material_explore_intent,
 )
-from .inventory import (
-    MATERIAL_LIFECYCLE_STATES,
-    MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
-    MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
-    build_material_migration_plan,
-    build_material_store_inventory,
-)
 from .intake import (
     MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION,
     MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION,
@@ -47,6 +40,13 @@ from .intake import (
     apply_material_candidate_intake,
     build_material_candidate_intake_proposal,
     rollback_material_candidate_intake,
+)
+from .inventory import (
+    MATERIAL_LIFECYCLE_STATES,
+    MATERIAL_MIGRATION_PLAN_SCHEMA_VERSION,
+    MATERIAL_STORE_INVENTORY_SCHEMA_VERSION,
+    build_material_migration_plan,
+    build_material_store_inventory,
 )
 from .lifecycle import (
     MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION,
@@ -87,13 +87,18 @@ from .rebuild import (
     build_material_ranked_entry_rebuild_plan,
     derive_material_ranked_entry_ref,
 )
+from .settlement import (
+    MATERIAL_INTAKE_RANKING_SETTLEMENT_SCHEMA_VERSION,
+    build_material_intake_ranking_settlement,
+)
 
 __all__ = [
     "MATERIAL_CANDIDATE_INTAKE_APPLY_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_CANDIDATE_INTAKE_PROPOSAL_SCHEMA_VERSION",
     "MATERIAL_CANDIDATE_INTAKE_ROLLBACK_RECEIPT_SCHEMA_VERSION",
-    "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
     "MATERIAL_EXPLORE_EXECUTION_RECEIPT_SCHEMA_VERSION",
+    "MATERIAL_EXPLORE_INTENT_SCHEMA_VERSION",
+    "MATERIAL_INTAKE_RANKING_SETTLEMENT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_ARCHITECTURE_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_RECEIPT_SCHEMA_VERSION",
     "MATERIAL_LIFECYCLE_STATES",
@@ -118,19 +123,20 @@ __all__ = [
     "MaterialDecisionPlanning",
     "MaterialDecisionPolicy",
     "MaterialDecisionPolicyResult",
+    "MaterialDualReadReconciliation",
     "MaterialExploreCandidate",
     "MaterialExploreExecution",
-    "MaterialDualReadReconciliation",
     "MaterialInventoryProvider",
     "MaterialMigrationApplyProvider",
     "MaterialMigrationPreparation",
-    "MaterialStagedStore",
     "MaterialStagedCandidate",
+    "MaterialStagedStore",
     "MaterialStoreSnapshot",
-    "apply_material_migration",
     "apply_material_candidate_intake",
+    "apply_material_migration",
     "build_material_candidate_intake_proposal",
     "build_material_explore_intent",
+    "build_material_intake_ranking_settlement",
     "build_material_lifecycle_architecture_packet",
     "build_material_lifecycle_receipt",
     "build_material_migration_plan",
@@ -149,7 +155,7 @@ __all__ = [
     "plan_material_decision_actions",
     "prepare_material_migration",
     "project_material_skill_target",
-    "rollback_material_migration",
     "rollback_material_candidate_intake",
+    "rollback_material_migration",
     "uninstall_project_material_skill",
 ]

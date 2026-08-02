@@ -224,7 +224,7 @@ packet shape and keep raw host evidence in the host or private project store.
 
 ## Relationship To Existing Contracts
 
-- [Runtime connector catalog](../../runtime-connector-catalog.md) lists
+- [Runtime connector catalog](../../integrations/runtime-connector-catalog.md) lists
   computer-use runtime as one connector family beside app heartbeats, TUI loops,
   shell workers, webhooks, and worker bridges.
 - [Host integration surface v0](host-integration-surface-v0.md) defines the

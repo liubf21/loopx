@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.project_prompt import build_new_project_prompt  # noqa: E402
 
 
-DOC = REPO_ROOT / "docs/new-project-codex-prompt.md"
+DOC = REPO_ROOT / "docs/operations/new-project-codex-prompt.md"
 GOAL_ID = "new-project-main-control"
 PROJECT = Path("/tmp/public-example-project")
 GOAL_DOC = Path("/tmp/public-example-project/GOAL.md")

@@ -8,6 +8,12 @@ Current implementation remains preview-level. It is useful because it gives real
 connector and review surfaces a safe packet format before raw material is copied
 or published.
 
+The capability also ships a provider-neutral item lifecycle for real local
+operations queues. It preserves stable item identity, revision-bound approval,
+delivery receipts, exact readback, and supersession without copying draft bodies
+or provider credentials into LoopX state. See
+[`content_ops_item_v0`](../../reference/protocols/content-ops-item-lifecycle-v0.md).
+
 ## Implemented Surface
 
 | Layer | Current path |
@@ -24,6 +30,9 @@ or published.
 - Raw chats, transcripts, credentials, logs, and local paths are not copied into
   public packets.
 - Publishing remains blocked until an explicit user decision.
+- Revising approved content invalidates the approval and any delivery intent.
+- Provider delivery and readback receipts must match the approved revision and
+  digest; the lifecycle helper performs no external write.
 
 ## Connector-First Ops Pattern
 

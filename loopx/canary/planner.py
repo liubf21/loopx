@@ -18,7 +18,7 @@ CANARY_PLAN_SCHEMA_VERSION = "catalog_canary_plan_v0"
 CANARY_COVERAGE_AUDIT_SCHEMA_VERSION = "catalog_canary_coverage_audit_v0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CATALOG_PATH = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
+DEFAULT_CATALOG_PATH = REPO_ROOT / "docs" / "concepts" / "interaction-pattern-catalog.md"
 
 
 FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
@@ -731,7 +731,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "claude implements",
             "codex reviews",
             "README.md",
-            "docs/product/cross-runtime-impl-review-demo.md",
+            "docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md",
             "docs/capabilities/issue-fix",
             "docs/capabilities/content-ops",
             "docs/update-notes",
@@ -910,7 +910,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "codex-review",
             "loopx demo impl-review",
             "cross_runtime_impl_review_demo_packet_v0",
-            "docs/product/cross-runtime-impl-review-demo.md",
+            "docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md",
             "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
         ),
@@ -1018,7 +1018,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "runtime connector",
             "runtime connector catalog",
             "runtime-connector-catalog",
-            "docs/runtime-connector-catalog.md",
+            "docs/integrations/runtime-connector-catalog.md",
             "codex app heartbeat",
             "codex_app_heartbeat",
             "codex app ssh",

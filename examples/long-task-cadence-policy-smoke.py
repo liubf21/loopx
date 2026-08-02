@@ -19,10 +19,11 @@ from loopx.long_task_cadence import (  # noqa: E402
 )
 from loopx.quota import build_quota_should_run  # noqa: E402
 
-POLICY_PATH = REPO_ROOT / "docs/long-task-cadence-policy.md"
+POLICY_PATH = REPO_ROOT / "docs/operations/long-task-cadence-policy.md"
 DOCS_INDEX = REPO_ROOT / "docs/README.md"
+OPERATIONS_INDEX = REPO_ROOT / "docs/operations/README.md"
 GETTING_STARTED = REPO_ROOT / "docs/guides/getting-started.md"
-INTERACTION_PATTERN = REPO_ROOT / "docs/interaction-pattern-catalog.md"
+INTERACTION_PATTERN = REPO_ROOT / "docs/concepts/interaction-pattern-catalog.md"
 
 
 def read(path: Path) -> str:
@@ -220,6 +221,7 @@ def assert_status_and_quota_projection() -> None:
 def main() -> int:
     policy = read(POLICY_PATH)
     docs_index = read(DOCS_INDEX)
+    operations_index = read(OPERATIONS_INDEX)
     getting_started = read(GETTING_STARTED)
     interaction = read(INTERACTION_PATTERN)
 
@@ -246,7 +248,12 @@ def main() -> int:
         "reason_codes": ["repeated_surface_only"],
     }, hint
 
-    assert_contains(docs_index, "Long-task cadence hint", "docs index")
+    assert_contains(docs_index, "operations/README.md", "docs index")
+    assert_contains(
+        operations_index,
+        "Long-task cadence policy",
+        "operations index",
+    )
     assert_contains(getting_started, "Long-task cadence hint", "getting started")
     assert_contains(interaction, "IP-010 Cadence Hint", "interaction pattern")
     assert_contains(interaction, "thin-progress streak", "interaction pattern")

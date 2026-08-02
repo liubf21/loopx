@@ -196,8 +196,122 @@ def _write_plan(path: Path, plan: Mapping[str, Any]) -> None:
     os.replace(temporary_path, path)
 
 
+def _configured_remote_refspecs(
+    repo: Path,
+    plan: Mapping[str, Any],
+) -> dict[str, list[str]]:
+    known_remotes = sorted(
+        _git(repo, "remote").stdout.split(),
+        key=len,
+        reverse=True,
+    )
+    configured_refs = [str(plan["base_ref"]), *map(str, plan["source_refs"])]
+    refspecs_by_remote: dict[str, list[str]] = {}
+    for ref in configured_refs:
+        symbolic = _git(repo, "rev-parse", "--symbolic-full-name", ref).stdout.strip()
+        if not symbolic.startswith("refs/remotes/"):
+            continue
+        target = _git(repo, "symbolic-ref", "--quiet", symbolic, check=False)
+        if target.returncode == 0:
+            symbolic = target.stdout.strip()
+        remote_path = symbolic.removeprefix("refs/remotes/")
+        remote = next(
+            (
+                candidate
+                for candidate in known_remotes
+                if remote_path.startswith(f"{candidate}/")
+            ),
+            None,
+        )
+        if remote is None:
+            continue
+        branch = remote_path.removeprefix(f"{remote}/")
+        refspec = f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
+        remote_refspecs = refspecs_by_remote.setdefault(remote, [])
+        if refspec not in remote_refspecs:
+            remote_refspecs.append(refspec)
+
+    integration_remote = _integration_remote(repo, plan)
+    if integration_remote is not None:
+        remote_refspecs = refspecs_by_remote.setdefault(
+            str(integration_remote["remote"]), []
+        )
+        refspec = str(integration_remote["refspec"])
+        if refspec not in remote_refspecs:
+            remote_refspecs.append(refspec)
+    return refspecs_by_remote
+
+
+def _integration_remote(
+    repo: Path,
+    plan: Mapping[str, Any],
+) -> dict[str, str] | None:
+    branch = str(plan["integration_branch"])
+    remote_result = _git(
+        repo,
+        "config",
+        "--get",
+        f"branch.{branch}.remote",
+        check=False,
+    )
+    merge_result = _git(
+        repo,
+        "config",
+        "--get",
+        f"branch.{branch}.merge",
+        check=False,
+    )
+    remote = remote_result.stdout.strip()
+    source_ref = merge_result.stdout.strip()
+    if (
+        remote_result.returncode != 0
+        or merge_result.returncode != 0
+        or not remote
+        or remote == "."
+        or not source_ref.startswith("refs/heads/")
+    ):
+        return None
+    remote_branch = source_ref.removeprefix("refs/heads/")
+    tracking_ref = f"refs/remotes/{remote}/{remote_branch}"
+    return {
+        "remote": remote,
+        "source_ref": source_ref,
+        "tracking_ref": tracking_ref,
+        "refspec": f"+{source_ref}:{tracking_ref}",
+    }
+
+
+def _refresh_configured_remotes(
+    repo: Path,
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    refspecs_by_remote = _configured_remote_refspecs(repo, plan)
+    for remote, refspecs in refspecs_by_remote.items():
+        _git(
+            repo,
+            "fetch",
+            "--no-tags",
+            "--no-write-fetch-head",
+            remote,
+            *refspecs,
+        )
+    return {"requested": True, "remotes": list(refspecs_by_remote)}
+
+
 def _resolved_state(repo: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
     integration_branch = str(plan["integration_branch"])
+    integration_remote = _integration_remote(repo, plan)
+    resolved_integration_remote = (
+        {
+            "remote": integration_remote["remote"],
+            "ref": integration_remote["tracking_ref"],
+            "sha": _resolve_optional_commit(
+                repo, integration_remote["tracking_ref"]
+            ),
+        }
+        if integration_remote is not None
+        else None
+    )
     return {
         "base": {
             "ref": plan["base_ref"],
@@ -206,6 +320,7 @@ def _resolved_state(repo: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
         "integration": {
             "branch": integration_branch,
             "sha": _resolve_optional_commit(repo, f"refs/heads/{integration_branch}"),
+            "remote": resolved_integration_remote,
         },
         "sources": [
             {"ref": ref, "sha": _resolve_commit(repo, str(ref))}
@@ -215,6 +330,7 @@ def _resolved_state(repo: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _drift_reasons(
+    repo: Path,
     plan: Mapping[str, Any],
     resolved: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
@@ -249,6 +365,34 @@ def _drift_reasons(
                 "branch": integration["branch"],
                 "previous_sha": receipt.get("integration_sha"),
                 "current_sha": integration["sha"],
+            }
+        )
+
+    integration_remote = integration.get("remote")
+    remote_sha = (
+        integration_remote.get("sha")
+        if isinstance(integration_remote, Mapping)
+        else None
+    )
+    local_sha = integration.get("sha")
+    if (
+        isinstance(remote_sha, str)
+        and isinstance(local_sha, str)
+        and not _is_ancestor(repo, remote_sha, local_sha)
+    ):
+        relation = (
+            "remote_ahead"
+            if _is_ancestor(repo, local_sha, remote_sha)
+            else "diverged"
+        )
+        reasons.append(
+            {
+                "kind": "integration_remote_head_moved",
+                "branch": integration["branch"],
+                "remote_ref": integration_remote["ref"],
+                "local_sha": local_sha,
+                "remote_sha": remote_sha,
+                "relation": relation,
             }
         )
 
@@ -346,13 +490,19 @@ def integration_branch_status(
     *,
     repo_path: str | Path,
     plan_file: str | Path | None = None,
+    refresh_remotes: bool = False,
 ) -> dict[str, Any]:
     repo = _repository_root(repo_path)
     path = _plan_path(repo, plan_file)
     _assert_ignored_plan(repo, path)
     plan = _read_plan(repo, path)
+    remote_refresh = (
+        _refresh_configured_remotes(repo, plan)
+        if refresh_remotes
+        else {"requested": False, "remotes": []}
+    )
     resolved = _resolved_state(repo, plan)
-    reasons = _drift_reasons(plan, resolved)
+    reasons = _drift_reasons(repo, plan, resolved)
     return {
         "ok": True,
         "schema_version": STATUS_SCHEMA_VERSION,
@@ -362,7 +512,11 @@ def integration_branch_status(
         "plan": plan,
         "resolved": resolved,
         "drift_reasons": reasons,
-        "write_boundary": "read-only local git refs and ignored plan",
+        "remote_refresh": remote_refresh,
+        "write_boundary": (
+            "remote-read-only integration inputs; optional refresh updates only "
+            "configured local remote-tracking refs"
+        ),
     }
 
 
@@ -536,6 +690,14 @@ def _assert_inputs_unchanged(
                 f"source ref `{source['ref']}` changed while the candidate was "
                 "being built; rerun sync"
             )
+    integration_remote = resolved["integration"].get("remote")
+    if isinstance(integration_remote, Mapping) and _resolve_optional_commit(
+        repo, str(integration_remote["ref"])
+    ) != integration_remote.get("sha"):
+        raise IntegrationBranchError(
+            "integration remote ref changed while the candidate was being built; "
+            "rerun sync"
+        )
 
 
 def _resolve_supplied_candidate(
@@ -549,6 +711,17 @@ def _resolve_supplied_candidate(
         ("base", resolved["base"]["ref"], resolved["base"]["sha"]),
         *[("source", source["ref"], source["sha"]) for source in resolved["sources"]],
     ]
+    integration_remote = resolved["integration"].get("remote")
+    if isinstance(integration_remote, Mapping) and isinstance(
+        integration_remote.get("sha"), str
+    ):
+        required_inputs.append(
+            (
+                "integration remote",
+                integration_remote["ref"],
+                integration_remote["sha"],
+            )
+        )
     for kind, ref, sha in required_inputs:
         result = _git(
             repo,
@@ -566,15 +739,51 @@ def _resolve_supplied_candidate(
     return candidate_sha
 
 
+def _remote_reconciliation_candidate_inputs(
+    repo: Path,
+    *,
+    resolved: Mapping[str, Any],
+) -> tuple[str, list[Mapping[str, Any]]] | None:
+    integration = resolved["integration"]
+    integration_remote = integration.get("remote")
+    if not isinstance(integration_remote, Mapping):
+        return None
+    remote_sha = integration_remote.get("sha")
+    local_sha = integration.get("sha")
+    if not isinstance(remote_sha, str):
+        return None
+    if isinstance(local_sha, str) and _is_ancestor(repo, remote_sha, local_sha):
+        return None
+
+    required_inputs: list[Mapping[str, Any]] = [
+        {"ref": resolved["base"]["ref"], "sha": resolved["base"]["sha"]},
+        *resolved["sources"],
+    ]
+    if not isinstance(local_sha, str) or _is_ancestor(repo, local_sha, remote_sha):
+        return remote_sha, required_inputs
+    return (
+        local_sha,
+        [
+            {"ref": integration_remote["ref"], "sha": remote_sha},
+            *required_inputs,
+        ],
+    )
+
+
 def sync_integration_branch(
     *,
     repo_path: str | Path,
     plan_file: str | Path | None = None,
     candidate_ref: str | None = None,
+    refresh_remotes: bool = False,
     execute: bool = False,
 ) -> dict[str, Any]:
     repo = _repository_root(repo_path)
-    status = integration_branch_status(repo_path=repo, plan_file=plan_file)
+    status = integration_branch_status(
+        repo_path=repo,
+        plan_file=plan_file,
+        refresh_remotes=refresh_remotes,
+    )
     if not status["sync_required"]:
         integration_sha = status["resolved"]["integration"]["sha"]
         return {
@@ -603,18 +812,26 @@ def sync_integration_branch(
             resolved=resolved,
         )
     else:
-        incremental_sources = _incremental_sources(
+        remote_reconciliation = _remote_reconciliation_candidate_inputs(
             repo,
-            plan=status["plan"],
             resolved=resolved,
         )
-        if incremental_sources is not None:
-            candidate_source = "incremental"
-            start_sha = str(resolved["integration"]["sha"])
-            sources = incremental_sources
+        if remote_reconciliation is not None:
+            candidate_source = "remote_reconciled"
+            start_sha, sources = remote_reconciliation
         else:
-            start_sha = str(resolved["base"]["sha"])
-            sources = resolved["sources"]
+            incremental_sources = _incremental_sources(
+                repo,
+                plan=status["plan"],
+                resolved=resolved,
+            )
+            if incremental_sources is not None:
+                candidate_source = "incremental"
+                start_sha = str(resolved["integration"]["sha"])
+                sources = incremental_sources
+            else:
+                start_sha = str(resolved["base"]["sha"])
+                sources = resolved["sources"]
         candidate_sha, failure = _build_candidate(
             repo,
             start_sha=start_sha,
@@ -644,7 +861,8 @@ def sync_integration_branch(
             "candidate_source": candidate_source,
             "status_packet": status,
             "write_boundary": (
-                "candidate commit read only; integration and source refs unchanged"
+                "candidate commit and optional configured remote-tracking refs only; "
+                "integration and source branches unchanged"
             ),
         }
 
@@ -676,6 +894,7 @@ def sync_integration_branch(
     }
     _write_plan(Path(status["plan_file"]), plan)
     refreshed = integration_branch_status(repo_path=repo, plan_file=plan_file)
+    refreshed["remote_refresh"] = status["remote_refresh"]
     if refreshed["sync_required"]:
         raise IntegrationBranchError(
             "integration branch sync did not produce an in-sync readback"
@@ -691,7 +910,7 @@ def sync_integration_branch(
         "candidate_source": candidate_source,
         "status_packet": refreshed,
         "write_boundary": (
-            "local integration branch and ignored sync receipt only; "
-            "source refs and remotes unchanged"
+            "local integration branch, ignored sync receipt, and optional configured "
+            "remote-tracking refs only; source branches and remote repositories unchanged"
         ),
     }

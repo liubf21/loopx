@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..todos.contract import normalize_todo_id
+from ..todos.handoff_note import compact_todo_continuation_hint
 from ..work_items.primary_action import protocol_action_text
-
 
 SELECTED_TODO_COMPACT_FIELDS = (
     "todo_id",
@@ -126,4 +126,11 @@ def _compact_selected_todo(
     for key in SELECTED_TODO_AGENT_FIELDS:
         if item.get(key) is not None:
             selected[key] = item.get(key)
+    if (
+        item.get("task_class") == "advancement_task"
+        and item.get("status") == "open"
+    ):
+        continuation_hint = compact_todo_continuation_hint(item)
+        if continuation_hint:
+            selected["continuation_hint"] = continuation_hint
     return selected

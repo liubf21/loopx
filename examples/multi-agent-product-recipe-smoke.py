@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "docs" / "guides" / "multi-agent-product-recipe.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
+GUIDES_INDEX = ROOT / "docs" / "guides" / "README.md"
 AUTO_RESEARCH_GUIDE = ROOT / "docs" / "guides" / "auto-research-command-path.md"
 
 
@@ -47,6 +48,7 @@ def assert_public_safe(text: str, label: str) -> None:
 def main() -> int:
     recipe = read(RECIPE)
     docs_index = read(DOCS_INDEX)
+    guides_index = read(GUIDES_INDEX)
     auto_research_guide = read(AUTO_RESEARCH_GUIDE)
 
     assert_public_safe(recipe, "multi-agent product recipe")
@@ -85,11 +87,13 @@ def main() -> int:
     )
     require(
         docs_index,
-        [
-            "Multi-agent product recipe",
-            "guides/multi-agent-product-recipe.md",
-        ],
+        ["guides/"],
         source=DOCS_INDEX,
+    )
+    require(
+        guides_index,
+        ["Multi-agent product recipe", "multi-agent-product-recipe.md"],
+        source=GUIDES_INDEX,
     )
     require(
         auto_research_guide,

@@ -683,9 +683,9 @@ metadata, and shipped CLI behavior remain the source of truth.
 
 ## Related Docs
 
-- [Codex CLI packaged install path](codex-cli-packaged-install.md)
-- [Codex CLI no-clone release verification](codex-cli-no-clone-release-verification.md)
+- [Codex CLI packaged install path](runtimes/codex-cli/codex-cli-packaged-install.md)
+- [Codex CLI no-clone release verification](runtimes/codex-cli/codex-cli-no-clone-release-verification.md)
 - [Getting started](../guides/getting-started.md)
 - [Update notes](../update-notes/README.md)
 - [Public/private boundary](../public-private-boundary.md)
-- [Interaction pattern catalog](../interaction-pattern-catalog.md)
+- [Interaction pattern catalog](../concepts/interaction-pattern-catalog.md)

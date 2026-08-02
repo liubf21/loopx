@@ -7,8 +7,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs" / "product" / "codex-cli-tui-continuation-priority.md"
-PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
+DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-tui-continuation-priority.md"
+PRODUCT_README = (
+    REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+)
 GETTING_STARTED = REPO_ROOT / "docs" / "guides" / "getting-started.md"
 
 
@@ -48,7 +50,7 @@ def assert_indexes() -> None:
 
     link = "codex-cli-tui-continuation-priority.md"
     assert link in product, product
-    assert f"../product/{link}" in getting_started, getting_started
+    assert f"../product/runtimes/codex-cli/{link}" in getting_started, getting_started
     assert "same-open-TUI continuation ahead of" in product, product
     assert "frontstage or showcase polish" in getting_started, getting_started
 

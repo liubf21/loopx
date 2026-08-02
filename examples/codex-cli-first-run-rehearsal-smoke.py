@@ -9,8 +9,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs" / "product" / "codex-cli-first-run-rehearsal.md"
-PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
+DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-first-run-rehearsal.md"
+PRODUCT_README = (
+    REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+)
 DOCS_README = REPO_ROOT / "docs" / "README.md"
 GETTING_STARTED = REPO_ROOT / "docs" / "guides" / "getting-started.md"
 GOAL_ID = "public-codex-cli-goal"
@@ -69,8 +71,8 @@ def assert_indexes() -> None:
 
     link = "codex-cli-first-run-rehearsal.md"
     assert link in product, product
-    assert f"product/{link}" in docs, docs
-    assert f"../product/{link}" in getting_started, getting_started
+    assert "product/README.md" in docs, docs
+    assert f"../product/runtimes/codex-cli/{link}" in getting_started, getting_started
     assert "no-clone install" in product, product
     assert "one-message TUI bootstrap" in product, product
     assert "proof-capture fixtures" in getting_started, getting_started

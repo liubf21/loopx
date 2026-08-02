@@ -189,7 +189,7 @@ def main() -> None:
             revert_of="event_superseded_public",
             status="eligible",
             summary="Quota allowed one bounded rollout event-log slice.",
-            artifact_refs=["docs/benchmark-developer-workflow.md"],
+            artifact_refs=["docs/development/benchmark-developer-workflow.md"],
             details={"open_agent_todo_count": 2},
         )
         append_rollout_event(log_path, event)

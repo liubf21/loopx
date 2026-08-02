@@ -18,7 +18,7 @@ LANE_CONTRACT = ROOT / "docs/reference/protocols/auto-research-lane-contract-v1.
 ROLE_STATE_MACHINE = ROOT / "docs/reference/protocols/auto-research-role-state-machine-v0.md"
 ROLE_PROFILE = ROOT / "docs/reference/protocols/auto-research-role-profile-v0.md"
 PROTOCOL_README = ROOT / "docs/reference/protocols/README.md"
-BLUEPRINT = ROOT / "docs/product/decentralized-auto-research-showcase.md"
+BLUEPRINT = ROOT / "docs/product/use-cases/auto-research/decentralized-auto-research-showcase.md"
 
 
 PRIVATE_MARKERS = [

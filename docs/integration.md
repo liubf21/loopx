@@ -223,7 +223,7 @@ authority source. The receiving Codex should inspect that document first before
 choosing a next action.
 
 If another Codex session should perform the connection from a project folder
-and a goal document, use [new-project-codex-prompt.md](new-project-codex-prompt.md)
+and a goal document, use [new-project-codex-prompt.md](operations/new-project-codex-prompt.md)
 as the handoff prompt.
 
 You can generate that handoff prompt:
@@ -347,7 +347,7 @@ registry and state contract so the first adapter can be added deliberately.
 For a large project, prefer a read-only adapter map before any writes. The map
 should identify authority sources, work clusters, validation surfaces, proposed
 peer task scopes, boundary findings, and a short claim/decision packet. See
-[complex-project-readonly-adapter.md](complex-project-readonly-adapter.md).
+[complex-project-readonly-adapter.md](integrations/complex-project-readonly-adapter.md).
 
 ## Controller / Sub-Agent Coordination
 

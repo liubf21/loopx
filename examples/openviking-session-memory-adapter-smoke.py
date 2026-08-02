@@ -14,7 +14,7 @@ CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "openviking-ses
 PROTOCOL_INDEX_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "README.md"
 DOCS_INDEX_PATH = REPO_ROOT / "docs" / "README.md"
 STATUS_CONTRACT_PATH = REPO_ROOT / "docs" / "status-data-contract.md"
-SESSION_ADAPTER_PATH = REPO_ROOT / "docs" / "session-runtime-control-plane-adapter.md"
+SESSION_ADAPTER_PATH = REPO_ROOT / "docs" / "integrations" / "session-runtime-control-plane-adapter.md"
 
 REQUIRED_TRUTH_SOURCES = {
     "loopx_goal_state",
@@ -93,7 +93,7 @@ def main() -> int:
     ]:
         assert_contains(contract, needle, "contract")
     assert_contains(protocol_index, "openviking_session_memory_adapter_v0", "protocol index")
-    assert_contains(docs_index, "OpenViking session memory adapter v0", "docs index")
+    assert_contains(docs_index, "reference/README.md", "docs index")
     assert_contains(status_contract, "openviking_session_memory_adapter_v0", "status contract")
     assert_contains(session_adapter, "openviking_session_memory_adapter_v0", "session adapter")
 

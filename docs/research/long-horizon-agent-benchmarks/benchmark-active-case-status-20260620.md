@@ -24,7 +24,7 @@ Public boundary:
 - Agent runtime should be a preinstalled stable layer. Case containers should
   run the task, official tests, and benchmark verifier only.
 - Remote benchmark checkout patches must follow
-  `docs/benchmark-developer-workflow.md#remote-checkout-patch-protocol`.
+  `docs/development/benchmark-developer-workflow.md#remote-checkout-patch-protocol`.
 - After a compact closeout batch, write or update a public-safe rollout/debug
   layer before rotating new cases. The first such artifact is
   `benchmark-goal-rollout-debug-20260620.md`: it links compact result rows,

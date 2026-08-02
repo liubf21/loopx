@@ -133,7 +133,7 @@ Track metrics as a compact note on the issue or discussion:
 
 The metric note should stay short enough to read without opening raw logs. If a
 case becomes a showcase candidate, promote it through the
-[Issue/PR solver maintainer intake packet](issue-pr-solver-maintainer-intake.md)
+[Issue/PR solver maintainer intake packet](use-cases/issue-pr/issue-pr-solver-maintainer-intake.md)
 or another public-safe showcase route.
 
 ## Promotion To GitHub Templates
@@ -148,6 +148,6 @@ Until that approval exists, this document is the canonical adoption-loop copy.
 ## Related Docs
 
 - [Release readiness](release-readiness.md)
-- [Codex CLI packaged install path](codex-cli-packaged-install.md)
-- [Issue/PR solver maintainer intake packet](issue-pr-solver-maintainer-intake.md)
+- [Codex CLI packaged install path](runtimes/codex-cli/codex-cli-packaged-install.md)
+- [Issue/PR solver maintainer intake packet](use-cases/issue-pr/issue-pr-solver-maintainer-intake.md)
 - [Public/private boundary](../public-private-boundary.md)

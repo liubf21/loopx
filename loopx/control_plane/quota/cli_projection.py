@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .decision_summary import compact_quota_decision
 
 QUOTA_CLI_TODO_SUMMARY_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_todo_summary_compaction_v0"
@@ -27,6 +28,12 @@ QUOTA_CLI_VISION_COMPACTION_SCHEMA_VERSION = (
 QUOTA_CLI_VISION_DETAIL_COMMAND = "quota should-run --include-detail vision"
 QUOTA_CLI_CAPABILITY_GATE_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_capability_gate_compaction_v0"
+)
+QUOTA_CLI_MONITOR_POLL_DECISION_COMPACTION_SCHEMA_VERSION = (
+    "quota_cli_monitor_poll_decision_compaction_v0"
+)
+QUOTA_CLI_MONITOR_POLL_DECISION_DETAIL_COMMAND = (
+    "quota monitor-poll --include-detail decisions"
 )
 _RETAINED_AGENT_ITEM_LANES = {
     "first_executable_items": 3,
@@ -81,6 +88,160 @@ _RUNTIME_CAPABILITY_PREFIX_FIELDS = (
     "decision",
     "should_run",
 )
+_RETAINED_MONITOR_POLL_SELECTED_TODO_FIELDS = (
+    "schema_version",
+    "source",
+    "todo_id",
+    "index",
+    "role",
+    "priority",
+    "status",
+    "task_class",
+    "action_kind",
+    "task_repository",
+    "claimed_by",
+    "unblocks_todo_id",
+    "agent_id",
+    "selected_by",
+)
+_RETAINED_MONITOR_POLL_INTERACTION_FIELDS = {
+    "user_channel": (
+        "action_required",
+        "notify",
+        "max_items",
+        "actions",
+        "non_blocking",
+    ),
+    "agent_channel": (
+        "must_attempt",
+        "delivery_allowed",
+        "quiet_noop_allowed",
+        "primary_action",
+    ),
+    "cli_channel": (
+        "spend_allowed_now",
+        "spend_after_validation",
+        "spend_policy",
+        "delivery_workspace_causality",
+    ),
+}
+_RETAINED_MONITOR_POLL_RESPONSE_PLAN_FIELDS = (
+    "schema_version",
+    "kind",
+    "decision",
+    "action_sequence",
+    "silent_wait_allowed",
+)
+_RETAINED_MONITOR_POLL_FOLLOW_UP_SUMMARY_FIELDS = (
+    "should_run",
+    "effective_action",
+    "state",
+)
+
+
+def _compact_monitor_poll_interaction_contract(
+    contract: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(contract, dict):
+        return None
+    compact = {
+        key: contract[key]
+        for key in ("schema_version", "mode")
+        if key in contract
+    }
+    for channel_name, retained_fields in (
+        _RETAINED_MONITOR_POLL_INTERACTION_FIELDS.items()
+    ):
+        channel = contract.get(channel_name)
+        if not isinstance(channel, dict):
+            continue
+        compact[channel_name] = {
+            key: channel[key] for key in retained_fields if key in channel
+        }
+    response_plan = contract.get("response_plan")
+    if isinstance(response_plan, dict):
+        compact["response_plan"] = {
+            key: response_plan[key]
+            for key in _RETAINED_MONITOR_POLL_RESPONSE_PLAN_FIELDS
+            if key in response_plan
+        }
+    return compact
+
+
+def _compact_monitor_poll_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    compact = compact_quota_decision(decision)
+    selected_todo = decision.get("selected_todo")
+    if isinstance(selected_todo, dict):
+        compact["selected_todo"] = {
+            key: selected_todo[key]
+            for key in _RETAINED_MONITOR_POLL_SELECTED_TODO_FIELDS
+            if key in selected_todo
+        }
+    return compact
+
+
+def compact_quota_monitor_poll_cli_payload(
+    payload: dict[str, Any],
+    *,
+    include_decision_detail: bool = False,
+) -> dict[str, Any]:
+    """Project monitor-poll guards without duplicating full should-run payloads."""
+
+    if include_decision_detail:
+        return payload
+
+    projected = dict(payload)
+    decision_summary = (
+        dict(payload["decision_summary"])
+        if isinstance(payload.get("decision_summary"), dict)
+        else {}
+    )
+    omitted_fields: dict[str, int] = {}
+    for phase in ("before", "after"):
+        full_decision = payload.get(phase)
+        if isinstance(full_decision, dict):
+            summary_decision = _compact_monitor_poll_decision(full_decision)
+            compact_decision = summary_decision
+            if phase == "after":
+                compact_decision = dict(summary_decision)
+                interaction_contract = _compact_monitor_poll_interaction_contract(
+                    full_decision.get("interaction_contract")
+                )
+                if interaction_contract is not None:
+                    compact_decision["interaction_contract"] = interaction_contract
+            projected[phase] = compact_decision
+            decision_summary[phase] = (
+                {
+                    key: summary_decision[key]
+                    for key in _RETAINED_MONITOR_POLL_FOLLOW_UP_SUMMARY_FIELDS
+                }
+                if phase == "after"
+                else summary_decision
+            )
+            omitted_fields[phase] = max(0, len(full_decision) - len(compact_decision))
+
+            if phase == "before" and isinstance(payload.get("monitor_event"), dict):
+                monitor_event = dict(payload["monitor_event"])
+                monitor_event["before"] = compact_decision
+                projected["monitor_event"] = monitor_event
+
+    if decision_summary:
+        projected["decision_summary"] = decision_summary
+    if omitted_fields:
+        payload_compaction = (
+            dict(payload["payload_compaction"])
+            if isinstance(payload.get("payload_compaction"), dict)
+            else {}
+        )
+        payload_compaction["decisions"] = {
+            "schema_version": QUOTA_CLI_MONITOR_POLL_DECISION_COMPACTION_SCHEMA_VERSION,
+            "omitted_top_level_fields": omitted_fields,
+            "detail_ref": {
+                "request": QUOTA_CLI_MONITOR_POLL_DECISION_DETAIL_COMMAND,
+            },
+        }
+        projected["payload_compaction"] = payload_compaction
+    return projected
 
 
 def _compact_agent_item(item: Any) -> Any:
@@ -372,6 +533,58 @@ def _compact_goal_route_hint(route: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
+def _compact_shadowed_action_projections(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep the selected Todo as the only executable action on the hot path."""
+
+    selected = payload.get("selected_todo")
+    route = payload.get("goal_route_hint")
+    if not isinstance(selected, dict) or not isinstance(route, dict):
+        return payload
+    current = route.get("current_agent_next_action")
+    if (
+        not route.get("selected_action_differs_from_durable")
+        or not isinstance(current, dict)
+        or current.get("todo_id") != selected.get("todo_id")
+    ):
+        return payload
+
+    shadowed_fields = [
+        key
+        for key in (
+            "active_state_next_action",
+            "latest_run_recommended_action",
+        )
+        if payload.get(key)
+    ]
+    if not shadowed_fields:
+        return payload
+
+    compact = dict(payload)
+    for key in shadowed_fields:
+        compact.pop(key, None)
+
+    warning = compact.get("next_action_projection_warning")
+    if isinstance(warning, dict):
+        compact_warning = dict(warning)
+        projection_refs = compact_warning.get("projection_refs")
+        if isinstance(projection_refs, dict):
+            compact_refs = dict(projection_refs)
+            for key in shadowed_fields:
+                compact_refs.pop(key, None)
+            if compact_refs:
+                compact_warning["projection_refs"] = compact_refs
+            else:
+                compact_warning.pop("projection_refs", None)
+        for key in shadowed_fields:
+            compact_warning.pop(key, None)
+        compact_warning["shadowed_by"] = "$.selected_todo"
+        compact["next_action_projection_warning"] = compact_warning
+
+    return compact
+
+
 def _promote_runtime_capability_reentry(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
@@ -467,4 +680,5 @@ def compact_quota_should_run_cli_payload(
         if isinstance(goal_route_hint, dict):
             compact = dict(compact)
             compact["goal_route_hint"] = _compact_goal_route_hint(goal_route_hint)
+        compact = _compact_shadowed_action_projections(compact)
     return _promote_runtime_capability_reentry(compact)

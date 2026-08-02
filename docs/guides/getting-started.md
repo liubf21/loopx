@@ -316,13 +316,13 @@ and points back to the message-only TUI bootstrap:
 loopx codex-cli-exec-handoff --project . --goal-id <goal-id>
 ```
 
-See the [Codex CLI TUI-first loop](../product/codex-cli-tui-loop.md) contract
+See the [Codex CLI TUI-first loop](../product/runtimes/codex-cli/codex-cli-tui-loop.md) contract
 for the bootstrap, session-attached automation, and headless-disabled boundary.
-The [Codex CLI first-run rehearsal](../product/codex-cli-first-run-rehearsal.md)
+The [Codex CLI first-run rehearsal](../product/runtimes/codex-cli/codex-cli-first-run-rehearsal.md)
 keeps the shortest user-facing route in one place: no-clone install,
 one-message setup bootstrap, and proof-capture fixtures for later automation.
 For current product scheduling, the
-[Codex CLI TUI continuation priority](../product/codex-cli-tui-continuation-priority.md)
+[Codex CLI TUI continuation priority](../product/runtimes/codex-cli/codex-cli-tui-continuation-priority.md)
 keeps same-open-TUI continuation ahead of frontstage or showcase polish when
 both are runnable.
 
@@ -975,19 +975,19 @@ Start here:
 - [Documentation index](../README.md)
 - [Showcase catalog](../showcases/README.md)
 - [State interaction model](../state-interaction-model.md)
-- [Interaction pattern catalog](../interaction-pattern-catalog.md)
+- [Interaction pattern catalog](../concepts/interaction-pattern-catalog.md)
 - [Integration guide](../integration.md)
-- [Attention queue](../attention-queue.md)
+- [Attention queue](../operations/attention-queue.md)
 - [Project agent todo contract](../project-agent-todo-contract.md)
 - [Quota allocation](../quota-allocation.md)
 - [Heartbeat automation prompt](../heartbeat-automation-prompt.md)
-- [Long-task cadence hint](../long-task-cadence-policy.md)
+- [Long-task cadence hint](../operations/long-task-cadence-policy.md)
 - [Public/private boundary](../public-private-boundary.md)
-- [Benchmark developer workflow](../benchmark-developer-workflow.md)
+- [Benchmark developer workflow](../development/benchmark-developer-workflow.md)
 - [Public launch narrative draft](../outreach/public-launch-narrative-draft.md)
 - [Xiaohongshu launch draft](../outreach/xiaohongshu-launch-draft.md)
 - [Dashboard status contract](../status-data-contract.md)
-- [Codex peer task orchestration](../codex-subagent-orchestration.md)
+- [Codex peer task orchestration](../integrations/codex-subagent-orchestration.md)
 - [Benchmark long-run design](../research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
 
 ## Command Reference

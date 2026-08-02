@@ -15,9 +15,11 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOC = REPO_ROOT / "docs" / "product" / "codex-cli-no-clone-release-verification.md"
-FIRST_RUN_DOC = REPO_ROOT / "docs" / "product" / "codex-cli-first-run-rehearsal.md"
-PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
+DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-no-clone-release-verification.md"
+FIRST_RUN_DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-first-run-rehearsal.md"
+PRODUCT_README = (
+    REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+)
 GOAL_ID = "public-no-clone-release-goal"
 AGENT_ID = "codex-side-bypass"
 FIRST_RUN_COMMANDS = (
@@ -134,8 +136,8 @@ def assert_installed_release(
     for command in FIRST_RUN_COMMANDS:
         assert command in commands_text, commands_text
 
-    assert (release_dir / "docs" / "product" / "codex-cli-first-run-rehearsal.md").exists()
-    assert (release_dir / "docs" / "product" / "codex-cli-no-clone-release-verification.md").exists()
+    assert (release_dir / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-first-run-rehearsal.md").exists()
+    assert (release_dir / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-no-clone-release-verification.md").exists()
     fixture_dir = release_dir / "examples" / "fixtures" / "codex-cli-visible-proof"
     assert fixture_dir.exists(), fixture_dir
 

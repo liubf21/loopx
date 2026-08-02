@@ -118,7 +118,7 @@ def build_sample_projection() -> dict[str, object]:
             {
                 "kind": "doc",
                 "label": "frontstage roadmap",
-                "path": "docs/frontstage-channel-lease-roadmap.md",
+                "path": "docs/product/roadmaps/frontstage-channel-lease-roadmap.md",
             },
             {
                 "kind": "local_state",

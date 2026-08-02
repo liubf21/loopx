@@ -139,10 +139,10 @@ def build_goal_configuration_catalog(
                     ],
                 },
                 "documentation": {
-                    "path": "docs/codex-subagent-orchestration.md",
+                    "path": "docs/integrations/codex-subagent-orchestration.md",
                     "url": (
                         "https://github.com/huangruiteng/loopx/blob/main/"
-                        "docs/codex-subagent-orchestration.md"
+                        "docs/integrations/codex-subagent-orchestration.md"
                     ),
                 },
             },
@@ -535,10 +535,10 @@ def build_goal_configuration_catalog(
                     ],
                 },
                 "documentation": {
-                    "path": "docs/lark-kanban-control-plane-adapter.md",
+                    "path": "docs/integrations/lark-kanban-control-plane-adapter.md",
                     "url": (
                         "https://github.com/huangruiteng/loopx/blob/main/"
-                        "docs/lark-kanban-control-plane-adapter.md"
+                        "docs/integrations/lark-kanban-control-plane-adapter.md"
                     ),
                 },
             },

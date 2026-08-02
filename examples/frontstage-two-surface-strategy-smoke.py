@@ -23,8 +23,9 @@ def assert_contains(text: str, needle: str) -> None:
 
 
 def main() -> int:
-    strategy = read("docs/product/frontstage-two-surface-strategy.md")
+    strategy = read("docs/product/surfaces/frontstage-two-surface-strategy.md")
     product_index = read("docs/product/README.md")
+    surface_index = read("docs/product/surfaces/README.md")
     dashboard_readme = read("apps/presentation/dashboard/README.md")
     showcase_note = read("docs/showcases/frontend-surface.md")
     compact_strategy = compact(strategy)
@@ -59,9 +60,8 @@ def main() -> int:
     ]:
         assert_contains(compact_strategy, forbidden)
 
-    assert_contains(product_index, "frontstage-two-surface-strategy.md")
-    assert_contains(product_index, "public showcase/homepage surface")
-    assert_contains(product_index, "real local ops control-plane")
+    assert_contains(product_index, "surfaces/README.md")
+    assert_contains(surface_index, "frontstage-two-surface-strategy.md")
 
     for existing_contract in [
         "The default frontstage route is public showcase mode",

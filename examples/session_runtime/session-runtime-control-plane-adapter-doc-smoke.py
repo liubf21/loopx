@@ -7,8 +7,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOC = REPO_ROOT / "docs" / "session-runtime-control-plane-adapter.md"
+DOC = REPO_ROOT / "docs" / "integrations" / "session-runtime-control-plane-adapter.md"
 DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
+INTEGRATIONS_INDEX = REPO_ROOT / "docs" / "integrations" / "README.md"
 ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
 CONTRIBUTOR_TASKS = REPO_ROOT / "CONTRIBUTOR_TASKS.md"
 
@@ -20,6 +21,7 @@ def require(text: str, snippets: list[str], *, source: Path) -> None:
 def main() -> int:
     doc = DOC.read_text(encoding="utf-8")
     docs_index = DOCS_INDEX.read_text(encoding="utf-8")
+    integrations_index = INTEGRATIONS_INDEX.read_text(encoding="utf-8")
     architecture = ARCHITECTURE.read_text(encoding="utf-8")
     contributor_tasks = CONTRIBUTOR_TASKS.read_text(encoding="utf-8")
 
@@ -39,8 +41,13 @@ def main() -> int:
     )
     require(
         docs_index,
-        ["Session runtime control-plane adapter"],
+        ["integrations/README.md"],
         source=DOCS_INDEX,
+    )
+    require(
+        integrations_index,
+        ["Session runtime control-plane adapter"],
+        source=INTEGRATIONS_INDEX,
     )
     require(
         architecture,
