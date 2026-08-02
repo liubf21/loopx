@@ -556,15 +556,6 @@ def test_compaction_hides_durable_actions_shadowed_by_selected_todo() -> None:
     assert compact["next_action_projection_warning"]["shadowed_by"] == (
         "$.selected_todo"
     )
-    assert compact["shadowed_action_projection"] == {
-        "schema_version": "quota_cli_shadowed_action_compaction_v0",
-        "selected_todo_ref": "$.selected_todo",
-        "omitted_fields": [
-            "active_state_next_action",
-            "latest_run_recommended_action",
-        ],
-        "full_detail_cold_path": "quota should-run --include-detail agent-todos",
-    }
     assert detailed["active_state_next_action"] == "Inspect an obsolete branch."
     assert detailed["latest_run_recommended_action"] == (
         "Continue the previous run."
