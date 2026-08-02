@@ -18,14 +18,16 @@ from .contract import (
 
 TODO_HANDOFF_NOTE_SCHEMA_VERSION = "handoff_note_v0"
 TODO_CONTINUATION_HINT_MAX_CHARS = 280
-_AK_SK_PATTERN = re.compile(
-    r"(?i)\b(?:ak|sk|api[_-]?key|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+"
+_INLINE_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)(?:\bbearer\s+\S+|\bauthorization\s*:|"
+    r"\b(?:ak|sk|api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?key)?|"
+    r"token|password)\b\s*[:=]\s*\S+)"
 )
 
 
 def _compact_text(value: Any, *, limit: int = 220) -> str | None:
     text = " ".join(str(value or "").strip().split())
-    if not text or _AK_SK_PATTERN.search(text):
+    if not text or _INLINE_CREDENTIAL_PATTERN.search(text):
         return None
     if len(text) <= limit:
         return text

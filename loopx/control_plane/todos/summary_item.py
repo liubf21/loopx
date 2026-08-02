@@ -69,7 +69,6 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "updated_at",
     "superseded_by",
     "handoff_note",
-    "continuation_hint",
 )
 
 TODO_SUMMARY_SOURCE_KEYS = (

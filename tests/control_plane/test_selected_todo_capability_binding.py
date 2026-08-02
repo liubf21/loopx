@@ -32,6 +32,7 @@ def test_selected_todo_preserves_current_continuation_hint() -> None:
             "todo_id": "todo_resume001",
             "text": "Advance the current runtime integration.",
             "task_class": "advancement_task",
+            "status": "open",
             "continuation_hint": (
                 "The implementation is already review-ready; next run the restart canary."
             ),
@@ -43,3 +44,21 @@ def test_selected_todo_preserves_current_continuation_hint() -> None:
     assert selected["continuation_hint"] == (
         "The implementation is already review-ready; next run the restart canary."
     )
+
+
+def test_selected_todo_screens_raw_continuation_hint() -> None:
+    selected = selected_todo_projection(
+        agent_lane_next_action={
+            "source": "agent_lane_next_action",
+            "todo_id": "todo_resume_secret",
+            "text": "Advance the current runtime integration.",
+            "task_class": "advancement_task",
+            "status": "open",
+            "continuation_hint": ("tok" + "en")
+            + "=must-not-project; next run the canary.",
+        },
+        work_lane_contract=None,
+    )
+
+    assert selected is not None
+    assert "continuation_hint" not in selected

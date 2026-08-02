@@ -87,11 +87,33 @@ def test_quota_projects_goal_scoped_read_and_execution_boundary() -> None:
     )
 
 
-def test_todo_continuation_hint_drops_secret_bearing_note() -> None:
+def test_todo_continuation_hint_drops_secret_bearing_source() -> None:
+    credential_values = tuple(
+        f"{name}=must-not-project; next run the canary."
+        for name in ("api" + "_key", "tok" + "en", "pass" + "word")
+    ) + (
+        ("Author" + "ization")
+        + ": "
+        + ("Bear" + "er")
+        + " must-not-project; next run the canary.",
+    )
+    for field in ("note", "continuation_hint"):
+        for index, value in enumerate(credential_values):
+            item = quota_todo_item(
+                todo_id=f"todo_secret_{field}_{index}",
+                title="Resume the current task.",
+                **{field: value},
+            )
+
+            assert "continuation_hint" not in compact_todo_summary_item(item)
+
+
+def test_todo_continuation_hint_only_projects_open_advancement_work() -> None:
     item = quota_todo_item(
-        todo_id="todo_secret",
-        title="Resume the current task.",
-        note="api_key=must-not-project; next run the canary.",
+        todo_id="todo_monitor",
+        title="Poll the current target.",
+        task_class="continuous_monitor",
+        continuation_hint="Next inspect the material transition.",
     )
 
     assert "continuation_hint" not in compact_todo_summary_item(item)
