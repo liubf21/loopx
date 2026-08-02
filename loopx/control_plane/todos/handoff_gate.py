@@ -155,6 +155,7 @@ def _compact_handoff_gate(
         "route_continuation_reason",
         "route_id",
         "route_key",
+        "next_due_at",
     ):
         value = gate.get(key)
         if value is not None:

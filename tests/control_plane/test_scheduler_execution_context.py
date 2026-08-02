@@ -418,6 +418,107 @@ def test_goal_runtime_defer_uses_user_gate_deadline_before_monitors() -> None:
     ] == "user_gate"
 
 
+def test_quota_payload_compaction_preserves_earliest_frontier_deadline() -> None:
+    from loopx.control_plane.scheduler import monitor_todo as monitor_todo_mod
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    agent_id = "frontier-deadline-agent"
+    watch_lane_ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": now.isoformat(),
+        "agent_id": agent_id,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["watch_lane_continuation"],
+            },
+        },
+    }
+    status = quota_status_payload(
+        goal_id="frontier-deadline-compaction-fixture",
+        status="active",
+        recommended_action="Wait for the next monitor transition.",
+        agent_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "Agent Todo",
+            "total_count": 3,
+            "open_count": 3,
+            "done_count": 0,
+            "deferred_count": 0,
+            "monitor_open_items": [
+                {
+                    "todo_id": "todo_unscheduled_monitor_a",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Unscheduled monitor A",
+                    "target_key": "unscheduled-monitor-a",
+                    "cadence": "60m",
+                },
+                {
+                    "todo_id": "todo_unscheduled_monitor_b",
+                    "index": 1,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Unscheduled monitor B",
+                    "target_key": "unscheduled-monitor-b",
+                    "cadence": "60m",
+                },
+                {
+                    "todo_id": "todo_earliest_monitor",
+                    "index": 2,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Earliest monitor",
+                    "target_key": "earliest-monitor",
+                    "cadence": "60m",
+                    "next_due_at": (now + timedelta(minutes=10)).isoformat(),
+                },
+            ],
+        },
+        latest_runs=[watch_lane_ack],
+        claim_scope_agent_id=agent_id,
+        coordination={"registered_agents": [agent_id]},
+    )
+
+    original_scheduler_now = scheduler_hint_mod.now_utc
+    original_monitor_now = monitor_todo_mod.now_utc
+    original_quota_now = quota_summary_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    monitor_todo_mod.now_utc = lambda: now
+    quota_summary_mod.now_utc = lambda: now
+    try:
+        quota = build_quota_should_run(
+            status,
+            goal_id="frontier-deadline-compaction-fixture",
+            agent_id=agent_id,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_scheduler_now
+        monitor_todo_mod.now_utc = original_monitor_now
+        quota_summary_mod.now_utc = original_quota_now
+
+    compacted_monitors = quota["agent_todo_summary"]["monitor_open_items"]
+    assert [item["todo_id"] for item in compacted_monitors] == [
+        "todo_earliest_monitor",
+        "todo_unscheduled_monitor_a",
+    ]
+    continuation = quota["scheduler_hint"]["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert continuation["recheck_after_seconds"] == 10 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
 def test_goal_runtime_defer_uses_non_monitor_frontier_without_monitor_deadline() -> None:
     from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
 

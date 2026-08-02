@@ -38,6 +38,7 @@ from .route_continuation import build_todo_route_continuation_lanes
 from .succession_warning import build_todo_succession_warning_lanes
 from .summary_item import compact_todo_summary_item, todo_summary_source_items
 from .user_gate import is_user_gate_todo_item
+from ..runtime.time import now_utc, parse_timestamp
 
 MONITOR_DUE_ITEM_LIMIT = 1
 TODO_BACKLOG_ITEM_LIMIT = 8
@@ -636,6 +637,15 @@ def _compact_quota_payload_item(item: Any) -> Any:
     return compact
 
 
+def _quota_payload_item_priority(item: Any, current_time: Any) -> tuple[int, float, int]:
+    if not isinstance(item, dict):
+        return (2, 0.0, 0)
+    next_due_at = parse_timestamp(item.get("next_due_at"))
+    if next_due_at is not None and next_due_at > current_time:
+        return (0, next_due_at.timestamp(), int(item.get("index") or 0))
+    return (1, 0.0, int(item.get("index") or 0))
+
+
 def _compact_quota_payload_item_list(
     items: Any,
     *,
@@ -643,7 +653,12 @@ def _compact_quota_payload_item_list(
 ) -> list[Any]:
     if not isinstance(items, list):
         return []
-    return [_compact_quota_payload_item(item) for item in items[:limit]]
+    current_time = now_utc()
+    ordered = sorted(
+        items,
+        key=lambda item: _quota_payload_item_priority(item, current_time),
+    )
+    return [_compact_quota_payload_item(item) for item in ordered[:limit]]
 
 
 def _compact_quota_payload_claim_scope(value: Any) -> Any:
