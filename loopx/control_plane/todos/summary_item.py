@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from .contract import (
+    normalize_removed_todo_continuation_policy,
     normalize_required_write_scopes,
     normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
     normalize_todo_decision_scope_outcomes,
     normalize_todo_excluded_agents,
     normalize_todo_id,
-    normalize_removed_todo_continuation_policy,
     normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_task_repository,
@@ -17,7 +17,6 @@ from .contract import (
 from .handoff_gate import handoff_ready_successor_todo_ids
 from .handoff_note import attach_todo_handoff_note, compact_todo_continuation_hint
 from .projection import todo_item_task_class
-
 
 TODO_SUMMARY_COMPACT_FIELDS = (
     "schema_version",

@@ -11,7 +11,6 @@ from loopx.control_plane.testing.quota_fixtures import (
 from loopx.control_plane.todos.summary_item import compact_todo_summary_item
 from loopx.quota import build_quota_should_run
 
-
 GOAL_ID = "agent-task-visibility-fixture"
 AGENT_ID = "codex-current-peer"
 OTHER_AGENT_ID = "codex-other-peer"

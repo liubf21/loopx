@@ -16,7 +16,6 @@ from .contract import (
     normalize_todo_resume_when,
 )
 
-
 TODO_HANDOFF_NOTE_SCHEMA_VERSION = "handoff_note_v0"
 TODO_CONTINUATION_HINT_MAX_CHARS = 280
 _AK_SK_PATTERN = re.compile(
@@ -99,9 +98,9 @@ def _evidence_refs(item: dict[str, Any], *, todo_id: str | None) -> list[str]:
 
 
 def _unresolved_decisions(item: dict[str, Any]) -> list[dict[str, str]]:
-    decisions: list[dict[str, str]] = []
-    for scope in normalize_todo_required_decision_scopes(item.get("required_decision_scopes")):
-        decisions.append(scope)
+    decisions = list(
+        normalize_todo_required_decision_scopes(item.get("required_decision_scopes"))
+    )
     single = normalize_todo_decision_scope(item.get("decision_scope"))
     if single:
         identity = (single.get("kind"), single.get("granularity"), single.get("scope_key"))
