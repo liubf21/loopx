@@ -141,7 +141,9 @@ recheck deadline. The deadline makes a due monitor runnable even without a push
 signal; provider-specific CI/review observation remains owned by its capability
 connector. This is the machine continuation contract. The Goal prompt is not
 rewritten to teach waiting policy, and the model is not used as a mechanical
-polling loop.
+polling loop. When the frontier carries explicit `next_due_at` values, the
+deadline is the earliest exact due time; the coarser host cadence floor remains
+an automation concern and must not delay a Goal-runtime wake past that boundary.
 
 `defer` is a whole-frontier decision, not a per-PR wait. A quiet CI/review
 monitor remains auxiliary context while any independent advancement todo is

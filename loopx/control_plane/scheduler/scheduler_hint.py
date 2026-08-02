@@ -353,6 +353,10 @@ def _minutes_until(value: datetime, current_time: datetime) -> int:
     return max(1, int(math.ceil((value - current_time).total_seconds() / 60)))
 
 
+def _seconds_until(value: datetime, current_time: datetime) -> int:
+    return max(1, int(math.ceil((value - current_time).total_seconds())))
+
+
 def _cap_monitor_progression(*, cap_minutes: int, host_floor_minutes: int) -> list[int]:
     safe_cap = max(1, int(cap_minutes))
     safe_floor = max(1, int(host_floor_minutes))
@@ -432,6 +436,11 @@ def _monitor_wait_item_plan(
         "selected_target_key": item.get("target_key"),
         "host_floor_minutes": host_floor,
         "cap_minutes": cap_minutes,
+        "seconds_until_due": (
+            _seconds_until(next_due_at, current_time)
+            if next_due_at is not None and next_due_at > current_time
+            else None
+        ),
         "cadence_minutes": cadence_minutes,
         "next_due_at": next_due_at.isoformat() if next_due_at is not None else None,
         "expires_at": expires_at.isoformat() if expires_at is not None else None,
@@ -478,6 +487,15 @@ def _monitor_wait_cadence_plan(payload: dict[str, Any]) -> dict[str, Any] | None
     )
     return {
         **selected,
+        "frontier_recheck_after_seconds": min(
+            (
+                int(plan["seconds_until_due"])
+                for plan in plans
+                if isinstance(plan.get("seconds_until_due"), int)
+                and int(plan["seconds_until_due"]) > 0
+            ),
+            default=None,
+        ),
         "base_progression_minutes": MONITOR_WAIT_PROGRESSION_MINUTES,
         "candidate_count": len(plans),
         "expired_monitor_count": expired_count,
@@ -518,6 +536,7 @@ class _SchedulerHintBuilder:
         reset_profile_snapshot_override: dict[str, Any] | None = None,
         cadence_context_detail: dict[str, Any] | None = None,
         advance_same_identity: bool = True,
+        frontier_recheck_after_seconds: int | None = None,
     ) -> dict[str, Any]:
         local_cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max) for step in range(3)
@@ -907,7 +926,11 @@ class _SchedulerHintBuilder:
                 scheduler_hint["cold_path_detail"]["cadence_context"] = (
                     cadence_context_detail
                 )
-        return apply_scheduler_execution_context(scheduler_hint, self.execution_context)
+        return apply_scheduler_execution_context(
+            scheduler_hint,
+            self.execution_context,
+            frontier_recheck_after_seconds=frontier_recheck_after_seconds,
+        )
 
 
 def build_scheduler_hint(
@@ -1181,6 +1204,11 @@ def build_scheduler_hint(
             ),
             reset_profile_snapshot_override=monitor_reset_profile,
             cadence_context_detail=monitor_plan,
+            frontier_recheck_after_seconds=(
+                monitor_plan.get("frontier_recheck_after_seconds")
+                if isinstance(monitor_plan, dict)
+                else None
+            ),
         )
 
     if arbitration.disposition == SchedulerDisposition.QUIET_WAIT:

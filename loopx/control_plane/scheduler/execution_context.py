@@ -408,6 +408,8 @@ def scheduler_execution_context_for_turn(
 
 def build_goal_runtime_continuation(
     scheduler_hint: Mapping[str, Any],
+    *,
+    frontier_recheck_after_seconds: int | None = None,
 ) -> dict[str, Any]:
     action = str(scheduler_hint.get("action") or "")
     if action == "run_now":
@@ -431,11 +433,19 @@ def build_goal_runtime_continuation(
         },
     }
     if disposition is GoalRuntimeContinuationDisposition.DEFER:
-        host_cadence = scheduler_hint.get("codex_app")
-        host_cadence = host_cadence if isinstance(host_cadence, Mapping) else {}
-        recommended_interval = host_cadence.get("recommended_interval_minutes")
-        if isinstance(recommended_interval, int) and recommended_interval > 0:
-            continuation["recheck_after_seconds"] = recommended_interval * 60
+        if (
+            isinstance(frontier_recheck_after_seconds, int)
+            and frontier_recheck_after_seconds > 0
+        ):
+            continuation["recheck_after_seconds"] = frontier_recheck_after_seconds
+            continuation["recheck_source"] = "frontier_earliest_material_transition"
+        else:
+            host_cadence = scheduler_hint.get("codex_app")
+            host_cadence = host_cadence if isinstance(host_cadence, Mapping) else {}
+            recommended_interval = host_cadence.get("recommended_interval_minutes")
+            if isinstance(recommended_interval, int) and recommended_interval > 0:
+                continuation["recheck_after_seconds"] = recommended_interval * 60
+        if continuation.get("recheck_after_seconds") is not None:
             continuation["wake_policy"] = "state_change_or_deadline"
     return continuation
 
@@ -443,6 +453,8 @@ def build_goal_runtime_continuation(
 def apply_scheduler_execution_context(
     result: dict[str, Any],
     resolution: SchedulerExecutionContextResolution,
+    *,
+    frontier_recheck_after_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Scope a generic cadence hint to the selected runtime owner."""
 
@@ -485,7 +497,10 @@ def apply_scheduler_execution_context(
         return result
 
     goal_runtime_continuation = (
-        build_goal_runtime_continuation(result)
+        build_goal_runtime_continuation(
+            result,
+            frontier_recheck_after_seconds=frontier_recheck_after_seconds,
+        )
         if context.scheduler_owner is SchedulerOwner.GOAL_RUNTIME
         else None
     )

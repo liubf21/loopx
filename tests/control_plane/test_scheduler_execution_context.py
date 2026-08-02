@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from itertools import product
 
 import pytest
@@ -322,6 +323,106 @@ def test_goal_runtime_mixed_frontier_continues_runnable_advancement() -> None:
     assert quota["scheduler_hint"]["goal_runtime_continuation"]["disposition"] == (
         "continue_now"
     )
+
+
+def test_goal_runtime_defer_uses_earliest_frontier_transition() -> None:
+    """The typed Defer recheck must follow the soonest due monitor on the
+    whole frontier, not a later monitor or the generic backoff interval."""
+
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_soon",
+                "target_key": "pr-ci-soon",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=20)).isoformat(),
+            },
+            {
+                "todo_id": "todo_later",
+                "target_key": "pr-review-later",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=120)).isoformat(),
+            },
+        ]
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    # The Goal deadline is derived from the frontier, independent of the
+    # coarser host-automation cadence buckets.
+    assert continuation["recheck_after_seconds"] == 20 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert continuation["wake_policy"] == "state_change_or_deadline"
+    assert "frontier_recheck" not in hint
+
+
+def test_goal_runtime_defer_uses_exact_due_inside_host_floor() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_due_soon",
+                "target_key": "pr-ci-due-soon",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            }
+        ]
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["recheck_after_seconds"] == 5 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
+def test_goal_runtime_defer_falls_back_to_codex_interval_without_frontier() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        scheduler_execution_context=context,
+    )
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert "recheck_source" not in continuation
+    assert continuation["recheck_after_seconds"] == 15 * 60
+    assert continuation["wake_policy"] == "state_change_or_deadline"
+    assert "frontier_recheck" not in hint
 
 
 def test_non_goal_runtime_does_not_receive_goal_continuation() -> None:
