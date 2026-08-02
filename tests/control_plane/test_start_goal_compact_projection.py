@@ -443,11 +443,33 @@ def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None
         ]
         == "public_issue_or_pr_reference"
     )
+    referenced_after_colon = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text="Fix: https://github.com/owner/repo/issues/42.",
+    )
+    assert (
+        referenced_after_colon["guided_transaction"]["selected_capability_route"][
+            "selection_reason_code"
+        ]
+        == "public_issue_or_pr_reference"
+    )
     for goal_text in (
         "Review https://github.com/owner/repo/pull/42.",
         "Merge https://github.com/owner/repo/pull/42 after checks pass.",
         "Monitor https://github.com/owner/repo/pull/42.",
         "Summarize https://github.com/owner/repo/issues/42.",
+        (
+            "Run one long-lived engineering Goal: keep generic fixes separate "
+            "from adapter changes, keep feature MR count small, and verify one "
+            "real PR lifecycle transition."
+        ),
+        "Fix generic tests and follow the PR lifecycle.",
+        "Resolve generic test failures\nTrack the PR lifecycle.",
+        "Repair the adapter, then verify its pull request lifecycle.",
     ):
         unrelated = build_start_goal_guided_packet(
             project=project,
@@ -458,6 +480,22 @@ def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None
             goal_text=goal_text,
         )
         assert "selected_capability_route" not in unrelated["guided_transaction"]
+
+    explicit_issue_fix = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text=(
+            "Fix the repository issue and follow its PR lifecycle through review."
+        ),
+    )
+    assert (
+        explicit_issue_fix["guided_transaction"]["selected_capability_route"]
+        ["selection_reason_code"]
+        == "issue_fix_intent"
+    )
 
 
 def test_explicit_cold_path_restores_the_complete_command_pack(tmp_path: Path) -> None:
