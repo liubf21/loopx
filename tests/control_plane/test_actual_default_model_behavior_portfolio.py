@@ -37,7 +37,6 @@ from loopx.control_plane.testing.onboarding_model_behavior_qualification import 
     onboarding_postcondition_semantic_contract,
 )
 
-
 GOAL_ID = "portfolio-goal"
 AGENT_ID = "codex-portfolio"
 
@@ -417,6 +416,22 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
     assert vision["trigger_kinds"] == ["required_agent_vision_missing"]
     assert semantics["required_reads"]
     assert semantics["scheduler_action"]["action"] == "run_now"
+    continuation_source = sources["turn_quota_hot_path_selected_todo_invariance"]
+    continuation = packets["turn_quota_hot_path_selected_todo_invariance"]
+    assert continuation_source["active_state_next_action"] == (
+        "Inspect an obsolete branch."
+    )
+    assert continuation_source["latest_run_recommended_action"] == (
+        "Continue the previous run."
+    )
+    assert continuation["selected_todo"]["continuation_hint"] == (
+        "Next run the restart canary."
+    )
+    assert "active_state_next_action" not in continuation
+    assert "latest_run_recommended_action" not in continuation
+    assert continuation["next_action_projection_warning"]["shadowed_by"] == (
+        "$.selected_todo"
+    )
     scoped = packets["turn_scoped_gate_successor_replan"]
     scoped_signature = quota_action_signature_document(scoped)
     assert scoped_signature["user"]["action_required"] is True

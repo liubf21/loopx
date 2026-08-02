@@ -520,6 +520,48 @@ def test_compaction_preserves_nonidentical_diagnostics_instead_of_referencing_th
     assert "projection_refs" not in compact["next_action_projection_warning"]
 
 
+def test_compaction_hides_durable_actions_shadowed_by_selected_todo() -> None:
+    selected = {
+        "schema_version": "quota_selected_todo_v0",
+        "todo_id": "todo_current",
+        "text": "Continue the selected Todo.",
+        "continuation_hint": "Next run the restart canary.",
+    }
+    payload = {
+        "recommended_action": selected["text"],
+        "selected_todo": selected,
+        "active_state_next_action": "Inspect an obsolete branch.",
+        "latest_run_recommended_action": "Continue the previous run.",
+        "goal_route_hint": {
+            "selected_action_differs_from_durable": True,
+            "current_agent_next_action": {"todo_id": selected["todo_id"]},
+        },
+        "next_action_projection_warning": {
+            "active_state_next_action": "Inspect an obsolete branch.",
+            "latest_run_recommended_action": "Continue the previous run.",
+            "agent_lane_next_action": selected["text"],
+            "reason": "The selected Todo supersedes durable action prose.",
+        },
+    }
+
+    compact = compact_quota_should_run_cli_payload(payload)
+    detailed = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+    )
+
+    assert compact["selected_todo"] == selected
+    assert "active_state_next_action" not in compact
+    assert "latest_run_recommended_action" not in compact
+    assert compact["next_action_projection_warning"]["shadowed_by"] == (
+        "$.selected_todo"
+    )
+    assert detailed["active_state_next_action"] == "Inspect an obsolete branch."
+    assert detailed["latest_run_recommended_action"] == (
+        "Continue the previous run."
+    )
+
+
 def test_compact_quota_should_run_cli_payload_keeps_succession_warning_identity_in_markdown() -> None:
     payload = {
         "ok": True,

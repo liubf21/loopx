@@ -16,14 +16,18 @@ from .contract import (
     normalize_todo_resume_when,
 )
 
-
 TODO_HANDOFF_NOTE_SCHEMA_VERSION = "handoff_note_v0"
-_AK_SK_PATTERN = re.compile(r"(?i)\b(?:ak|sk|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+")
+TODO_CONTINUATION_HINT_MAX_CHARS = 280
+_INLINE_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)(?:\bbearer\s+\S+|\bauthorization\s*:|"
+    r"\b(?:ak|sk|api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?key)?|"
+    r"token|password)\b\s*[:=]\s*\S+)"
+)
 
 
 def _compact_text(value: Any, *, limit: int = 220) -> str | None:
     text = " ".join(str(value or "").strip().split())
-    if not text or _AK_SK_PATTERN.search(text):
+    if not text or _INLINE_CREDENTIAL_PATTERN.search(text):
         return None
     if len(text) <= limit:
         return text
@@ -62,6 +66,19 @@ def _first_text(item: dict[str, Any], *keys: str, limit: int = 220) -> str | Non
     return None
 
 
+def compact_todo_continuation_hint(item: dict[str, Any]) -> str | None:
+    """Project the current bounded continuation without copying raw evidence."""
+
+    return _first_text(
+        item,
+        "continuation_hint",
+        "suggested_next_action",
+        "note",
+        "reason",
+        limit=TODO_CONTINUATION_HINT_MAX_CHARS,
+    )
+
+
 def _evidence_refs(item: dict[str, Any], *, todo_id: str | None) -> list[str]:
     refs: list[str] = []
     handoff = _raw_handoff(item)
@@ -83,9 +100,9 @@ def _evidence_refs(item: dict[str, Any], *, todo_id: str | None) -> list[str]:
 
 
 def _unresolved_decisions(item: dict[str, Any]) -> list[dict[str, str]]:
-    decisions: list[dict[str, str]] = []
-    for scope in normalize_todo_required_decision_scopes(item.get("required_decision_scopes")):
-        decisions.append(scope)
+    decisions = list(
+        normalize_todo_required_decision_scopes(item.get("required_decision_scopes"))
+    )
     single = normalize_todo_decision_scope(item.get("decision_scope"))
     if single:
         identity = (single.get("kind"), single.get("granularity"), single.get("scope_key"))

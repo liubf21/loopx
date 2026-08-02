@@ -29,11 +29,10 @@ from .onboarding_model_behavior_qualification import (
     _behavior_contract_violations,
     _semantic_contract,
     _validate_actual_default_projection,
-    build_onboarding_postcondition_observation,
     build_onboarding_model_behavior_actor_request,
+    build_onboarding_postcondition_observation,
     run_onboarding_model_behavior_phase,
 )
-
 
 ACTUAL_DEFAULT_MODEL_BEHAVIOR_PORTFOLIO_SCHEMA_VERSION = (
     "actual_default_model_behavior_portfolio_v0"
@@ -529,21 +528,29 @@ def _build_quota_hot_path_selected_todo_invariance_source() -> dict[str, Any]:
         {
             "todo_id": "todo_portfolio001",
             "text": "Implement one bounded public-safe slice.",
+            "continuation_hint": "Next run the restart canary.",
         }
     )
     payload["selected_todo"] = selected_todo
     payload["recommended_action"] = selected_todo["text"]
-    payload["latest_run_recommended_action"] = selected_todo["text"]
+    payload["active_state_next_action"] = "Inspect an obsolete branch."
+    payload["latest_run_recommended_action"] = "Continue the previous run."
     payload["agent_lane_next_action"] = {
         **selected_todo,
         "title": selected_todo["text"],
         "text": f"[P1] {selected_todo['text']}",
     }
     warning = dict(payload["next_action_projection_warning"])
-    warning["latest_run_recommended_action"] = selected_todo["text"]
+    warning["active_state_next_action"] = payload["active_state_next_action"]
+    warning["latest_run_recommended_action"] = payload["latest_run_recommended_action"]
     warning["agent_lane_next_action"] = payload["agent_lane_next_action"]["text"]
     warning["recommended_action"] = selected_todo["text"]
     payload["next_action_projection_warning"] = warning
+    payload["goal_route_hint"] = {
+        **payload["goal_route_hint"],
+        "selected_action_differs_from_durable": True,
+        "current_agent_next_action": {"todo_id": selected_todo["todo_id"]},
+    }
     payload["interaction_contract"] = build_interaction_contract(
         payload,
         available_capabilities=["network", "shell", "filesystem_write"],
