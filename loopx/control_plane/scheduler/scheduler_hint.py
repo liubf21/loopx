@@ -17,8 +17,8 @@ from .arbitration import (
     build_scheduler_arbitration,
 )
 from .execution_context import (
-    SchedulerOwner,
     SchedulerExecutionContextResolution,
+    SchedulerOwner,
     SchedulerRuntimeProfile,
     apply_scheduler_execution_context,
     resolve_scheduler_execution_context,
@@ -37,7 +37,6 @@ from .state_transition_rules import (
     decide_scheduler_host_transition,
 )
 from .time import parse_scheduler_timestamp
-
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
@@ -463,11 +462,11 @@ def _monitor_item_identity(item: dict[str, Any]) -> str:
 
 
 def _minutes_until(value: datetime, current_time: datetime) -> int:
-    return max(1, int(math.ceil((value - current_time).total_seconds() / 60)))
+    return max(1, math.ceil((value - current_time).total_seconds() / 60))
 
 
 def _seconds_until(value: datetime, current_time: datetime) -> int:
-    return max(1, int(math.ceil((value - current_time).total_seconds())))
+    return max(1, math.ceil((value - current_time).total_seconds()))
 
 
 def _cap_monitor_progression(*, cap_minutes: int, host_floor_minutes: int) -> list[int]:

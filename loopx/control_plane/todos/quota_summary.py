@@ -10,6 +10,7 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
 )
 from ..agents.capability_gate import missing_required_capabilities
+from ..runtime.time import now_utc, parse_timestamp
 from .claim_visibility import (
     build_agent_claim_scoped_open_items,
     build_todo_claim_visibility_lanes,
@@ -38,7 +39,6 @@ from .route_continuation import build_todo_route_continuation_lanes
 from .succession_warning import build_todo_succession_warning_lanes
 from .summary_item import compact_todo_summary_item, todo_summary_source_items
 from .user_gate import is_user_gate_todo_item
-from ..runtime.time import now_utc, parse_timestamp
 
 MONITOR_DUE_ITEM_LIMIT = 1
 TODO_BACKLOG_ITEM_LIMIT = 8
