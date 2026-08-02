@@ -249,7 +249,7 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "examples/control_plane/cli-output-base-head-differential-smoke.py",
             "examples/control_plane/cli-output-budget-regression-smoke.py",
             ".github/workflows/python-tests.yml",
-            "docs/interface-budget-contract.md",
+            "docs/reference/contracts/interface-budget-contract.md",
         ),
         "checks": [
             {

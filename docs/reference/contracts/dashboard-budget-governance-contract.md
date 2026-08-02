@@ -71,8 +71,8 @@ capabilities, and source warnings, but it must not mutate project truth directly
 
 ## Related Contracts
 
-- [Quota allocation](quota-allocation.md)
-- [Status data contract](status-data-contract.md)
-- [Long-task cadence hint](long-task-cadence-policy.md)
-- [Frontstage dashboard interaction baseline](product/frontstage-dashboard-interaction-baseline.md)
-- [Runtime connector catalog](runtime-connector-catalog.md)
+- [Quota allocation](../../quota-allocation.md)
+- [Status data contract](../../status-data-contract.md)
+- [Long-task cadence hint](../../operations/long-task-cadence-policy.md)
+- [Frontstage dashboard interaction baseline](../../product/surfaces/frontstage-dashboard-interaction-baseline.md)
+- [Runtime connector catalog](../../integrations/runtime-connector-catalog.md)

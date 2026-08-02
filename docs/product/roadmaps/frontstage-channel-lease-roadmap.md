@@ -168,7 +168,7 @@ channel without recomputing project truth.
 ### `agent_profile_v1` And `agent_member_v1`
 
 The registry-owned `agent_profile_v1` contract is defined in
-[`docs/product/agent-profile-contract.md`](product/agent-profile-contract.md).
+[`docs/product/foundations/agent-profile-contract.md`](../foundations/agent-profile-contract.md).
 Use it as the source of truth for registered agent id and advisory capability,
 scope, and action preferences. Runtime authority still comes from peer identity,
 task claims/leases, boundaries, repository policy, and explicit continuation policy.
@@ -219,7 +219,7 @@ review action over an independent handoff, optionally excluding the author.
   "todo_id": "todo_123",
   "owner": "codex-local-controller",
   "idempotency_key": "loopx-meta:todo_123:20260615T1230Z",
-  "write_scopes": ["docs/frontstage-channel-lease-roadmap.md"],
+  "write_scopes": ["docs/product/roadmaps/frontstage-channel-lease-roadmap.md"],
   "version": 1,
   "acquired_at": "2026-06-15T12:00:00Z",
   "updated_at": "2026-06-15T12:00:00Z",

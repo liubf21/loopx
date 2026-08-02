@@ -835,7 +835,7 @@ CLI/status/quota 并补 smoke；只更新文档不会改变机器的下一次决
 2. `loopx/control_plane/runtime/run_history.py` 与 `loopx/rollout_event_log.py`
 3. `docs/reference/protocols/goal-vision-replan-contract-v0.md`
 4. `docs/reference/protocols/agent-scoped-evidence-ledger-v0.md`
-5. `docs/interaction-pattern-catalog.md` 的 IP-005、IP-007、IP-008、IP-013、IP-024
+5. `docs/concepts/interaction-pattern-catalog.md` 的 IP-005、IP-007、IP-008、IP-013、IP-024
 6. `skills/loopx-self-repair/SKILL.md`
 
 ## 代表性 Smoke

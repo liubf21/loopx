@@ -120,7 +120,7 @@ def main() -> int:
         archive_warning
     )
 
-    docs = (REPO_ROOT / "docs" / "field-derived-patterns.md").read_text(encoding="utf-8")
+    docs = (REPO_ROOT / "docs" / "concepts" / "field-derived-patterns.md").read_text(encoding="utf-8")
     for required in (
         "## 3. Bounded Derived State Inheritance",
         "canonical source",

@@ -158,7 +158,7 @@ cost. The important product move is to make "agent value" reviewable at the
 project level, not only at single-task benchmark level.
 
 The narrower reward model lives in
-[Project-level reward model](project-level-reward-model.md). That note keeps
+[Project-level reward model](../foundations/project-level-reward-model.md). That note keeps
 the formula, review schema, benchmark boundary, and acceptance criteria in one
 place so the management surface can stay focused on user interaction.
 

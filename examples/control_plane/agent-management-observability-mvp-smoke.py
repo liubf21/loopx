@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOC_PATH = REPO_ROOT / "docs/product/agent-management-observability-mvp.md"
-PRODUCT_INDEX_PATH = REPO_ROOT / "docs/product/README.md"
+DOC_PATH = REPO_ROOT / "docs/product/surfaces/agent-management-observability-mvp.md"
+SURFACE_INDEX_PATH = REPO_ROOT / "docs/product/surfaces/README.md"
 
 PRIVATE_PATTERNS = [
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -37,10 +37,10 @@ def assert_public_safe(text: str, label: str) -> None:
 
 def main() -> int:
     doc = read(DOC_PATH)
-    product_index = read(PRODUCT_INDEX_PATH)
+    surface_index = read(SURFACE_INDEX_PATH)
 
     assert_public_safe(doc, "mvp doc")
-    assert_public_safe(product_index, "product index")
+    assert_public_safe(surface_index, "surface index")
 
     for needle in [
         "Use the mature agent-console direction",
@@ -65,9 +65,9 @@ def main() -> int:
         assert_contains(doc, url, "source links")
 
     assert_contains(
-        product_index,
+        surface_index,
         "Agent management observability MVP",
-        "product index",
+        "surface index",
     )
 
     print("agent-management-observability-mvp-smoke ok")

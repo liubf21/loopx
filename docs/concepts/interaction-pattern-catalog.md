@@ -12,7 +12,7 @@ to mine chat history.
 
 For the short product map that keeps the catalog, state definitions, and state
 machine aligned, see
-[`docs/product/core-control-plane/`](product/core-control-plane/). The catalog
+[`docs/product/core-control-plane/`](../product/core-control-plane). The catalog
 below remains the detailed IP registry; the core map is the graph lens that
 connects those IPs to runtime states and legal transitions.
 
@@ -147,7 +147,7 @@ propose focused smokes for owner review before implementation.
 
 User gates are not global booleans. The first-class model is a scoped decision:
 the machine-facing schema is
-[`decision_scope_v0`](reference/protocols/decision-scope-v0.md).
+[`decision_scope_v0`](../reference/protocols/decision-scope-v0.md).
 
 Compatibility todo metadata follows the same rule. In a multi-agent goal, an
 open `user_gate` todo must carry `blocks_agent=<registered-agent>` when only
@@ -1103,8 +1103,8 @@ decision-point re-read.
 
 **Validation**
 
-- `docs/reward-gate-direct-write-contract.md`
-- `docs/dashboard-reward-write-boundary.md`
+- `docs/reference/contracts/reward-gate-direct-write-contract.md`
+- `docs/reference/contracts/dashboard-reward-write-boundary.md`
 - `examples/reward-gate-direct-write-contract-smoke.py`
 - `examples/reward-append-api-smoke.py`
 - `examples/dashboard-reward-append-browser-smoke.mjs`
@@ -1369,7 +1369,7 @@ material belongs to another connected project.
 
 **Validation**
 
-- `docs/authority-source-registration.md`
+- `docs/operations/authority-source-registration.md`
 - `examples/register-authority-source-smoke.py`
 - `examples/import-doc-registry-authority-smoke.py`
 - `examples/platform-migration-material-registry-smoke.py`
@@ -1426,7 +1426,7 @@ files because the only ownership signal was a chat message or dashboard label.
 
 **Validation**
 
-- `docs/frontstage-channel-lease-roadmap.md`
+- `docs/product/roadmaps/frontstage-channel-lease-roadmap.md`
 - `docs/architecture.md` local server / daemon roadmap
 - `examples/control_plane/task-lease-runtime-smoke.py`.
 
@@ -1534,7 +1534,7 @@ looks like a stale automation prompt instead of the completed scoped turn.
 **Validation**
 
 - `docs/project-agent-todo-contract.md`
-- `docs/codex-subagent-orchestration.md`
+- `docs/integrations/codex-subagent-orchestration.md`
 - `docs/heartbeat-automation-prompt.md`
 - `examples/control_plane/todo-lifecycle-cli-smoke.py`
 - `examples/control_plane/todo-cli-smoke.py`
@@ -1993,7 +1993,7 @@ the stable schema.
 **Validation**
 
 - `docs/reference/protocols/protocol-action-packet-decision-v0.md`
-- `docs/product/codex-cli-same-open-tui-continuation-observation.md`
+- `docs/product/runtimes/codex-cli/codex-cli-same-open-tui-continuation-observation.md`
 - `examples/interaction-pattern-catalog-smoke.py`
 - `examples/codex-cli-visible-attach-acceptance-smoke.py`
 
@@ -2336,7 +2336,7 @@ as a hard permission or timing policy.
 
 **Validation**
 
-- `docs/long-task-cadence-policy.md`
+- `docs/operations/long-task-cadence-policy.md`
 - `examples/long-task-cadence-policy-smoke.py`
 
 #### IP-018 Plan To Todo Writeback

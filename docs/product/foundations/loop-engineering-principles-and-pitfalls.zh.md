@@ -117,8 +117,8 @@ work 更容易被检查、调度、恢复和比较。
 
 ## 相关文档
 
-- [Intelligent management surface](intelligent-management-surface.md)
-- [Non-technical operator status model](nontechnical-operator-status-model.md)
+- [Intelligent management surface](../surfaces/intelligent-management-surface.md)
+- [Non-technical operator status model](../surfaces/nontechnical-operator-status-model.md)
 - [Project-level reward model](project-level-reward-model.md)
 - [Reward-style replanning hints](reward-style-replanning.md)
 - [English version](loop-engineering-principles-and-pitfalls.md)

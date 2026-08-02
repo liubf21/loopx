@@ -629,7 +629,7 @@ App tick
 ## 代码阅读路线
 
 1. `docs/heartbeat-automation-prompt.md`
-2. `docs/long-task-cadence-policy.md`
+2. `docs/operations/long-task-cadence-policy.md`
 3. `loopx/heartbeat_prompt.py`
 4. `loopx/control_plane/scheduler/`
 5. `loopx/quota.py` 的 final composition：interaction contract、scheduler hint、protocol action packet

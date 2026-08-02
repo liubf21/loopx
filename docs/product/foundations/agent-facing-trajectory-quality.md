@@ -66,11 +66,11 @@ Registry、active state、todo、gate、quota decision、run history 和可选 t
 - validation、writeback 与 quota spend policy；
 - scheduler action 和必要的 cadence acknowledgement。
 
-TurnEnvelope 是 additive read model，目前仍为 opt-in，不改变 quota selection、todo routing 或默认完整输出。协议见 [TurnEnvelope v0](../reference/protocols/turn-envelope-v0.md)。
+TurnEnvelope 是 additive read model，目前仍为 opt-in，不改变 quota selection、todo routing 或默认完整输出。协议见 [TurnEnvelope v0](../../reference/protocols/turn-envelope-v0.md)。
 
 ### 质量审计层
 
-`trajectory_hygiene_summary_v0` 只读取 public-safe compact run index，观察 controller density、non-material event density、重复 action 和 action/outcome attribution。它不打开 raw session、raw trajectory、task body、run artifact 或 verifier output。协议见 [Trajectory Hygiene v0](../reference/protocols/trajectory-hygiene-v0.md)。
+`trajectory_hygiene_summary_v0` 只读取 public-safe compact run index，观察 controller density、non-material event density、重复 action 和 action/outcome attribution。它不打开 raw session、raw trajectory、task body、run artifact 或 verifier output。协议见 [Trajectory Hygiene v0](../../reference/protocols/trajectory-hygiene-v0.md)。
 
 ## 4. 质量指标
 

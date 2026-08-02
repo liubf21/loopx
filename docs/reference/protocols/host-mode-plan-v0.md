@@ -2,7 +2,7 @@
 
 `host_mode_plan_v0` is a public-safe host-mode selector for LoopX workflows. It
 sits above the shipped [LoopX Turn](loopx-turn-v0.md) and
-[runtime connector catalog](../../runtime-connector-catalog.md): it chooses the
+[runtime connector catalog](../../integrations/runtime-connector-catalog.md): it chooses the
 user-facing host mode from intent and advertised host capabilities, then prints
 the matching preview command. It is not a launcher, scheduler, permission grant,
 validator, or second source of truth.

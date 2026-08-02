@@ -107,4 +107,4 @@ validates every marker. With `--turn-count 3`, success reports
 session id remains private and is never printed or synced.
 
 That is the complete partner-facing path. For implementation details, read the
-[adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../reference/protocols/loopx-turn-v0.md).
+[adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../../../reference/protocols/loopx-turn-v0.md).

@@ -9,9 +9,11 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs" / "product" / "codex-cli-live-tui-first-message-pilot.md"
-FIRST_RUN = REPO_ROOT / "docs" / "product" / "codex-cli-first-run-rehearsal.md"
-PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
+DOC = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-live-tui-first-message-pilot.md"
+FIRST_RUN = REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "codex-cli-first-run-rehearsal.md"
+PRODUCT_README = (
+    REPO_ROOT / "docs" / "product" / "runtimes" / "codex-cli" / "README.md"
+)
 GOAL_ID = "public-live-tui-pilot-goal"
 AGENT_ID = "codex-side-bypass"
 

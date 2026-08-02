@@ -20,7 +20,7 @@ from loopx.operator_gate import OPERATOR_GATE_RESUME_CONTRACT_VERSION, record_op
 
 GOAL_ID = "reward-gate-direct-write-goal"
 RUN_GENERATED_AT = "2026-01-01T00:00:00+00:00"
-CONTRACT_DOC = REPO_ROOT / "docs" / "reward-gate-direct-write-contract.md"
+CONTRACT_DOC = REPO_ROOT / "docs" / "reference" / "contracts" / "reward-gate-direct-write-contract.md"
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:

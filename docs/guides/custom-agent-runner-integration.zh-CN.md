@@ -166,4 +166,4 @@ effect，并且外层 runner 能正确应用和 ACK scheduler state。这些正�
 精确读写合同见
 [Host Integration Surface v0](../reference/protocols/host-integration-surface-v0.md)；
 可选的 typed Turn 路径见
-[Run One LoopX Turn With Codex CLI](../product/loopx-turn-codex-cli-quickstart.md)。
+[Run One LoopX Turn With Codex CLI](../product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md)。

@@ -27,7 +27,7 @@ missed migration work.
 3. P0 public docs migration: move the root README, getting-started path, and
    packaged install docs to LoopX language.
 4. P0 state migration SOP: ship the explicit one-shot
-   [`migrate-state`](./loopx-state-migration-sop.md) path for existing local
+   [`migrate-state`](loopx-state-migration-sop.md) path for existing local
    users. This is not a legacy CLI compatibility alias; it is an auditable
    dry-run-first import into `.loopx` and `~/.codex/loopx`.
 5. P1 external surface release gate: update package publish metadata, hosted

@@ -165,7 +165,7 @@ must not be counted as LoopX in-case use.
 ## Harbor Command Shape
 
 The public command template consumes the generic LoopX worker bridge
-install contract in `docs/worker-bridge-install-contract.md`. It must make the
+install contract in `docs/integrations/worker-bridge-install-contract.md`. It must make the
 bridge package and runtime root visible inside the task container. The current
 Harbor adapter uses `--mounts` with placeholder same-path bind mounts, then
 passes an in-container command prefix to the Codex worker:

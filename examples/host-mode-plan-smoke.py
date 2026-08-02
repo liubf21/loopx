@@ -37,7 +37,7 @@ from loopx.host_mode_planner import (  # noqa: E402
 CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "host-mode-plan-v0.md"
 TURN_CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "loopx-turn-v0.md"
 PROTOCOL_INDEX_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "README.md"
-CONNECTOR_CATALOG_PATH = REPO_ROOT / "docs" / "runtime-connector-catalog.md"
+CONNECTOR_CATALOG_PATH = REPO_ROOT / "docs" / "integrations" / "runtime-connector-catalog.md"
 
 PRIVATE_PATTERNS = [
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),

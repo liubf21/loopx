@@ -11,7 +11,7 @@ packets and dated route notes still live under
 belongs in `loopx/`, `examples/`, and this guide.
 
 For package ownership and dependency direction, see
-[`reference/benchmark-architecture.md`](reference/benchmark-architecture.md).
+[`reference/benchmark-architecture.md`](../reference/benchmark-architecture.md).
 
 ## Product Shape
 
@@ -1373,9 +1373,9 @@ default:
   app-server route.
 
 See
-[`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
+[`benchmark-split-control-remote-executor-v0.md`](../research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
 for the current machine contract, and
-[`benchmark-route-transition-retrospective-20260619.md`](research/long-horizon-agent-benchmarks/benchmark-route-transition-retrospective-20260619.md)
+[`benchmark-route-transition-retrospective-20260619.md`](../research/long-horizon-agent-benchmarks/benchmark-route-transition-retrospective-20260619.md)
 for the split-control retention, branch-hygiene, and retirement runbook.
 
 ### Cross-Family Compact Workflow Shape

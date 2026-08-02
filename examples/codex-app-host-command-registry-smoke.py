@@ -78,7 +78,7 @@ def main() -> int:
         assert_public_safe(text, label)
 
     assert_contains(index, "codex_app_host_command_registry_v0", "protocol index")
-    assert_contains(docs_index, "Codex App host command registry v0", "docs index")
+    assert_contains(docs_index, "reference/README.md", "docs index")
     assert_contains(host_surface, "codex_app_host_command_registry_v0", "host surface")
 
     for command in REQUIRED_CANONICAL_COMMANDS:

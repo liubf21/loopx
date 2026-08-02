@@ -164,13 +164,13 @@ The showcase is useful when a maintainer can:
 
 ## Relationship To Other LoopX Surfaces
 
-- The [intelligent management surface](intelligent-management-surface.md)
+- The [intelligent management surface](../../surfaces/intelligent-management-surface.md)
   renders the signal inbox, anchors, review feed, and performance-review
   summary.
-- The [scenario capability gap map](scenario-capability-gap-map.md) ranks the
+- The [scenario capability gap map](../../scenario-capability-gap-map.md) ranks the
   reusable substrate that office operations shares with issue-fix, creator
   operations, benchmarks, and host integrations.
-- The [content ops surface](../reference/protocols/content-ops-surface-v0.md)
+- The [content ops surface](../../../reference/protocols/content-ops-surface-v0.md)
   is a narrower creator/self-media state contract. Office operations should use
   the same source-status, feedback, and publish-gate discipline but avoid
   assuming that every signal becomes content.

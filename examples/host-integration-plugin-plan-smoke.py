@@ -86,7 +86,7 @@ def main() -> int:
     )
     require(
         docs_index,
-        ["Host integration plugin plan v0", "reference/protocols/host-integration-plugin-plan-v0.md"],
+        ["reference/README.md"],
         source=DOCS_INDEX,
     )
     print("host-integration-plugin-plan-smoke ok")

@@ -217,7 +217,7 @@ export const sampleGoalChannelProjection: GoalChannelProjection = {
     {
       kind: "doc",
       label: "frontstage roadmap",
-      path: "docs/frontstage-channel-lease-roadmap.md",
+      path: "docs/product/roadmaps/frontstage-channel-lease-roadmap.md",
     },
     {
       kind: "local_state",

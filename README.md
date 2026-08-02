@@ -140,7 +140,7 @@ More inspectable surfaces:
   [blocked-P0 safe rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md),
   [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md), and
   [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html);
-- the [cross-runtime implementation review demo](docs/product/cross-runtime-impl-review-demo.md);
+- the [cross-runtime implementation review demo](docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md);
 - the public [user manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg).
 
 <a id="quick-start"></a>
@@ -191,12 +191,12 @@ LoopX should reuse existing state rather than overwrite it. Keep `.loopx/`,
 The exact, copy-ready setup messages and host recovery paths live in
 [Getting Started](docs/guides/getting-started.md). Host integrations can inspect
 the [Codex App host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md),
-the [Codex CLI packaged install path](docs/product/codex-cli-packaged-install.md),
+the [Codex CLI packaged install path](docs/product/runtimes/codex-cli/codex-cli-packaged-install.md),
 or the [Claude Code adapter](loopx/claude_goal_mode/README.md).
 
 For custom runners, read
 [Embed LoopX in Your Agent Runner](docs/guides/custom-agent-runner-integration.md)
-and the [worker bridge install contract](docs/worker-bridge-install-contract.md).
+and the [worker bridge install contract](docs/integrations/worker-bridge-install-contract.md).
 The core tick is deliberately small:
 
 ```text
@@ -246,10 +246,10 @@ LoopX folds its control-plane mechanics into five questions:
 | Quota and interaction contract | Decides whether a turn should deliver, ask, wait, self-repair, or stay quiet. | `loopx quota should-run`, [quota allocation](docs/quota-allocation.md) |
 | Agent runtime bridges | Keeps Codex App, Codex CLI, Claude Code, and generic workers aligned with the same guard. | `loopx heartbeat-prompt`, `loopx codex-cli-bootstrap-message`, `loopx worker-bridge` |
 | Operator surfaces | Renders compact status without making the browser the state authority. | `loopx serve-status`, [dashboard](apps/presentation/dashboard/README.md), [frontstage](https://huangruiteng.github.io/loopx/frontstage/) |
-| External projections | Projects todos and gates into collaboration surfaces while LoopX remains authoritative. | `loopx lark-kanban`, [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md) |
+| External projections | Projects todos and gates into collaboration surfaces while LoopX remains authoritative. | `loopx lark-kanban`, [Lark Kanban adapter](docs/integrations/lark-kanban-control-plane-adapter.md) |
 | Domain capabilities | Packages repeatable work lanes such as issue fixing, content operations, value connector planning, ML experiment advice, benchmark evidence, and Explore. | `loopx issue-fix`, `loopx content-ops`, `loopx value-connectors`, `loopx ml-experiment`, `loopx benchmark`, [Explore](docs/capabilities/explore/README.md) |
 | Experimental context learning | Lets named registered agents trial provider-neutral Reward Memory through ignored, default-off project configuration. OpenViking is one provider option, not a global dependency. | `loopx reward-memory experiment-status`, [Reward Memory architecture](docs/reference/protocols/reward-memory-architecture-v0.md) |
-| Governance patterns | Captures reusable routing, gate, evidence, projection, and planning shapes. | [interaction patterns](docs/interaction-pattern-catalog.md), [state model](docs/state-interaction-model.md) |
+| Governance patterns | Captures reusable routing, gate, evidence, projection, and planning shapes. | [interaction patterns](docs/concepts/interaction-pattern-catalog.md), [state model](docs/state-interaction-model.md) |
 
 The shipped primitives include lifetime goals, concrete user gates, audited safe
 fallbacks, peer todo ownership, quota and steering, compact run history,
@@ -291,7 +291,7 @@ copyable commands without changing project state.
 Safe presets cover daily triage, changelog drafts, and PR watching. The
 one-command research path coordinates proposer, executor, and
 evaluator/promoter roles while keeping quota and evidence visible. See the
-[beginner preset guide](docs/product/beginner-loop-presets.md) and
+[beginner preset guide](docs/product/foundations/beginner-loop-presets.md) and
 [Auto Research command path](docs/guides/auto-research-command-path.md).
 
 ```bash
@@ -308,7 +308,7 @@ the loop is ready to run repeatedly.
 LoopX can generate one pure, bounded turn decision from a validated receipt,
 fresh quota state, and a provider-neutral budget. The current Codex CLI
 quickstart and activation contract are documented in
-[LoopX Turn for Codex CLI](docs/product/loopx-turn-codex-cli-quickstart.md).
+[LoopX Turn for Codex CLI](docs/product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md).
 
 ### Explore Graph and Harness
 
@@ -322,14 +322,14 @@ a substitute for production approval. Start with the
 
 Use `loopx review-packet` for a compact owner-facing view of decisions,
 evidence, validation, and unresolved gates. The
-[intelligent management surface](docs/product/intelligent-management-surface.md)
+[intelligent management surface](docs/product/surfaces/intelligent-management-surface.md)
 describes the operator model; the
-[project-level reward model](docs/product/project-level-reward-model.md)
+[project-level reward model](docs/product/foundations/project-level-reward-model.md)
 describes conservative value signals across output quantity, quality, token
 cost, and user attention cost.
 
 For one concrete peer workflow, see the
-[cross-runtime implementation review demo](docs/product/cross-runtime-impl-review-demo.md):
+[cross-runtime implementation review demo](docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md):
 Claude implements and Codex reviews while LoopX keeps ownership, evidence,
 quota, and handoff explicit.
 
@@ -337,7 +337,7 @@ quota, and handoff explicit.
 
 - Local read-first UI: [dashboard guide](apps/presentation/dashboard/README.md)
 - Public-safe product view: [hosted frontstage](https://huangruiteng.github.io/loopx/frontstage/)
-- Feishu/Lark projection: [Lark Kanban adapter](docs/lark-kanban-control-plane-adapter.md)
+- Feishu/Lark projection: [Lark Kanban adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - Generic host integration: [integration guide](docs/integration.md)
 - Custom multi-agent runner:
   [custom runner integration](docs/guides/custom-agent-runner-integration.md)
@@ -369,7 +369,7 @@ App automations acknowledge the current hint through the returned
 the exact operator commands are maintained in
 [Getting Started](docs/guides/getting-started.md),
 [Quota Allocation](docs/quota-allocation.md), and
-[Long-Task Cadence Policy](docs/long-task-cadence-policy.md).
+[Long-Task Cadence Policy](docs/operations/long-task-cadence-policy.md).
 
 Before publishing public docs or examples:
 
@@ -404,11 +404,11 @@ Start with the path that matches your role. The
 - [Architecture](docs/architecture.md): lifetime-goal invariant and kernel.
 - [State Interaction Model](docs/state-interaction-model.md): actors, stores,
   interaction contract, and writeback.
-- [Interaction Pattern Catalog](docs/interaction-pattern-catalog.md):
+- [Interaction Pattern Catalog](docs/concepts/interaction-pattern-catalog.md):
   reusable routing, gate, evidence, projection, and planning patterns.
-- [Loop Engineering Principles and Pitfalls](docs/product/loop-engineering-principles-and-pitfalls.md)
+- [Loop Engineering Principles and Pitfalls](docs/product/foundations/loop-engineering-principles-and-pitfalls.md)
   and the
-  [Chinese version](docs/product/loop-engineering-principles-and-pitfalls.zh.md).
+  [Chinese version](docs/product/foundations/loop-engineering-principles-and-pitfalls.zh.md).
 - [Control-Plane Developer Course](docs/development/control-plane-course/README.md):
   nine Chinese, code-led lectures.
 - [Product Vision](docs/product/vision.md): the broader Loop Agent direction.
@@ -417,19 +417,19 @@ Start with the path that matches your role. The
 
 - [Integration Guide](docs/integration.md)
 - [Custom Agent Runner Integration](docs/guides/custom-agent-runner-integration.md)
-- [Worker Bridge Install Contract](docs/worker-bridge-install-contract.md)
+- [Worker Bridge Install Contract](docs/integrations/worker-bridge-install-contract.md)
 - [Extensions and Capabilities](docs/reference/extensions.md)
 - [Codex App Host Command Registry](docs/reference/protocols/codex-app-host-command-registry-v0.md)
 - [Heartbeat Automation Prompt](docs/heartbeat-automation-prompt.md)
-- [Lark Kanban Adapter](docs/lark-kanban-control-plane-adapter.md)
+- [Lark Kanban Adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - [Reward Memory Architecture](docs/reference/protocols/reward-memory-architecture-v0.md)
 
 ### Validate and Govern
 
 - [Quota Allocation](docs/quota-allocation.md)
 - [Public/Private Boundary](docs/public-private-boundary.md)
-- [Benchmark Developer Workflow](docs/benchmark-developer-workflow.md)
-- [Project-Level Reward Model](docs/product/project-level-reward-model.md)
+- [Benchmark Developer Workflow](docs/development/benchmark-developer-workflow.md)
+- [Project-Level Reward Model](docs/product/foundations/project-level-reward-model.md)
 - [Project Governance](GOVERNANCE.md)
 - [Authors and Contributors](AUTHORS.md)
 - [Project History](docs/project/history.md)

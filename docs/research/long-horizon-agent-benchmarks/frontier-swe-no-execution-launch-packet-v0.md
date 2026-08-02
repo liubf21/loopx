@@ -44,7 +44,7 @@ The first cloud-host action is source pinning, not task launch. A future run
 must record a public-safe source lock with the upstream repo, commit, clean
 status, runner entrypoint, and whether a wrapper or upstream patch is needed.
 If a patch is needed, it must follow the Remote Checkout Patch Protocol in
-`docs/benchmark-developer-workflow.md` and prove that scorer, task truth,
+`docs/development/benchmark-developer-workflow.md` and prove that scorer, task truth,
 prompts, hidden references, and official result parsing were not changed.
 
 FrontierSWE should inherit the Harbor-family ECS workflow shape:

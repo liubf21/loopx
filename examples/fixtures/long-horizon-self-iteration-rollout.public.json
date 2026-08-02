@@ -16,7 +16,7 @@
   "derived_from": {
     "source_docs": [
       "docs/reference/protocols/long-horizon-agent-state-protocol-v0.md",
-      "docs/product/frontstage-dashboard-interaction-baseline.md"
+      "docs/product/surfaces/frontstage-dashboard-interaction-baseline.md"
     ],
     "source_prs": [
       "https://github.com/huangruiteng/loopx/pull/617"
@@ -257,7 +257,7 @@
       "classification": "frontstage_todo_assigned_to_implementation_lane",
       "summary": "Frontstage implementation waits for the minimal rollout fixture before broader UI work starts.",
       "artifact_refs": [
-        "docs/product/frontstage-dashboard-interaction-baseline.md"
+        "docs/product/surfaces/frontstage-dashboard-interaction-baseline.md"
       ],
       "source_refs": [
         {

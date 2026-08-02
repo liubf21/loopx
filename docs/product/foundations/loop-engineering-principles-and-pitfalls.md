@@ -110,7 +110,7 @@ the system is probably just running an agent repeatedly.
 
 ## Related Notes
 
-- [Intelligent management surface](intelligent-management-surface.md)
-- [Non-technical operator status model](nontechnical-operator-status-model.md)
+- [Intelligent management surface](../surfaces/intelligent-management-surface.md)
+- [Non-technical operator status model](../surfaces/nontechnical-operator-status-model.md)
 - [Project-level reward model](project-level-reward-model.md)
 - [Reward-style replanning hints](reward-style-replanning.md)

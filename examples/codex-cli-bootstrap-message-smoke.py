@@ -122,12 +122,12 @@ def run_cli(*extra_args: str) -> str:
 def assert_docs_surface_codex_cli_quickstart() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     getting_started = (REPO_ROOT / "docs/guides/getting-started.md").read_text(encoding="utf-8")
-    product_contract = (REPO_ROOT / "docs/product/codex-cli-tui-loop.md").read_text(encoding="utf-8")
+    product_contract = (REPO_ROOT / "docs/product/runtimes/codex-cli/codex-cli-tui-loop.md").read_text(encoding="utf-8")
 
     assert "Codex CLI" in readme, readme[:500]
     assert "Visible `/goal <task_body>`; no hidden headless execution by default" in readme
-    assert "docs/product/codex-cli-packaged-install.md" in readme
-    assert "docs/product/loopx-turn-codex-cli-quickstart.md" in readme
+    assert "docs/product/runtimes/codex-cli/codex-cli-packaged-install.md" in readme
+    assert "docs/product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md" in readme
     assert "loopx codex-cli-bootstrap-message" in readme
 
     for text in (getting_started, product_contract):

@@ -16,7 +16,7 @@ It does not read private run payloads beyond the compact index fields, does not
 inspect project-specific logs, and does not mutate files.
 
 For the full JSON shape intended for dashboards and scripts, see
-[status-data-contract.md](status-data-contract.md).
+[status-data-contract.md](../status-data-contract.md).
 
 ## Command
 

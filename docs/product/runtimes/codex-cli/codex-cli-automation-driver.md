@@ -14,7 +14,7 @@ without copying App-specific heartbeat logic or turning Codex session files
 into project state.
 
 The host-neutral lifecycle is defined by
-[`loopx_turn_v0`](../reference/protocols/loopx-turn-v0.md). This page records
+[`loopx_turn_v0`](../../../reference/protocols/loopx-turn-v0.md). This page records
 the Codex CLI adapter policy and the current parity gap.
 
 ## Current Verdict

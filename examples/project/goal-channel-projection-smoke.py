@@ -127,7 +127,7 @@ def test_basic_projection() -> None:
             {
                 "kind": "doc",
                 "label": "frontstage contract",
-                "path": "docs/frontstage-channel-lease-roadmap.md",
+                "path": "docs/product/roadmaps/frontstage-channel-lease-roadmap.md",
             }
         ],
         generated_at="2026-06-20T00:03:00Z",

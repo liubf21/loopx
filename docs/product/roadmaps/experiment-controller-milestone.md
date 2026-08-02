@@ -133,7 +133,7 @@ goal/run and compact reward text but always returns `appended=false`.
 
 Browser-side append remains a separate opt-in design gate. The safety boundary
 is defined in
-[dashboard-reward-write-boundary.md](dashboard-reward-write-boundary.md).
+[dashboard-reward-write-boundary.md](../../reference/contracts/dashboard-reward-write-boundary.md).
 
 ## Controller Readiness Model
 

@@ -7,13 +7,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DOC = REPO_ROOT / "docs/product/codex-app-control-plane-hook-cache.md"
-PRODUCT_INDEX = REPO_ROOT / "docs/product/README.md"
+DOC = REPO_ROOT / "docs/product/runtimes/codex-app/codex-app-control-plane-hook-cache.md"
+RUNTIME_INDEX = REPO_ROOT / "docs/product/runtimes/codex-app/README.md"
 
 
 def main() -> int:
     doc = DOC.read_text(encoding="utf-8")
-    index = PRODUCT_INDEX.read_text(encoding="utf-8")
+    index = RUNTIME_INDEX.read_text(encoding="utf-8")
     normalized_doc = " ".join(doc.split())
 
     required_phrases = [
@@ -45,7 +45,7 @@ def main() -> int:
     for phrase in forbidden_default_claims:
         assert phrase not in lowered, phrase
 
-    assert "codex-app-control-plane-hook-cache.md" in index, "product index link"
+    assert "codex-app-control-plane-hook-cache.md" in index, "runtime index link"
 
     print("codex-app-control-plane-hook-cache-smoke ok")
     return 0

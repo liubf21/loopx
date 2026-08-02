@@ -81,7 +81,7 @@ four questions:
 
 After the read-only projection proves useful, LoopX may map compact
 control events back to host metadata or events. The stable boundary is
-[`session_runtime_controlled_writeback_v0`](reference/protocols/session-runtime-controlled-writeback-v0.md):
+[`session_runtime_controlled_writeback_v0`](../reference/protocols/session-runtime-controlled-writeback-v0.md):
 
 - operator gate requested/resolved;
 - human reward or route judgment;
@@ -161,7 +161,7 @@ python3 examples/session_runtime/session-runtime-readonly-projection-smoke.py
 ```
 
 OpenViking-style issue-fix memory is covered by the public specialization
-[`openviking_session_memory_adapter_v0`](reference/protocols/openviking-session-memory-adapter-v0.md).
+[`openviking_session_memory_adapter_v0`](../reference/protocols/openviking-session-memory-adapter-v0.md).
 That adapter keeps per-goal and per-issue session memory as compact refs and
 retrieval gates only: no live OpenViking retrieval, memory writeback, issue or
 comment body read, raw trajectory, or raw tool-output ingest is authorized by

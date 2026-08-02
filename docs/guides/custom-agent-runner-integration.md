@@ -184,4 +184,4 @@ Before calling the integration autonomous, prove that:
 For exact read/write contracts, see
 [Host Integration Surface v0](../reference/protocols/host-integration-surface-v0.md).
 For the optional typed Turn path, see
-[Run One LoopX Turn With Codex CLI](../product/loopx-turn-codex-cli-quickstart.md).
+[Run One LoopX Turn With Codex CLI](../product/runtimes/codex-cli/loopx-turn-codex-cli-quickstart.md).

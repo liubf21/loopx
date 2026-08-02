@@ -7,7 +7,7 @@ employees appear, what artifacts to inspect, and how to stop or take over.
 Use the deeper showcase and protocol docs only after this path is clear:
 
 - [Multi-agent product recipe](multi-agent-product-recipe.md)
-- [Decentralized auto-research showcase](../product/decentralized-auto-research-showcase.md)
+- [Decentralized auto-research showcase](../product/use-cases/auto-research/decentralized-auto-research-showcase.md)
 - [auto_research_role_state_machine_v0](../reference/protocols/auto-research-role-state-machine-v0.md)
 - [auto_research_role_profile_v0](../reference/protocols/auto-research-role-profile-v0.md)
 

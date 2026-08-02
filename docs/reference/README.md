@@ -5,6 +5,7 @@ stable enough to test, lint, or link from implementation.
 
 Current groups:
 
+- [Reference contracts](contracts/README.md)
 - [Protocol contracts](protocols/README.md)
 - [Project skill delivery](project-skill-delivery.md): release-owned,
   project-local skill discovery and managed-copy lifecycle.

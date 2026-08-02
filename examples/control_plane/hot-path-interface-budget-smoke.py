@@ -34,7 +34,7 @@ GOAL_ID = "interface-budget-goal"
 APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
     "codex_app_heartbeat"
 )
-CONTRACT_DOC = REPO_ROOT / "docs" / "interface-budget-contract.md"
+CONTRACT_DOC = REPO_ROOT / "docs" / "reference" / "contracts" / "interface-budget-contract.md"
 SURFACE_BUDGETS = {
     "heartbeat_prompt_json": {
         "owner": "heartbeat automation",

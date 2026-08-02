@@ -121,7 +121,7 @@ def assert_rejects_live_and_private_inputs() -> None:
 
 
 def assert_docs_expose_command_and_schema() -> None:
-    doc = (REPO_ROOT / "docs/product/cross-runtime-impl-review-demo.md").read_text(
+    doc = (REPO_ROOT / "docs/product/use-cases/cross-runtime/cross-runtime-impl-review-demo.md").read_text(
         encoding="utf-8"
     )
     assert "loopx demo impl-review --preset claude-codex --dry-run" in doc, doc

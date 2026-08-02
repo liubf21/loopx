@@ -1451,7 +1451,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "docs": [
             "docs/guides/auto-research-command-path.md",
-            "docs/product/decentralized-auto-research-showcase.md",
+            "docs/product/use-cases/auto-research/decentralized-auto-research-showcase.md",
         ],
         "boundaries": [
             "The preset reuses shared control-plane and multi-agent contracts; it is not a second scheduler or runner.",
