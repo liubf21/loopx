@@ -613,6 +613,7 @@ def _selected_goal_capability_route(goal_text: str | None) -> dict[str, Any] | N
 def _goal_start_contract(
     *,
     goal_text: str | None,
+    selected_capability_route: dict[str, Any] | None,
     connected: bool,
     agent_type: str,
     issue_fix_commands: dict[str, str],
@@ -621,7 +622,7 @@ def _goal_start_contract(
         "schema_version": GOAL_START_SCHEMA_VERSION,
         "slash_syntax": "/loopx <goal text>",
         "goal_text": goal_text,
-        "selected_capability_route": _selected_goal_capability_route(goal_text),
+        "selected_capability_route": selected_capability_route,
         "explicit_invocation_confirms_project_local_state_writes": True,
         "connect_if_needed": True,
         "bootstrap_policy": "create project-local LoopX state only when no matching registry goal exists",
@@ -946,6 +947,7 @@ def build_loopx_bootstrap_command_pack(
         "recommended_next_step": recommended_next_step,
         "goal_start_contract": _goal_start_contract(
             goal_text=normalized_goal_text,
+            selected_capability_route=_selected_goal_capability_route(goal_text),
             connected=connected,
             agent_type=agent_type,
             issue_fix_commands=issue_fix_hint_commands,
@@ -1133,6 +1135,7 @@ def _build_multi_goal_start_selection_packet(
         "recommended_next_step": recommended_next_step,
         "goal_start_contract": _goal_start_contract(
             goal_text=normalized_goal_text,
+            selected_capability_route=_selected_goal_capability_route(goal_text),
             connected=True,
             agent_type=agent_type_for_host_surface(host_surface),
             issue_fix_commands=issue_fix_commands,

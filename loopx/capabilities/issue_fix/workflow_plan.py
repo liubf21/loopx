@@ -31,7 +31,10 @@ _ISSUE_FIX_ACTION = re.compile(
     r"solve|solves|solved|solving|solver)\b"
 )
 _ISSUE_FIX_CJK_ACTION = re.compile(r"(?:修复|解决)")
-_INTENT_CLAUSE_BOUNDARY = re.compile(r"[.!?;。！？；\n]")
+_INTENT_CLAUSE_BOUNDARY = re.compile(
+    r"(?:[.!?;,。！？；，\n]|\b(?:and|but|then|while|whereas)\b|"
+    r"(?:并且|然后|同时|但是))"
+)
 _INTENT_WORD = re.compile(r"\w+")
 _MAX_INTENT_WORD_GAP = 12
 _MAX_INTENT_CHARACTER_GAP = 160
@@ -69,7 +72,7 @@ def _has_bounded_action_target(
 def match_issue_fix_goal_intent(goal_text: str | None) -> str | None:
     """Return why an explicit goal should enter the issue-fix capability."""
 
-    text = " ".join((goal_text or "").split()).casefold()
+    text = (goal_text or "").strip().casefold()
     if not text:
         return None
     if "issue-fix" in text:
