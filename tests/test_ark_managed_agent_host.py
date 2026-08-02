@@ -113,7 +113,7 @@ def test_goal_prompt_projects_goal_only_host_contract() -> None:
             ),
             "packet_schema_version": "goal_runtime_continuation_v0",
             "dispositions": ["continue_now", "defer", "complete"],
-            "defer_wake_policy_schema_version": "goal_runtime_wake_policy_v0",
+            "defer_wake_policy": "state_change_or_deadline",
             "goal_prompt_mutated": False,
         },
         "runtime_capability_reentry": {

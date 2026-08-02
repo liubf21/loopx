@@ -279,11 +279,7 @@ def test_goal_runtime_projects_typed_defer_with_recheck_delay() -> None:
     continuation = hint["goal_runtime_continuation"]
     assert continuation["disposition"] == "defer"
     assert continuation["recheck_after_seconds"] == 15 * 60
-    assert continuation["wake_policy"] == {
-        "schema_version": "goal_runtime_wake_policy_v0",
-        "mode": "state_change_or_deadline",
-        "state_change_source": "fresh_quota_state_identity",
-    }
+    assert continuation["wake_policy"] == "state_change_or_deadline"
     assert continuation["state_identity"]["reset_token"]
     assert hint["execution_phase"]["disposition"] == "goal_runtime_owned"
 
