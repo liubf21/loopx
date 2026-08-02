@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
-from typing import Any, Iterable
+from typing import Any
 
 from .contract import (
     TODO_RESUME_KIND_TODO_DONE,
@@ -18,7 +19,6 @@ from .contract import (
     normalize_todo_task_class,
     todo_done_for_status,
 )
-
 
 TODO_HANDOFF_GATE_SCHEMA_VERSION = "todo_handoff_gate_v1"
 TODO_ARCHIVE_STATE_ACTIVE = "active"
@@ -87,9 +87,8 @@ def _successor_todo_ids(
                 and resume_kind == TODO_RESUME_KIND_TODO_DONE
                 and normalize_todo_id(resume_target) == gate_id
             )
-        ):
-            if candidate_id not in successor_ids:
-                successor_ids.append(candidate_id)
+        ) and candidate_id not in successor_ids:
+            successor_ids.append(candidate_id)
     return successor_ids
 
 
@@ -155,6 +154,7 @@ def _compact_handoff_gate(
         "route_continuation_reason",
         "route_id",
         "route_key",
+        "next_due_at",
     ):
         value = gate.get(key)
         if value is not None:

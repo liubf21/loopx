@@ -10,6 +10,7 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
 )
 from ..agents.capability_gate import missing_required_capabilities
+from ..runtime.time import now_utc
 from .claim_visibility import (
     build_agent_claim_scoped_open_items,
     build_todo_claim_visibility_lanes,
@@ -24,6 +25,7 @@ from .deferred_resume import (
     build_todo_resume_blocked_visibility_lanes,
     resolve_capacity_resume_summary,
 )
+from .frontier_deadline import todo_summary_frontier_deadline
 from .handoff_gate import build_todo_handoff_gate_lanes
 from .projection import (
     todo_item_is_actionable_open,
@@ -678,6 +680,10 @@ def _compact_quota_payload_nested_warning(value: Any) -> Any:
 
 def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str, Any]:
     """Keep quota hot-path todo summaries bounded without changing decision input."""
+    frontier_deadline = todo_summary_frontier_deadline(
+        summary,
+        current_time=now_utc(),
+    )
     compact: dict[str, Any] = {}
     compacted_lanes: dict[str, dict[str, int]] = {}
     for key, value in summary.items():
@@ -697,6 +703,8 @@ def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str,
             compact[key] = _compact_quota_payload_nested_warning(value)
         else:
             compact[key] = value
+    if frontier_deadline:
+        compact["frontier_deadline"] = frontier_deadline
     compact["payload_compaction"] = {
         "schema_version": QUOTA_PAYLOAD_COMPACTION_SCHEMA_VERSION,
         "item_text_limit": QUOTA_PAYLOAD_ITEM_TEXT_LIMIT,

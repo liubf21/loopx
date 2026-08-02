@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 from itertools import product
 
 import pytest
 
 from loopx.control_plane.scheduler.execution_context import (
-    build_goal_runtime_continuation,
     GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
     ExecutionMode,
     HostSurface,
     SchedulerOwner,
     SchedulerRuntimeProfile,
+    build_goal_runtime_continuation,
     render_scheduler_execution_args,
     resolve_scheduler_execution_context,
     scheduler_execution_context_for_runtime_profile,
@@ -21,6 +22,9 @@ from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
+)
+from loopx.control_plane.todos.quota_summary import (
+    compact_quota_todo_summary_for_payload,
 )
 from loopx.control_plane.work_items.interaction_contract import (
     interaction_next_cli_actions,
@@ -416,6 +420,424 @@ def test_goal_runtime_mixed_frontier_continues_runnable_advancement() -> None:
     assert quota["scheduler_hint"]["goal_runtime_continuation"]["disposition"] == (
         "continue_now"
     )
+
+
+def test_goal_runtime_defer_uses_earliest_frontier_transition() -> None:
+    """The typed Defer recheck must follow the soonest due monitor on the
+    whole frontier, not a later monitor or the generic backoff interval."""
+
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_soon",
+                "target_key": "pr-ci-soon",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=20)).isoformat(),
+            },
+            {
+                "todo_id": "todo_later",
+                "target_key": "pr-review-later",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=120)).isoformat(),
+            },
+        ]
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            include_detail=True,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    # The Goal deadline is derived from the frontier, independent of the
+    # coarser host-automation cadence buckets.
+    assert continuation["recheck_after_seconds"] == 20 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert continuation["wake_policy"] == "state_change_or_deadline"
+    assert hint["cold_path_detail"]["frontier_recheck"][
+        "frontier_recheck_source"
+    ] == "continuous_monitor"
+    assert "frontier_recheck" not in hint
+
+
+def test_goal_runtime_defer_uses_user_gate_deadline_before_monitors() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_ci",
+                "target_key": "pr-ci",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=45)).isoformat(),
+            }
+        ],
+        "gate_open_items": [
+            {
+                "todo_id": "todo_gate",
+                "task_class": "user_gate",
+                "next_due_at": (now + timedelta(minutes=10)).isoformat(),
+            }
+        ],
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            include_detail=True,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["recheck_after_seconds"] == 10 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert hint["cold_path_detail"]["frontier_recheck"][
+        "frontier_recheck_source"
+    ] == "user_gate"
+
+
+def test_quota_human_gate_uses_future_user_gate_deadline_before_monitor() -> None:
+    from loopx.control_plane.scheduler import monitor_todo as monitor_todo_mod
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    agent_id = "human-gate-frontier-agent"
+    status = quota_status_payload(
+        goal_id="human-gate-frontier-fixture",
+        status="active",
+        recommended_action="Wait for owner approval.",
+        agent_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "Agent Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "deferred_count": 0,
+            "monitor_open_items": [
+                {
+                    "todo_id": "todo_ci",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] CI monitor",
+                    "target_key": "pr-ci",
+                    "cadence": "60m",
+                    "next_due_at": (now + timedelta(minutes=45)).isoformat(),
+                }
+            ],
+        },
+        user_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "User Todo",
+            "total_count": 1,
+            "open_count": 1,
+            "done_count": 0,
+            "deferred_count": 0,
+            "resume_blocked_items": [
+                {
+                    "todo_id": "todo_owner_gate",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "user_gate",
+                    "text": "[P0] Owner approval",
+                    "resume_when": "external:approval",
+                    "resume_ready": False,
+                    "next_due_at": (now + timedelta(minutes=7)).isoformat(),
+                }
+            ],
+        },
+        coordination={"registered_agents": [agent_id]},
+        claim_scope_agent_id=agent_id,
+    )
+
+    original_scheduler_now = scheduler_hint_mod.now_utc
+    original_monitor_now = monitor_todo_mod.now_utc
+    original_quota_now = quota_summary_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    monitor_todo_mod.now_utc = lambda: now
+    quota_summary_mod.now_utc = lambda: now
+    try:
+        quota = build_quota_should_run(
+            status,
+            goal_id="human-gate-frontier-fixture",
+            agent_id=agent_id,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_scheduler_now
+        monitor_todo_mod.now_utc = original_monitor_now
+        quota_summary_mod.now_utc = original_quota_now
+
+    continuation = quota["scheduler_hint"]["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert quota["scheduler_hint"]["reason_code"] == "interaction_blocking_user_gate"
+    assert continuation["recheck_after_seconds"] == 7 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
+def test_quota_payload_compaction_preserves_earliest_frontier_deadline() -> None:
+    from loopx.control_plane.scheduler import monitor_todo as monitor_todo_mod
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    agent_id = "frontier-deadline-agent"
+    watch_lane_ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": now.isoformat(),
+        "agent_id": agent_id,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["watch_lane_continuation"],
+            },
+        },
+    }
+    status = quota_status_payload(
+        goal_id="frontier-deadline-compaction-fixture",
+        status="active",
+        recommended_action="Wait for the next monitor transition.",
+        agent_todos={
+            "schema_version": "todo_summary_v0",
+            "source_section": "Agent Todo",
+            "total_count": 3,
+            "open_count": 3,
+            "done_count": 0,
+            "deferred_count": 0,
+            "monitor_open_items": [
+                {
+                    "todo_id": "todo_unscheduled_monitor_a",
+                    "index": 0,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Unscheduled monitor A",
+                    "target_key": "unscheduled-monitor-a",
+                    "cadence": "60m",
+                },
+                {
+                    "todo_id": "todo_unscheduled_monitor_b",
+                    "index": 1,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Unscheduled monitor B",
+                    "target_key": "unscheduled-monitor-b",
+                    "cadence": "60m",
+                },
+                {
+                    "todo_id": "todo_earliest_monitor",
+                    "index": 2,
+                    "status": "open",
+                    "task_class": "continuous_monitor",
+                    "text": "[P1] Earliest monitor",
+                    "target_key": "earliest-monitor",
+                    "cadence": "60m",
+                    "next_due_at": (now + timedelta(minutes=10)).isoformat(),
+                },
+            ],
+        },
+        latest_runs=[watch_lane_ack],
+        claim_scope_agent_id=agent_id,
+        coordination={"registered_agents": [agent_id]},
+    )
+
+    original_scheduler_now = scheduler_hint_mod.now_utc
+    original_monitor_now = monitor_todo_mod.now_utc
+    original_quota_now = quota_summary_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    monitor_todo_mod.now_utc = lambda: now
+    quota_summary_mod.now_utc = lambda: now
+    try:
+        quota = build_quota_should_run(
+            status,
+            goal_id="frontier-deadline-compaction-fixture",
+            agent_id=agent_id,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_scheduler_now
+        monitor_todo_mod.now_utc = original_monitor_now
+        quota_summary_mod.now_utc = original_quota_now
+
+    compacted_summary = quota["agent_todo_summary"]
+    compacted_monitors = compacted_summary["monitor_open_items"]
+    assert [item["todo_id"] for item in compacted_monitors] == [
+        "todo_unscheduled_monitor_a",
+        "todo_unscheduled_monitor_b",
+    ]
+    assert compacted_summary["frontier_deadline"]["identity"] == (
+        "todo_earliest_monitor"
+    )
+    continuation = quota["scheduler_hint"]["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert continuation["recheck_after_seconds"] == 10 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
+def test_frontier_deadline_projection_does_not_reorder_selection_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loopx.control_plane.todos import quota_summary as quota_summary_mod
+
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(quota_summary_mod, "now_utc", lambda: now)
+    summary = {
+        "first_executable_items": [
+            {"todo_id": "selected_first", "index": 0},
+            {
+                "todo_id": "deadline_second",
+                "index": 1,
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            },
+        ],
+        "monitor_open_items": [
+            {
+                "todo_id": "deadline_second",
+                "index": 1,
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            }
+        ],
+    }
+
+    compacted = compact_quota_todo_summary_for_payload(summary)
+
+    assert [item["todo_id"] for item in compacted["first_executable_items"]] == [
+        "selected_first",
+        "deadline_second",
+    ]
+    assert compacted["frontier_deadline"]["identity"] == "deadline_second"
+
+
+def test_goal_runtime_quiet_wait_uses_non_monitor_frontier_deadline() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["interaction_contract"]["mode"] = "quiet_skip"
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_monitor",
+                "target_key": "pr-review",
+                "cadence": "60m",
+            }
+        ],
+        "deferred_resume_candidates": [
+            {
+                "todo_id": "todo_resume",
+                "task_class": "advancement_task",
+                "resume_ready": True,
+                "next_due_at": (now + timedelta(minutes=7)).isoformat(),
+            }
+        ],
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            include_detail=True,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert hint["action"] == "backoff_until_state_change"
+    assert continuation["recheck_after_seconds"] == 7 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+    assert hint["cold_path_detail"]["frontier_recheck"][
+        "frontier_recheck_source"
+    ] == "advancement_task"
+
+
+def test_goal_runtime_defer_uses_exact_due_inside_host_floor() -> None:
+    from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_mod
+
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+    now = datetime(2026, 8, 2, 6, 0, 0, tzinfo=UTC)
+    payload = _monitor_wait_payload()
+    payload["agent_todo_summary"] = {
+        "monitor_open_items": [
+            {
+                "todo_id": "todo_due_soon",
+                "target_key": "pr-ci-due-soon",
+                "cadence": "60m",
+                "next_due_at": (now + timedelta(minutes=5)).isoformat(),
+            }
+        ]
+    }
+
+    original_now = scheduler_hint_mod.now_utc
+    scheduler_hint_mod.now_utc = lambda: now
+    try:
+        hint = build_scheduler_hint(
+            payload,
+            scheduler_execution_context=context,
+        )
+    finally:
+        scheduler_hint_mod.now_utc = original_now
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["recheck_after_seconds"] == 5 * 60
+    assert continuation["recheck_source"] == "frontier_earliest_material_transition"
+
+
+def test_goal_runtime_defer_falls_back_to_codex_interval_without_frontier() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL
+    )
+
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        scheduler_execution_context=context,
+    )
+
+    continuation = hint["goal_runtime_continuation"]
+    assert continuation["disposition"] == "defer"
+    assert "recheck_source" not in continuation
+    assert continuation["recheck_after_seconds"] == 15 * 60
+    assert continuation["wake_policy"] == "state_change_or_deadline"
+    assert "frontier_recheck" not in hint
 
 
 def test_non_goal_runtime_does_not_receive_goal_continuation() -> None:

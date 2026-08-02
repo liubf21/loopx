@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..runtime.time import now_utc, utc_isoformat
+from ..todos.frontier_deadline import build_frontier_recheck_plan
 from . import ack as scheduler_ack
 from .arbitration import (
     SchedulerArbitration,
@@ -17,8 +18,8 @@ from .arbitration import (
     build_scheduler_arbitration,
 )
 from .execution_context import (
-    SchedulerOwner,
     SchedulerExecutionContextResolution,
+    SchedulerOwner,
     SchedulerRuntimeProfile,
     apply_scheduler_execution_context,
     resolve_scheduler_execution_context,
@@ -37,7 +38,6 @@ from .state_transition_rules import (
     decide_scheduler_host_transition,
 )
 from .time import parse_scheduler_timestamp
-
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
@@ -383,7 +383,7 @@ def _monitor_item_identity(item: dict[str, Any]) -> str:
 
 
 def _minutes_until(value: datetime, current_time: datetime) -> int:
-    return max(1, int(math.ceil((value - current_time).total_seconds() / 60)))
+    return max(1, math.ceil((value - current_time).total_seconds() / 60))
 
 
 def _cap_monitor_progression(*, cap_minutes: int, host_floor_minutes: int) -> list[int]:
@@ -925,6 +925,10 @@ class _SchedulerHintBuilder:
         )
         if notification_cooldown:
             scheduler_hint["user_gate_notification_cooldown"] = notification_cooldown
+        frontier_recheck = build_frontier_recheck_plan(
+            self.payload,
+            current_time=now_utc(),
+        )
         if self.include_detail:
             scheduler_hint["cold_path_detail"] = {
                 "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,
@@ -941,7 +945,19 @@ class _SchedulerHintBuilder:
                 scheduler_hint["cold_path_detail"]["cadence_context"] = (
                     cadence_context_detail
                 )
-        return apply_scheduler_execution_context(scheduler_hint, self.execution_context)
+            if frontier_recheck:
+                scheduler_hint["cold_path_detail"]["frontier_recheck"] = (
+                    frontier_recheck
+                )
+        return apply_scheduler_execution_context(
+            scheduler_hint,
+            self.execution_context,
+            frontier_recheck_after_seconds=(
+                frontier_recheck.get("frontier_recheck_after_seconds")
+                if frontier_recheck
+                else None
+            ),
+        )
 
 
 def build_scheduler_hint(

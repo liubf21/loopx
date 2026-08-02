@@ -150,6 +150,10 @@ and capability binding ref. Switching work or admission authority therefore
 wakes the Goal even when the rendered recommendation is unchanged; diagnostic
 notes and other non-contract detail do not create a wakeup.
 
+When the frontier carries explicit `next_due_at` values, the deadline is the
+earliest exact due time. The coarser host cadence remains an automation concern
+and must not delay a Goal-runtime wake past that boundary.
+
 `defer` is a whole-frontier decision, not a per-PR wait. A quiet CI/review
 monitor remains auxiliary context while any independent advancement todo is
 runnable, so that mixed frontier projects `continue_now`. Only a frontier with
