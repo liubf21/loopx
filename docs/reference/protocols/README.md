@@ -72,6 +72,7 @@ scanning a chronological list.
 - [`issue_fix_acceptance_loop_v0`](issue-fix-acceptance-loop-v0.md): Issue-fix acceptance loop v0
 - [`value_connector_plan_v0`](value-connector-plan-v0.md): Value connector plan v0
 - [`x_public_channel_ops_v0`](x-public-channel-ops-v0.md): X public channel operations v0
+- [`content_ops_item_v0`](content-ops-item-lifecycle-v0.md): provider-neutral content item lifecycle v0
 
 ## Quality, Review, And Release
 
