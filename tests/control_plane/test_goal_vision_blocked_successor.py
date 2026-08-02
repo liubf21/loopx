@@ -1070,6 +1070,36 @@ def test_refresh_ack_recovers_only_the_current_agent_frontier(tmp_path) -> None:
     assert payload["autonomous_replan_ack"]["frontier_identity"] == current_frontier
 
 
+def test_watch_only_replan_downgrades_accountable_delivery_outcome(tmp_path) -> None:
+    registry_path, _, _ = write_cli_fixture(
+        tmp_path / "fixture",
+        scoped_agents=True,
+    )
+
+    payload = refresh_state_run(
+        registry_path=registry_path,
+        runtime_root_override=None,
+        goal_id="half-speed",
+        project=None,
+        state_file=None,
+        classification="bounded_progress_segment",
+        recommended_action="Keep watching the unchanged external dependency.",
+        next_action="Keep watching the unchanged external dependency.",
+        delivery_batch_scale="single_surface",
+        delivery_outcome="outcome_progress",
+        agent_id=SCOPED_AGENT_ID,
+        progress_scope="goal",
+        autonomous_replan_recorded=True,
+        repair_delta_kinds=["active_state_next_action"],
+        dry_run=True,
+        sync_global=False,
+    )
+
+    assert payload["autonomous_replan_recorded"] is True
+    assert payload["repair_delta_contract"]["delta_present"] is True
+    assert payload["delivery_outcome"] == "outcome_gap"
+
+
 def test_status_projects_exact_blocker_and_resume_contract() -> None:
     payload = _status_payload(waiting_status="deferred")
     attach_agent_lane_next_actions(payload, agent_id=AGENT_ID)
