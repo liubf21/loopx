@@ -153,6 +153,12 @@ def test_change_quality_catalog_exposes_default_off_managed_workflow() -> None:
     )
 
 
+def test_issue_fix_catalog_is_default_off() -> None:
+    capability = build_capability_detail_packet("issue-fix")["capability"]
+
+    assert capability["default_enabled"] is False
+
+
 def test_project_skill_delivery_catalog_is_host_neutral() -> None:
     capability = build_capability_detail_packet("project-skill-delivery")[
         "capability"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shlex
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -20,74 +19,6 @@ ISSUE_FIX_GOAL_CANDIDATE_DISCOVERY_COMMAND_TEMPLATE = (
     '"$(gh repo view --json nameWithOwner --jq .nameWithOwner)" '
     "--state open --limit 20 --json number,title,url,labels"
 )
-_PUBLIC_GITHUB_ISSUE_OR_PR = re.compile(
-    r"https://github\.com/[^/\s]+/[^/\s]+/(?:issues|pull)/[1-9][0-9]*"
-)
-_ISSUE_FIX_TARGET = re.compile(
-    r"\b(?:github issue|issue|issues|pull request|pull requests|pr)\b"
-)
-_ISSUE_FIX_ACTION = re.compile(
-    r"\b(?:fix|fixes|fixed|fixing|repair|repairs|resolve|resolves|"
-    r"solve|solves|solved|solving|solver)\b"
-)
-_ISSUE_FIX_CJK_ACTION = re.compile(r"(?:修复|解决)")
-_INTENT_CLAUSE_BOUNDARY = re.compile(
-    r"(?:[.!?;,。！？；，\n]|\b(?:and|but|then|while|whereas)\b|"
-    r"(?:并且|然后|同时|但是))"
-)
-_INTENT_WORD = re.compile(r"\w+")
-_MAX_INTENT_WORD_GAP = 12
-_MAX_INTENT_CHARACTER_GAP = 160
-
-
-def _shares_bounded_intent_phrase(
-    text: str,
-    left: re.Match[str],
-    right: re.Match[str],
-) -> bool:
-    """Return whether two intent terms belong to one bounded phrase."""
-
-    first, second = sorted((left, right), key=lambda match: match.start())
-    gap = text[first.end() : second.start()]
-    if _INTENT_CLAUSE_BOUNDARY.search(gap):
-        return False
-    return (
-        len(gap) <= _MAX_INTENT_CHARACTER_GAP
-        and len(_INTENT_WORD.findall(gap)) <= _MAX_INTENT_WORD_GAP
-    )
-
-
-def _has_bounded_action_target(
-    text: str,
-    targets: Sequence[re.Match[str]],
-) -> bool:
-    actions = [*_ISSUE_FIX_ACTION.finditer(text), *_ISSUE_FIX_CJK_ACTION.finditer(text)]
-    return any(
-        _shares_bounded_intent_phrase(text, action, target)
-        for action in actions
-        for target in targets
-    )
-
-
-def match_issue_fix_goal_intent(goal_text: str | None) -> str | None:
-    """Return why an explicit goal should enter the issue-fix capability."""
-
-    text = (goal_text or "").strip().casefold()
-    if not text:
-        return None
-    if "issue-fix" in text:
-        return "issue_fix_intent"
-    public_targets = list(_PUBLIC_GITHUB_ISSUE_OR_PR.finditer(text))
-    if public_targets and _has_bounded_action_target(text, public_targets):
-        return "public_issue_or_pr_reference"
-    issue_targets = list(_ISSUE_FIX_TARGET.finditer(text))
-    return (
-        "issue_fix_intent"
-        if issue_targets and _has_bounded_action_target(text, issue_targets)
-        else None
-    )
-
-
 def _command_arg(value: str) -> str:
     if value.startswith("<") and value.endswith(">"):
         return value

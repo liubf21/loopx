@@ -203,6 +203,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "provider_id": "loopx-core",
         "title": "Repo issue-fix loop",
         "status": "active-preview",
+        "default_enabled": False,
         "real_world_anchor": "open-source issue/PR solver",
         "user_value": (
             "Turn a public GitHub issue or PR signal into a caller-approved "

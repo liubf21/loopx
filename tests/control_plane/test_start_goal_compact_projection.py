@@ -10,6 +10,7 @@ from typing import Any
 
 from loopx.bootstrap_command_pack import (
     GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION,
+    build_loopx_bootstrap_command_pack,
     build_start_goal_guided_packet,
     render_start_goal_guided_markdown,
 )
@@ -174,6 +175,7 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
             "repository issues in one long-running Goal."
         ),
         available_capabilities=["network"],
+        capability_route="issue-fix",
     )
 
     transaction = payload["guided_transaction"]
@@ -183,8 +185,8 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
     assert route == {
         "schema_version": "loopx_goal_capability_route_v0",
         "capability_id": "issue-fix",
-        "selection_source": "explicit_goal_text",
-        "selection_reason_code": "issue_fix_intent",
+        "selection_source": "explicit_capability_route",
+        "selection_reason_code": "capability_route_enabled",
         "entry_command_key": "issue_fix_workflow_plan_template",
         "admission_command_key": "issue_fix_feasibility_template",
         "candidate_authority": "public_open_tracker_issue",
@@ -242,6 +244,9 @@ def test_issue_fix_goal_projects_capability_guard_without_todo_fields(
         route["entry_command_key"]
     ]
     assert f"--goal-id {GOAL_ID}" in commands[route["entry_command_key"]]
+    assert "--capability-route issue-fix" in payload["command_pack"][
+        "canonical_cli_command"
+    ]
     assert guard["candidate_preflight"]["required_before_implementation"] is True
     assert commands[route["admission_command_key"]].startswith(
         "loopx issue-fix feasibility "
@@ -407,57 +412,14 @@ def test_candidate_preflight_contract_describes_receipt_shapes() -> None:
         )
 
 
-def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None:
+def test_goal_text_never_selects_capability_route_without_switch(
+    tmp_path: Path,
+) -> None:
     project = _write_connected_project(tmp_path)
-    payload = build_start_goal_guided_packet(
-        project=project,
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        cli_bin="loopx",
-        host_surface="ark-managed-agent",
-        goal_text="Improve the public onboarding documentation.",
-    )
-
-    transaction = payload["guided_transaction"]
-    assert "selected_capability_route" not in transaction
-    assert transaction["ordered_steps"][-1]["id"] == "quota_guard"
-    assert all(
-        step["id"] != "scheduler_ack_when_needed"
-        for step in transaction["ordered_steps"]
-    )
-    assert (
-        payload["command_pack"]["goal_start_contract"]["selected_capability_route"]
-        is None
-    )
-    referenced = build_start_goal_guided_packet(
-        project=project,
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        cli_bin="loopx",
-        host_surface="ark-managed-agent",
-        goal_text="Fix https://github.com/owner/repo/pull/42.",
-    )
-    assert (
-        referenced["guided_transaction"]["selected_capability_route"][
-            "selection_reason_code"
-        ]
-        == "public_issue_or_pr_reference"
-    )
-    referenced_after_colon = build_start_goal_guided_packet(
-        project=project,
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        cli_bin="loopx",
-        host_surface="ark-managed-agent",
-        goal_text="Fix: https://github.com/owner/repo/issues/42.",
-    )
-    assert (
-        referenced_after_colon["guided_transaction"]["selected_capability_route"][
-            "selection_reason_code"
-        ]
-        == "public_issue_or_pr_reference"
-    )
     for goal_text in (
+        "Improve the public onboarding documentation.",
+        "Fix https://github.com/owner/repo/pull/42.",
+        "Fix: https://github.com/owner/repo/issues/42.",
         "Review https://github.com/owner/repo/pull/42.",
         "Merge https://github.com/owner/repo/pull/42 after checks pass.",
         "Monitor https://github.com/owner/repo/pull/42.",
@@ -470,32 +432,85 @@ def test_non_issue_goal_does_not_select_capability_route(tmp_path: Path) -> None
         "Fix generic tests and follow the PR lifecycle.",
         "Resolve generic test failures\nTrack the PR lifecycle.",
         "Repair the adapter, then verify its pull request lifecycle.",
+        "Use issue-fix to resolve the repository issue.",
     ):
-        unrelated = build_start_goal_guided_packet(
+        payload = build_start_goal_guided_packet(
             project=project,
             goal_id=GOAL_ID,
             agent_id=AGENT_ID,
             cli_bin="loopx",
             host_surface="ark-managed-agent",
             goal_text=goal_text,
+            available_capabilities=["network", "issue-fix"],
         )
-        assert "selected_capability_route" not in unrelated["guided_transaction"]
+        transaction = payload["guided_transaction"]
+        assert "selected_capability_route" not in transaction
+        assert transaction["ordered_steps"][-1]["id"] == "quota_guard"
+        assert (
+            payload["command_pack"]["goal_start_contract"]
+            ["selected_capability_route"]
+            is None
+        )
 
-    explicit_issue_fix = build_start_goal_guided_packet(
+    explicit_route = build_start_goal_guided_packet(
         project=project,
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
         cli_bin="loopx",
         host_surface="ark-managed-agent",
-        goal_text=(
-            "Fix the repository issue and follow its PR lifecycle through review."
-        ),
+        goal_text="Improve the public onboarding documentation.",
+        capability_route="issue-fix",
     )
+    route = explicit_route["guided_transaction"]["selected_capability_route"]
+    assert route["selection_source"] == "explicit_capability_route"
+    assert route["selection_reason_code"] == "capability_route_enabled"
+
+
+def test_explicit_capability_route_survives_compact_detail_readback(
+    tmp_path: Path,
+) -> None:
+    project = _write_connected_project(tmp_path)
+    compact = build_start_goal_guided_packet(
+        project=project,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        cli_bin="loopx",
+        host_surface="ark-managed-agent",
+        goal_text=GOAL_TEXT,
+        capability_route="issue-fix",
+    )
+
+    detail_command = compact["command_pack"]["detail_command"]
+    assert "--capability-route issue-fix" in detail_command
+    restored = _invoke_detail_command(detail_command)
     assert (
-        explicit_issue_fix["guided_transaction"]["selected_capability_route"]
-        ["selection_reason_code"]
-        == "issue_fix_intent"
+        restored["guided_transaction"]["selected_capability_route"]
+        == compact["guided_transaction"]["selected_capability_route"]
     )
+
+
+def test_bootstrap_message_does_not_reintroduce_semantic_route_selection(
+    tmp_path: Path,
+) -> None:
+    project = _write_connected_project(tmp_path)
+    common = {
+        "project": project,
+        "goal_id": GOAL_ID,
+        "agent_id": AGENT_ID,
+        "cli_bin": "loopx",
+        "host_surface": "ark-managed-agent",
+        "goal_text": "Fix https://github.com/owner/repo/issues/42.",
+    }
+
+    plain = build_loopx_bootstrap_command_pack(**common)
+    routed = build_loopx_bootstrap_command_pack(
+        **common,
+        capability_route="issue-fix",
+    )
+
+    marker = "The explicit capability route selects issue-fix."
+    assert marker not in plain["message"]
+    assert marker in routed["message"]
 
 
 def test_explicit_cold_path_restores_the_complete_command_pack(tmp_path: Path) -> None:
@@ -603,6 +618,7 @@ def test_projection_preserves_multi_goal_selection_actions(tmp_path: Path) -> No
         "host_surface": "codex-app",
         "goal_text": GOAL_TEXT,
         "available_capabilities": ["network"],
+        "capability_route": "issue-fix",
     }
     compact = build_start_goal_guided_packet(
         **common,
@@ -619,6 +635,11 @@ def test_projection_preserves_multi_goal_selection_actions(tmp_path: Path) -> No
         "select_goal",
     ]
     assert _host_shadow_document(compact) == _host_shadow_document(detailed)
+    for choice in compact["goal_selection_gate"]["choices"]:
+        assert "--capability-route issue-fix" in choice["rerun_command"]
+    assert "--capability-route issue-fix" in compact["command_pack"][
+        "detail_command"
+    ]
 
 
 def test_start_goal_keeps_the_requested_linked_worktree(
@@ -734,6 +755,8 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
                 AGENT_ID,
                 "--goal-text",
                 GOAL_TEXT,
+                "--capability-route",
+                "issue-fix",
             ]
         )
 
@@ -755,6 +778,7 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
     ]
     ide = next(choice for choice in choices if choice["host_surface"] == "codex-ide-plugin")
     assert "--host-surface codex-ide-plugin" in ide["rerun_command"]
+    assert "--capability-route issue-fix" in ide["rerun_command"]
 
 
 def test_ark_managed_agent_plans_todos_before_one_shot_goal_activation(
