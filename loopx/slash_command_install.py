@@ -113,11 +113,11 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "command": "/loopx",
             "name": "loopx",
             "description": "Inspect LoopX state, or start concrete project work when arguments are provided.",
-            "argument_hint": "[task text]",
+            "argument_hint": "[--capability-route issue-fix] [task text]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
                 "Before start-goal, identify the exact current host: use `codex-app` for the desktop app with automation tools, `codex-app-ssh` for the desktop app over SSH without automation tools, `codex-ide-plugin` only for the IDE plugin, `codex-cli-tui` for the terminal TUI, `opencode` for OpenCode, or `ark-managed-agent` for Ark Managed Agent.",
-                f"If arguments are present, preserve them as the task text and run `{cli_bin} start-goal --guided --project . --goal-text \"$ARGUMENTS\" --host-surface <exact-current-host>` before planning work. If the host is unclear, omit the flag once and follow the returned host-surface selection gate.",
+                f"If arguments are present, parse only an optional leading `--capability-route issue-fix` as an explicit product-route switch, remove that prefix from the task text, and pass it to `{cli_bin} start-goal --guided --project . --goal-text \"<remaining exact arguments>\" --host-surface <exact-current-host>`. Without that switch, preserve all arguments as task text and do not add a capability route. Never infer a route from issue/PR wording or URLs. If the host is unclear, omit the host flag once and follow the returned host-surface selection gate.",
                 f"Treat the returned `ordered_steps` as a required transaction. On first connection, run its bootstrap command, then plan and execute at least one business `{cli_bin} todo add` derived from `$ARGUMENTS` before substantive task work. Encode priority in the todo text such as `[P0]`; `{cli_bin} todo add` has no `--priority` flag. Do not continue until LoopX status shows that business Agent Todo.",
                 "If `selected_capability_route` is present, run its entry and admission commands before substantive implementation. Keep capability facts in capability-owned state; generic Todos remain scheduling records.",
                 f"Before dependent work, persist material scope, acceptance, or non-goal changes in current Todo evidence and the next executable Todo; then run `{cli_bin} refresh-state` and verify quota readback. Chat/model summaries are not durable state.",
@@ -245,9 +245,13 @@ def materialize_loopx_entry_skill(
             f"`{host_surface}`; do not infer or substitute another host surface."
         )
         instructions[2] = (
-            f"If arguments are present, preserve them as the task text and run "
-            f'`{cli_bin} start-goal --guided --project . --goal-text "$ARGUMENTS" '
-            f"--host-surface {host_surface}` before planning work."
+            f"If arguments are present, parse only an optional leading "
+            "`--capability-route issue-fix` as an explicit product-route switch, "
+            "remove that prefix from the task text, and pass it to "
+            f'`{cli_bin} start-goal --guided --project . --goal-text "<remaining exact arguments>" '
+            f"--host-surface {host_surface}`. Without that switch, preserve all "
+            "arguments as task text and do not add a capability route. Never infer "
+            "a route from issue/PR wording or URLs."
         )
         spec = {**spec, "instructions": instructions}
     skill_path = skills_dir / "loopx" / "SKILL.md"

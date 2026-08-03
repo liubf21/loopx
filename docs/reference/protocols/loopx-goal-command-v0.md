@@ -140,14 +140,15 @@ quota projections already use todo index as the same-priority tie-breaker, so
 the first written `P0` outranks the second written `P0` without adding a new
 rank field.
 
-## Issue-Fix Domain Route
+## Explicit Issue-Fix Capability Route
 
-When `/loopx <goal text>` explicitly asks to fix or resolve a GitHub issue/PR,
-optionally by public URL, the planner should preview the dedicated capability
-route before writing todos. A URL alone identifies an object, not an action:
-review, merge, monitor, and summary requests stay on their own routes.
+Goal text never selects a product capability. To enter the issue-fix route, the
+caller must explicitly pass `--capability-route issue-fix` to `start-goal` (or
+use the equivalent explicit host switch). Issue/PR wording, a public URL, or the
+literal string `issue-fix` remain objective text only and grant no route.
 
-`start-goal` projects that decision as a typed `selected_capability_route`.
+`start-goal` projects that explicit switch as a typed
+`selected_capability_route`.
 This is a bootstrap-only selection, not later-turn authority. The guided
 transaction first persists candidate admission in capability-owned state.
 Missing evidence projects `evidence_required`; unresolved cross-references,

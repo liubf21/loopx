@@ -46,6 +46,8 @@ def test_host_materialization_installs_generated_loopx_entry_skill(
     assert 'name: "loopx"' in skill_text
     assert "`ark-managed-agent` for Ark Managed Agent" in skill_text
     assert "Ark Managed Agent one-shot Goal submission" in skill_text
+    assert "optional leading `--capability-route issue-fix`" in skill_text
+    assert "Never infer a route from issue/PR wording or URLs" in skill_text
     assert "run its exact CLI `interaction_contract` or quota command first" in skill_text
     assert "do not call `start-goal` or bootstrap another goal" in skill_text
     assert materialize_loopx_entry_skill(
@@ -76,6 +78,7 @@ def test_host_materialization_can_bind_exact_managed_agent_surface(
     assert "Chat/model summaries are not durable state" in skill_text
     assert "run its entry and admission commands" in skill_text
     assert "generic Todos remain scheduling records" in skill_text
+    assert "do not add a capability route" in skill_text
     assert "run its exact CLI `interaction_contract` or quota command first" in skill_text
     assert "Only when no active goal contract is present" in skill_text
 

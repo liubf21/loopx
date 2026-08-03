@@ -31,15 +31,19 @@ LoopX slash command plus arguments, do not treat it as ordinary chat.
 Recognized project-local goal-start command:
 
 - `/loopx <goal text>`
+- `/loopx --capability-route issue-fix <goal text>`
 
 Recognized repo-review commands:
 
 - `/loopx-pr-review`
 - `/loopx-pr-review <time window or filter text>`
 
-If there is any non-whitespace text after `/loopx`, it is goal text. Preserve
-that exact trailing text, pass it to the guided start preview, and do not
-downgrade the request into a status or inspection turn.
+If the text after `/loopx` begins with the exact optional prefix
+`--capability-route issue-fix`, remove only that prefix from the goal text and
+pass it as the explicit start-goal route switch. Otherwise every non-whitespace
+character after `/loopx` is goal text. Never infer a product capability route
+from issue/PR wording, URLs, or semantic similarity. Do not downgrade either
+form into a status or inspection turn.
 
 `start-goal --project` keeps the requested project route, including a linked
 git worktree, so a fresh task cannot inherit an older worktree's goal.
@@ -53,6 +57,9 @@ goal-start objective before planning or writing project state:
 ```bash
 loopx start-goal --guided --project . --goal-text "<GOAL_TEXT>"
 ```
+
+Append `--capability-route issue-fix` only when the caller supplied that exact
+explicit route switch.
 
 Include `--goal-id <STABLE_GOAL_ID>` and `--agent-id <REGISTERED_AGENT_ID>` when
 they are known. If `start-goal --guided` is not available, refresh the local

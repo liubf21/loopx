@@ -12,7 +12,6 @@ from .capabilities.issue_fix.candidate_preflight import (
 from .capabilities.issue_fix.workflow_plan import (
     ISSUE_FIX_GOAL_CANDIDATE_DISCOVERY_COMMAND_TEMPLATE,
     build_issue_fix_goal_command_templates,
-    match_issue_fix_goal_intent,
 )
 from .host_loop_activation import (
     agent_type_for_host_surface,
@@ -43,6 +42,7 @@ GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION = (
 )
 HOST_SURFACE_SELECTION_SCHEMA_VERSION = "loopx_host_surface_selection_gate_v0"
 GOAL_CAPABILITY_ROUTE_SCHEMA_VERSION = "loopx_goal_capability_route_v0"
+START_GOAL_CAPABILITY_ROUTES = ("issue-fix",)
 START_GOAL_HOST_SURFACES = (
     "codex-app",
     "codex-app-ssh",
@@ -186,6 +186,7 @@ def _start_goal_detail_command(
     host_surface: str,
     goal_text: str,
     available_capabilities: list[str] | None,
+    capability_route: str | None,
 ) -> str:
     return (
         f"{shell_arg(cli_bin)} --format json start-goal --guided "
@@ -194,6 +195,11 @@ def _start_goal_detail_command(
         + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
         + f" --host-surface {shell_arg(host_surface)}"
         + render_available_capability_args(available_capabilities)
+        + (
+            f" --capability-route {shell_arg(capability_route)}"
+            if capability_route
+            else ""
+        )
         + f" --goal-text {shell_arg(goal_text)}"
         + " --include-command-pack-detail"
     )
@@ -247,6 +253,7 @@ def build_start_goal_host_surface_selection_packet(
     cli_bin: str,
     goal_text: str,
     available_capabilities: list[str] | None = None,
+    capability_route: str | None = None,
     include_command_pack_detail: bool = False,
 ) -> dict[str, Any]:
     """Fail closed when the caller has not identified the current Codex host."""
@@ -273,6 +280,11 @@ def build_start_goal_host_surface_selection_packet(
             + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
             + f" --host-surface {shell_arg(host_surface)}"
             + render_available_capability_args(available_capabilities)
+            + (
+                f" --capability-route {shell_arg(capability_route)}"
+                if capability_route
+                else ""
+            )
             + f" --goal-text {shell_arg(normalized_goal_text)}"
             + (" --include-command-pack-detail" if include_command_pack_detail else "")
         )
@@ -568,15 +580,21 @@ def _goal_start_bootstrap_command(
     return "\n".join(lines)
 
 
-def _selected_goal_capability_route(goal_text: str | None) -> dict[str, Any] | None:
-    reason_code = match_issue_fix_goal_intent(goal_text)
-    if reason_code is None:
+def _selected_goal_capability_route(
+    capability_route: str | None,
+) -> dict[str, Any] | None:
+    if capability_route is None:
         return None
+    if capability_route not in START_GOAL_CAPABILITY_ROUTES:
+        raise ValueError(
+            "unsupported --capability-route; expected one of: "
+            + ", ".join(START_GOAL_CAPABILITY_ROUTES)
+        )
     return {
         "schema_version": GOAL_CAPABILITY_ROUTE_SCHEMA_VERSION,
         "capability_id": "issue-fix",
-        "selection_source": "explicit_goal_text",
-        "selection_reason_code": reason_code,
+        "selection_source": "explicit_capability_route",
+        "selection_reason_code": "capability_route_enabled",
         "entry_command_key": "issue_fix_workflow_plan_template",
         "admission_command_key": "issue_fix_feasibility_template",
         "candidate_authority": "public_open_tracker_issue",
@@ -706,8 +724,8 @@ def _goal_start_contract(
         "domain_route_hints": {
             "issue_fix_workflow": {
                 "when": (
-                    "goal text explicitly asks to fix or resolve a GitHub issue/PR, "
-                    "optionally by public URL"
+                    "selected_capability_route.capability_id is explicitly "
+                    "set to issue-fix"
                 ),
                 "preview_command": issue_fix_commands[
                     "issue_fix_workflow_plan_template"
@@ -763,7 +781,7 @@ Planning rules:
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
 6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, OpenCode bridge, or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
-7. If the goal is a GitHub issue/PR fix, use the command-pack templates for `loopx issue-fix workflow-plan` and `loopx issue-fix feasibility` before implementation; write only the selected successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and review-request authority is active, use `loopx issue-fix reviewer-request`; only on confirmed permission denial allow fallback, and verify the request or fallback comment is visible. Then use `loopx issue-fix pr-lifecycle`. Never create one monitor per PR; keep one PR per message.
+7. Enter issue-fix only when `selected_capability_route.capability_id=issue-fix`; never infer it from goal text or URLs. Run workflow-plan and feasibility before implementation, write only the admitted successor or no-follow-up, preserve private/external/destructive gates, verify reviewer requests, and reconcile PR lifecycle one PR per message.
 """
 
 
@@ -776,6 +794,7 @@ def build_loopx_bootstrap_command_pack(
     host_surface: str,
     goal_text: str | None = None,
     available_capabilities: list[str] | None = None,
+    capability_route: str | None = None,
     resolve_linked_worktree_alias: bool = True,
 ) -> dict[str, Any]:
     inspection = inspect_bootstrap_connection(
@@ -927,6 +946,11 @@ def build_loopx_bootstrap_command_pack(
             + f" --host-surface {shell_arg(host_surface)}"
             + render_available_capability_args(available_capabilities)
             + (
+                f" --capability-route {shell_arg(capability_route)}"
+                if capability_route
+                else ""
+            )
+            + (
                 f" --goal-text {shell_arg(normalized_goal_text)}"
                 if normalized_goal_text
                 else ""
@@ -947,7 +971,9 @@ def build_loopx_bootstrap_command_pack(
         "recommended_next_step": recommended_next_step,
         "goal_start_contract": _goal_start_contract(
             goal_text=normalized_goal_text,
-            selected_capability_route=_selected_goal_capability_route(goal_text),
+            selected_capability_route=_selected_goal_capability_route(
+                capability_route
+            ),
             connected=connected,
             agent_type=agent_type,
             issue_fix_commands=issue_fix_hint_commands,
@@ -1028,6 +1054,7 @@ def _build_multi_goal_start_selection_packet(
     host_surface: str,
     goal_text: str,
     available_capabilities: list[str] | None,
+    capability_route: str | None,
     include_command_pack_detail: bool,
 ) -> dict[str, Any] | None:
     inspection = inspect_bootstrap_connection(
@@ -1060,6 +1087,11 @@ def _build_multi_goal_start_selection_packet(
             + (f" --agent-id {shell_arg(agent_id)}" if agent_id else "")
             + f" --host-surface {shell_arg(host_surface)}"
             + render_available_capability_args(available_capabilities)
+            + (
+                f" --capability-route {shell_arg(capability_route)}"
+                if capability_route
+                else ""
+            )
             + f" --goal-text {shell_arg(normalized_goal_text)}"
         )
         choices.append(
@@ -1135,7 +1167,9 @@ def _build_multi_goal_start_selection_packet(
         "recommended_next_step": recommended_next_step,
         "goal_start_contract": _goal_start_contract(
             goal_text=normalized_goal_text,
-            selected_capability_route=_selected_goal_capability_route(goal_text),
+            selected_capability_route=_selected_goal_capability_route(
+                capability_route
+            ),
             connected=True,
             agent_type=agent_type_for_host_surface(host_surface),
             issue_fix_commands=issue_fix_commands,
@@ -1212,6 +1246,7 @@ def _build_multi_goal_start_selection_packet(
         host_surface=host_surface,
         goal_text=normalized_goal_text,
         available_capabilities=available_capabilities,
+        capability_route=capability_route,
     )
     selected_command_pack = (
         command_pack
@@ -1275,6 +1310,7 @@ def build_start_goal_guided_packet(
     host_surface: str,
     goal_text: str,
     available_capabilities: list[str] | None = None,
+    capability_route: str | None = None,
     include_command_pack_detail: bool = False,
 ) -> dict[str, Any]:
     if goal_id is None:
@@ -1285,6 +1321,7 @@ def build_start_goal_guided_packet(
             host_surface=host_surface,
             goal_text=goal_text,
             available_capabilities=available_capabilities,
+            capability_route=capability_route,
             include_command_pack_detail=include_command_pack_detail,
         )
         if selection_packet is not None:
@@ -1297,6 +1334,7 @@ def build_start_goal_guided_packet(
         host_surface=host_surface,
         goal_text=goal_text,
         available_capabilities=available_capabilities,
+        capability_route=capability_route,
         resolve_linked_worktree_alias=False,
     )
     commands = command_pack.get("commands")
@@ -1473,6 +1511,7 @@ def build_start_goal_guided_packet(
         host_surface=host_surface,
         goal_text=str(command_pack.get("goal_text") or goal_text),
         available_capabilities=available_capabilities,
+        capability_route=capability_route,
     )
     selected_command_pack = (
         command_pack
@@ -1703,6 +1742,43 @@ def render_loopx_bootstrap_command_pack_message(payload: dict[str, Any]) -> str:
     )
     goal_start_contract = payload.get("goal_start_contract")
     goal_start_contract = goal_start_contract if isinstance(goal_start_contract, dict) else {}
+    selected_capability_route = goal_start_contract.get(
+        "selected_capability_route"
+    )
+    selected_capability_route = (
+        selected_capability_route
+        if isinstance(selected_capability_route, dict)
+        else {}
+    )
+    issue_fix_action = ""
+    if selected_capability_route.get("capability_id") == "issue-fix":
+        issue_fix_action = f"""
+
+The explicit capability route selects issue-fix. Preview its capability-owned admission:
+
+```bash
+{commands.get("issue_fix_workflow_plan_template", "")}
+```
+
+Persist candidate preflight. Non-proceed: write its successor/no-follow-up; skip feasibility. Proceed: run feasibility and write its successor:
+
+```bash
+{commands.get("issue_fix_feasibility_template", "")}
+```
+
+Private repro material, issue body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions stay explicit gates.
+
+After a PR exists and external-review-request authority is active, request the default top requestable non-author reviewer and require post-write verification:
+
+```bash
+{commands.get("issue_fix_reviewer_request_template", "")}
+```
+
+After a PR exists, reconcile compact public PR state through the capability-owned lifecycle command:
+
+```bash
+{commands.get("issue_fix_pr_lifecycle_template", "")}
+```"""
     onboarding = payload.get("onboarding_hint")
     onboarding = onboarding if isinstance(onboarding, dict) else {}
     activation = payload.get("host_loop_activation")
@@ -1741,32 +1817,7 @@ Then plan before writing todos. Preserve relative priority by write order:
 ````
 
 Write the planned todos with `loopx todo add` in the exact planned order. Same-priority items use that write order as the tie-breaker.
-
-For GitHub issue/PR fix goals, preview the issue-fix route:
-
-```bash
-{commands.get("issue_fix_workflow_plan_template", "")}
-```
-
-Persist candidate preflight. Non-proceed: write its successor/no-follow-up; skip feasibility. Proceed: run feasibility and write its successor:
-
-```bash
-{commands.get("issue_fix_feasibility_template", "")}
-```
-
-Private repro material, issue body/comment reads, external comments, PR creation, merge, publish, destructive git, and production actions stay explicit gates.
-
-After a PR exists and external-review-request authority is active, request the default top requestable non-author reviewer and require post-write verification:
-
-```bash
-{commands.get("issue_fix_reviewer_request_template", "")}
-```
-
-After a PR exists, the PR lifecycle monitor should observe compact public PR state and write issue-fix domain state by default:
-
-```bash
-{commands.get("issue_fix_pr_lifecycle_template", "")}
-```
+{issue_fix_action}
 
 After todo writeback:
 

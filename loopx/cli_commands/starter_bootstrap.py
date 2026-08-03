@@ -104,6 +104,7 @@ def handle_loopx_bootstrap_command_pack_command(
         host_surface=args.host_surface,
         goal_text=args.goal_text,
         available_capabilities=args.available_capabilities,
+        capability_route=args.capability_route,
     )
     if bool(getattr(args, "message_only", False)):
         print(str(payload.get("message") or ""))
@@ -133,6 +134,7 @@ def handle_start_goal_command(
             cli_bin=args.cli_bin,
             goal_text=args.goal_text,
             available_capabilities=args.available_capabilities,
+            capability_route=args.capability_route,
             include_command_pack_detail=bool(args.include_command_pack_detail),
         )
         print_payload(payload, args.format, render_start_goal_guided_markdown)
@@ -145,6 +147,7 @@ def handle_start_goal_command(
         host_surface=args.host_surface,
         goal_text=args.goal_text,
         available_capabilities=args.available_capabilities,
+        capability_route=args.capability_route,
         include_command_pack_detail=bool(args.include_command_pack_detail),
     )
     print_payload(payload, args.format, render_start_goal_guided_markdown)
