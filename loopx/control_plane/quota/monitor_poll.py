@@ -274,7 +274,7 @@ def _reload_status_after_monitor_writeback(
         return deepcopy(status_payload), {
             "schema_version": "monitor_poll_status_reload_warning_v0",
             "reason": (
-                "material monitor writeback persisted, but a fresh status "
+                "monitor todo writeback persisted, but a fresh status "
                 "projection could not be collected"
             ),
             "error_type": type(exc).__name__,
@@ -659,7 +659,7 @@ def record_quota_monitor_poll_for_decision(
 
     after_status = deepcopy(status_payload)
     status_reload_warning = None
-    if execute and material_change:
+    if execute and todo_writeback:
         after_status, status_reload_warning = _reload_status_after_monitor_writeback(
             status_payload,
             status_reloader=status_reloader,
