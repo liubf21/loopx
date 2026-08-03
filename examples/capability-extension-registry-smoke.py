@@ -63,6 +63,7 @@ next_real_step = "Keep explicit enablement bounded."
         "decision-context",
         "project-skill-delivery",
         "material-lifecycle",
+        "agent-turn-recall",
         "semantic-preference",
         "reward-memory",
         "periodic-report",

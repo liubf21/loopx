@@ -25,7 +25,9 @@ PRIVATE_MARKERS = [
     "/" + "tmp" + "/",
     "api" + "_key",
     "pass" + "word",
-    "sec" + "ret",
+    "client" + "_secret",
+    "app" + "_secret",
+    "secret" + "_key",
 ]
 
 

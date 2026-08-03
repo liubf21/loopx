@@ -17,7 +17,10 @@ CANARY_RUN_SCHEMA_VERSION = "catalog_canary_run_v0"
 CANARY_SMOKE_SUITE_RUN_SCHEMA_VERSION = "canary_smoke_suite_run_v0"
 CANARY_SMOKE_SUITE_PROFILE_SCHEMA_VERSION = "canary_smoke_suite_profiles_v0"
 NO_WRITE_ARGS_BY_SCRIPT = {
-    "canary-promotion-readiness-smoke.py": ["--no-write-evidence"],
+    "canary-promotion-readiness-smoke.py": [
+        "--no-write-evidence",
+        "--dashboard-mode=skip",
+    ],
     "dashboard-demo-readiness-smoke.py": ["--skip-browser"],
 }
 EXPLICIT_GROUPED_SMOKES = {

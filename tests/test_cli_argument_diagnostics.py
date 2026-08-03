@@ -7,7 +7,7 @@ import pytest
 
 from loopx.cli import build_parser, main, output_format, resolve_global_output_format
 from loopx.cli_commands import todo as todo_command
-from loopx.cli_commands.quota import _validate_quota_command_request
+from loopx.cli_commands.quota_request import validate_quota_command_request
 from loopx.cli_commands.todo_argument_validation import (
     validate_todo_add_options,
     validate_todo_archive_completed_options,
@@ -398,7 +398,7 @@ def test_quota_command_request_validation_preserves_exact_diagnostics(
     args.execute = execute
 
     with pytest.raises(ValueError) as exc_info:
-        _validate_quota_command_request(args)
+        validate_quota_command_request(args)
 
     assert str(exc_info.value) == expected
 

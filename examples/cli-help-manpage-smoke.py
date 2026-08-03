@@ -211,7 +211,11 @@ def assert_installer_manpage_surface() -> None:
             env=env,
             text=True,
             capture_output=True,
-            check=True,
+        )
+        assert install.returncode == 0, (
+            install.returncode,
+            install.stdout,
+            install.stderr,
         )
         assert f"- manpage: {man_root / 'man1' / 'loopx.1.gz'}" in install.stdout, install.stdout
 

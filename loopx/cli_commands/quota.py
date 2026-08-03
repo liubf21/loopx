@@ -59,24 +59,19 @@ from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..turn_identity import normalize_turn_instance_id
 from ..upgrade import resolve_codex_app_automation_rrule
 from .lark_inbox import build_lark_operator_inbox_urgency_projector
+from .quota_request import (
+    QUOTA_DETAIL_SECTIONS,
+    QUOTA_MONITOR_POLL_DETAIL_SECTIONS,
+    QUOTA_SHOULD_RUN_DETAIL_SECTIONS,
+    quota_detail_sections_from_args,
+    validate_quota_command_request,
+)
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
     None,
 ]
 RolloutEventAppender = Callable[..., dict[str, object]]
-QUOTA_SHOULD_RUN_DETAIL_SECTIONS = (
-    "scheduler",
-    "agent-todos",
-    "user-todos",
-    "goal-boundary",
-    "vision",
-)
-QUOTA_MONITOR_POLL_DETAIL_SECTIONS = ("decisions",)
-QUOTA_DETAIL_SECTIONS = (
-    *QUOTA_SHOULD_RUN_DETAIL_SECTIONS,
-    *QUOTA_MONITOR_POLL_DETAIL_SECTIONS,
-)
 QUOTA_EVENT_KINDS = {
     "should-run": "quota_should_run",
     "monitor-poll": "quota_monitor_poll",
@@ -109,43 +104,6 @@ class _QuotaCommandContext:
     operator_inbox_urgency_projector: Callable[..., dict[str, object]]
     detail_sections: frozenset[str]
     heartbeat_turn_id: str | None
-
-
-def _validate_quota_command_request(args: argparse.Namespace) -> None:
-    command = args.quota_command
-    if command not in {"status", "plan"} and not args.goal_id:
-        raise ValueError(f"`loopx quota {command}` requires --goal-id")
-    scheduler_commands = {
-        "scheduler-ack",
-        "scheduler-ack-current",
-        "scheduler-fail-current",
-    }
-    if command in scheduler_commands and not args.agent_id:
-        raise ValueError(f"`loopx quota {command}` requires --agent-id")
-    if command == "void-slot" and not args.void_generated_at:
-        raise ValueError("`loopx quota void-slot` requires --void-generated-at")
-    if (
-        command not in {"status", "plan", "should-run"}
-        and args.dry_run
-        and args.execute
-    ):
-        raise ValueError(
-            f"`loopx quota {command}` accepts only one of --dry-run or --execute"
-        )
-
-
-def _quota_detail_sections_from_args(args: argparse.Namespace) -> frozenset[str]:
-    sections = set(getattr(args, "include_details", None) or ())
-    if bool(getattr(args, "include_scheduler_detail", False)):
-        sections.add("scheduler")
-    if "all" in sections:
-        sections.update(
-            QUOTA_MONITOR_POLL_DETAIL_SECTIONS
-            if args.quota_command == "monitor-poll"
-            else QUOTA_SHOULD_RUN_DETAIL_SECTIONS
-        )
-        sections.discard("all")
-    return frozenset(sections)
 
 
 def default_public_scan_root() -> str:
@@ -520,7 +478,7 @@ def _prepare_quota_command_context(
         if command in QUOTA_SCHEDULER_COMMANDS
         else None
     )
-    _validate_quota_command_request(args)
+    validate_quota_command_request(args)
     return _QuotaCommandContext(
         runtime_root=runtime_root,
         scan_roots=scan_roots,
@@ -530,7 +488,7 @@ def _prepare_quota_command_context(
         cache_metadata=cache_metadata,
         scheduler_context=scheduler_context,
         operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-        detail_sections=_quota_detail_sections_from_args(args),
+        detail_sections=quota_detail_sections_from_args(args),
         heartbeat_turn_id=heartbeat_turn_id,
     )
 
