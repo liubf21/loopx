@@ -315,7 +315,7 @@ def build_summary_all(
             "headline": headline,
             "progress_count": len(recent_progress),
             "open_gate_count": len(gates),
-            "runnable_todo_count": len(todos),
+            "runnable_todo_count": runnable_count,
             "waiting_lane_count": waiting_count,
             "risk_count": len(risks),
             "source_surfaces": SOURCE_SURFACES,
