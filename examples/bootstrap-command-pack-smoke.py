@@ -201,16 +201,11 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "avoid management-only filler" in plan_prompt
         assert "Every new todo starts with `[P0]`, `[P1]`, or `[P2]`" in plan_prompt
         assert "Preserve that exact order" in plan_prompt
-        assert "GitHub issue/PR fix" in plan_prompt
-        assert "loopx issue-fix workflow-plan" in plan_prompt
-        assert "loopx issue-fix feasibility" in plan_prompt
-        assert "loopx issue-fix pr-lifecycle" in plan_prompt
-        assert "loopx issue-fix reviewer-request" in plan_prompt
-        assert "only on confirmed permission denial" in plan_prompt
-        assert "request or fallback comment is visible" in plan_prompt
-        assert "Never create one monitor per PR" in plan_prompt
-        assert "one PR per message" in plan_prompt
-        assert "arbitrary external comments, PR creation, merge" in plan_prompt
+        assert "selected_capability_route.capability_id=issue-fix" in plan_prompt
+        assert "never infer it from goal text or URLs" in plan_prompt
+        assert "Run workflow-plan and feasibility before implementation" in plan_prompt
+        assert "admitted successor or no-follow-up" in plan_prompt
+        assert "reconcile PR lifecycle one PR per message" in plan_prompt
         assert "issue_fix_workflow_plan_template" in commands
         issue_fix_template = str(commands["issue_fix_workflow_plan_template"])
         assert "issue-fix workflow-plan" in issue_fix_template
@@ -245,15 +240,13 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "--progress-scope agent_lane" in refresh_command
         assert "--health-check" not in refresh_command
         assert "Same-priority items use that write order as the tie-breaker" in str(payload["message"])
-        assert "preview the issue-fix route:" in str(payload["message"])
+        assert "preview the issue-fix route:" not in str(payload["message"])
         assert "preview the issue-fix route before todo writeback" not in str(
             payload["message"]
         )
-        assert "PR lifecycle monitor" in str(payload["message"])
-        assert "default top requestable non-author reviewer" in str(payload["message"])
         domain_routes = goal_start["domain_route_hints"]
-        assert domain_routes["issue_fix_workflow"]["when"].startswith(
-            "goal text explicitly asks"
+        assert domain_routes["issue_fix_workflow"]["when"] == (
+            "selected_capability_route.capability_id is explicitly set to issue-fix"
         )
         assert "workflow-plan" in domain_routes["issue_fix_workflow"]["preview_command"]
         assert "feasibility" in domain_routes["issue_fix_workflow"]["decision_command"]

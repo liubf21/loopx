@@ -13,6 +13,17 @@ from ..project_prompt import (
 )
 
 
+def _add_capability_route_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--capability-route",
+        choices=START_GOAL_CAPABILITY_ROUTES,
+        help=(
+            "Explicit product capability route for this goal start. Goal text never "
+            "selects a capability route."
+        ),
+    )
+
+
 def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) -> None:
     agent_onboard_parser = subparsers.add_parser(
         "agent-onboard",
@@ -79,14 +90,7 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         action="append",
         help="Capability available in this host loop. Repeat for multiple capabilities.",
     )
-    bootstrap_command_pack_parser.add_argument(
-        "--capability-route",
-        choices=START_GOAL_CAPABILITY_ROUTES,
-        help=(
-            "Explicit product capability route for this goal start. Goal text never "
-            "selects a capability route."
-        ),
-    )
+    _add_capability_route_argument(bootstrap_command_pack_parser)
     bootstrap_command_pack_parser.add_argument(
         "--goal-text",
         help=(
@@ -136,14 +140,7 @@ def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) 
         action="append",
         help="Capability available in this host loop. Repeat for multiple capabilities.",
     )
-    start_goal_parser.add_argument(
-        "--capability-route",
-        choices=START_GOAL_CAPABILITY_ROUTES,
-        help=(
-            "Explicit product capability route for this goal start. Goal text never "
-            "selects a capability route."
-        ),
-    )
+    _add_capability_route_argument(start_goal_parser)
     start_goal_parser.add_argument(
         "--goal-text",
         required=True,
