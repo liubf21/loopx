@@ -303,6 +303,45 @@ def test_attribution_cannot_be_reused_under_another_case() -> None:
         build_finance_beta_attribution(payload)
 
 
+def test_attribution_cannot_be_reused_for_another_subject() -> None:
+    # Keeping the passing case_id but swapping the subject to a different
+    # security must not reuse the gate pass as research-complete.
+    payload = _json(BETA_EXAMPLE)
+    payload["case_reference"]["subject_ref"] = "unrelated-security-XYZ"
+    with pytest.raises(ValueError, match="subject_ref must match"):
+        build_finance_beta_attribution(payload)
+
+
+@pytest.mark.parametrize(
+    ("window", "match"),
+    [
+        ({"start": "not-a-date", "end": "2026-07-27"}, "start must be an ISO-8601"),
+        ({"start": "2026-07-23", "end": "still-not-a-date"}, "end must be an ISO-8601"),
+        ({"start": "2999-01-01", "end": "2999-12-31"}, "end must not exceed"),
+        ({"start": "2020-01-01", "end": "2026-07-27"}, "start must not precede"),
+        ({"start": "2026-07-27", "end": "2026-07-23"}, "start must not be after end"),
+    ],
+)
+def test_attribution_rejects_invalid_or_out_of_window_observation(
+    window: dict[str, str],
+    match: str,
+) -> None:
+    # observation_window must be real ISO dates inside the contract's frozen
+    # [point_in_time, evaluation_as_of] window; not-a-date and future windows
+    # cannot be presented as research-complete.
+    payload = _json(BETA_EXAMPLE)
+    payload["case_reference"]["observation_window"] = window
+    with pytest.raises(ValueError, match=match):
+        build_finance_beta_attribution(payload)
+
+
+def test_gate_input_requires_subject_ref() -> None:
+    payload = _json(BETA_EXAMPLE)
+    del payload["gate_evaluation_input"]["subject_ref"]
+    with pytest.raises(ValueError, match="subject_ref is required"):
+        build_finance_beta_attribution(payload)
+
+
 def test_failed_gate_cannot_be_presented_as_research_complete() -> None:
     payload = _fail_gate_evaluation_input(_json(BETA_EXAMPLE))
     attribution = build_finance_beta_attribution(payload)

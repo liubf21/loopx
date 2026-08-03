@@ -31,7 +31,7 @@ def _text(value: object, *, field: str, limit: int = 160) -> str:
     return result
 
 
-def _iso_date(value: object, *, field: str) -> str:
+def validate_iso_date(value: object, *, field: str) -> str:
     result = _text(value, field=field, limit=40)
     try:
         if "T" in result:
@@ -43,7 +43,7 @@ def _iso_date(value: object, *, field: str) -> str:
     return result
 
 
-def _as_datetime(value: str) -> datetime:
+def iso_comparable_datetime(value: str) -> datetime:
     """Parse an ISO date or datetime into a comparable datetime (UTC-naive)."""
     if "T" in value:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -144,13 +144,13 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
     gate_ids = [item["gate_id"] for item in gates]
     if len(gate_ids) != len(set(gate_ids)):
         raise ValueError("contract.gates must use unique gate ids")
-    point_in_time = _iso_date(
+    point_in_time = validate_iso_date(
         value.get("point_in_time"), field="contract.point_in_time"
     )
-    evaluation_as_of = _iso_date(
+    evaluation_as_of = validate_iso_date(
         value.get("evaluation_as_of"), field="contract.evaluation_as_of"
     )
-    if _as_datetime(point_in_time) > _as_datetime(evaluation_as_of):
+    if iso_comparable_datetime(point_in_time) > iso_comparable_datetime(evaluation_as_of):
         raise ValueError(
             "contract.point_in_time must not be after contract.evaluation_as_of"
         )
@@ -208,7 +208,7 @@ def validate_finance_case_input(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("finance case input must be an object")
     reject_forbidden_material(value)
-    allowed = {"schema_version", "case_id", "contract", "observations"}
+    allowed = {"schema_version", "case_id", "subject_ref", "contract", "observations"}
     if set(value) - allowed:
         raise ValueError("finance case input has unsupported fields")
     if value.get("schema_version") != FINANCE_CASE_INPUT_SCHEMA_VERSION:
@@ -223,6 +223,12 @@ def validate_finance_case_input(value: object) -> dict[str, Any]:
     return {
         "schema_version": FINANCE_CASE_INPUT_SCHEMA_VERSION,
         "case_id": _text(value.get("case_id"), field="case_id", limit=96),
+        # The subject the gated case is about. Binding it here makes it part of
+        # the canonical case identity, so a passing gate cannot be reused to
+        # present an attribution for a different security as research-complete.
+        "subject_ref": _text(
+            value.get("subject_ref"), field="subject_ref", limit=96
+        ),
         "contract": validate_finance_case_contract(value.get("contract")),
         "observations": list(observations),
     }

@@ -163,6 +163,7 @@ def evaluate_finance_case_gates(value: object) -> dict[str, Any]:
         "ok": True,
         "schema_version": FINANCE_CASE_EVALUATION_SCHEMA_VERSION,
         "case_id": payload["case_id"],
+        "subject_ref": payload["subject_ref"],
         "contract": contract,
         "gate_results": gate_results,
         "disposition": disposition,

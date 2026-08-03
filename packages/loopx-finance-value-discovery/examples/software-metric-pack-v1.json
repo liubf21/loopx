@@ -4,6 +4,7 @@
   "case_input": {
     "schema_version": "finance_case_gate_input_v1",
     "case_id": "illustrative-software-case",
+    "subject_ref": "illustrative-software-universe",
     "contract": {
       "schema_version": "finance_case_contract_v1",
       "contract_id": "illustrative-software-contract-v1",

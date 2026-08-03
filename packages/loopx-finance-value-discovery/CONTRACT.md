@@ -30,6 +30,14 @@ sector, narrow peer, cycle, and event. Residual is computed as total move minus
 all six explained components only when every component is observed. Attribution
 does not estimate a factor, select a source, or execute a gate.
 
+An attribution is bound to one gated case identity. The gate input carries the
+`case_id` and `subject_ref` of the case it evaluates, and the attribution's
+`case_reference` must match both. A passing gate therefore cannot be reused to
+present an attribution for a different case or a different security as
+research-complete. The `observation_window` must be real ISO-8601 dates that sit
+inside the contract's frozen `[point_in_time, evaluation_as_of]` window, so a
+malformed or future window cannot be presented as complete.
+
 Industry metric packs are semantic overlays on the same case contract. A pack
 may require metric ids, value types, and allowed operator directions. It cannot
 provide a threshold, reorder common source or cutoff gates, reinterpret missing
@@ -75,5 +83,7 @@ closed.
 
 The existing `finance_value_discovery_input_v0` reducer and
 `finance_value_discovery_extension_v0` provider protocol remain supported.
-`finance_case_gate_input_v1` is an additive input schema. Existing packets are
-not reclassified and gain no new fields.
+`finance_case_gate_input_v1` now requires a `subject_ref` naming the case
+subject, so a gate input packet must declare the subject it evaluates; this
+binds the case identity end to end. The `finance_value_discovery_input_v0`
+packets are not reclassified and gain no new fields.

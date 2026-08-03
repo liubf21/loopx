@@ -1,6 +1,7 @@
 {
   "schema_version": "finance_case_gate_input_v1",
   "case_id": "illustrative-debeta-case",
+  "subject_ref": "illustrative-us-cross-section",
   "contract": {
     "schema_version": "finance_case_contract_v1",
     "contract_id": "us-debeta-public-research-v1",

@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .boundary import reject_forbidden_material
+from .contract import iso_comparable_datetime, validate_iso_date
 from .gates import evaluate_finance_case_gates
 from .replay import canonical_json_bytes, canonical_sha256
 
@@ -124,22 +125,26 @@ def _case_reference(value: object) -> dict[str, Any]:
     window = value.get("observation_window")
     if not isinstance(window, Mapping) or set(window) - {"start", "end"}:
         raise ValueError("case_reference.observation_window must have start and end")
+    start = validate_iso_date(
+        window.get("start"),
+        field="case_reference.observation_window.start",
+    )
+    end = validate_iso_date(
+        window.get("end"),
+        field="case_reference.observation_window.end",
+    )
+    if iso_comparable_datetime(start) > iso_comparable_datetime(end):
+        raise ValueError(
+            "case_reference.observation_window.start must not be after end"
+        )
     return {
         "case_id": _text(value.get("case_id"), field="case_reference.case_id", limit=96),
         "subject_ref": _text(
             value.get("subject_ref"), field="case_reference.subject_ref", limit=96
         ),
         "observation_window": {
-            "start": _text(
-                window.get("start"),
-                field="case_reference.observation_window.start",
-                limit=40,
-            ),
-            "end": _text(
-                window.get("end"),
-                field="case_reference.observation_window.end",
-                limit=40,
-            ),
+            "start": start,
+            "end": end,
         },
     }
 
@@ -177,6 +182,29 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
     if gate_evaluation["case_id"] != case_reference["case_id"]:
         raise ValueError(
             "case_reference.case_id must match gate_evaluation_input.case_id"
+        )
+    if gate_evaluation["subject_ref"] != case_reference["subject_ref"]:
+        raise ValueError(
+            "case_reference.subject_ref must match gate_evaluation_input.subject_ref"
+        )
+    # Bind the observation window to the contract's frozen evaluation window so a
+    # not-a-date or future window cannot be presented as research-complete. The
+    # window must sit within [point_in_time, evaluation_as_of].
+    window_start = iso_comparable_datetime(
+        case_reference["observation_window"]["start"]
+    )
+    window_end = iso_comparable_datetime(case_reference["observation_window"]["end"])
+    contract_start = iso_comparable_datetime(contract["point_in_time"])
+    contract_cutoff = iso_comparable_datetime(contract["evaluation_as_of"])
+    if window_start < contract_start:
+        raise ValueError(
+            "case_reference.observation_window.start must not precede "
+            "contract.point_in_time"
+        )
+    if window_end > contract_cutoff:
+        raise ValueError(
+            "case_reference.observation_window.end must not exceed "
+            "contract.evaluation_as_of"
         )
     gate_eligible = (
         gate_evaluation["disposition"] == "eligible_for_research_successor"
