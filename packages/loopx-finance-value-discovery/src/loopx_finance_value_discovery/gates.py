@@ -176,8 +176,8 @@ def evaluate_finance_case_gates(value: object) -> dict[str, Any]:
             else None
         ),
         "boundary": {
-            "public_evidence_only": True,
-            "outcome_blind": True,
+            "public_evidence_only_state": contract["public_evidence_only_state"],
+            "outcome_blind_state": contract["outcome_blind_state"],
             "investment_advice": False,
             "trading_allowed": False,
             "automatic_promotion_allowed": False,

@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .boundary import reject_forbidden_material
-from .contract import validate_finance_case_contract
+from .gates import evaluate_finance_case_gates
 from .replay import canonical_json_bytes, canonical_sha256
 
 FINANCE_BETA_ATTRIBUTION_INPUT_SCHEMA_VERSION = "finance_beta_attribution_input_v1"
@@ -114,6 +114,36 @@ def _component(value: object, *, index: int) -> dict[str, Any]:
     }
 
 
+def _case_reference(value: object) -> dict[str, Any]:
+    """Validate the case/subject identity an attribution claims to explain."""
+    if not isinstance(value, Mapping):
+        raise ValueError("case_reference must be an object")
+    allowed = {"case_id", "subject_ref", "observation_window"}
+    if set(value) - allowed:
+        raise ValueError("case_reference has unsupported fields")
+    window = value.get("observation_window")
+    if not isinstance(window, Mapping) or set(window) - {"start", "end"}:
+        raise ValueError("case_reference.observation_window must have start and end")
+    return {
+        "case_id": _text(value.get("case_id"), field="case_reference.case_id", limit=96),
+        "subject_ref": _text(
+            value.get("subject_ref"), field="case_reference.subject_ref", limit=96
+        ),
+        "observation_window": {
+            "start": _text(
+                window.get("start"),
+                field="case_reference.observation_window.start",
+                limit=40,
+            ),
+            "end": _text(
+                window.get("end"),
+                field="case_reference.observation_window.end",
+                limit=40,
+            ),
+        },
+    }
+
+
 def build_finance_beta_attribution(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("finance beta attribution input must be an object")
@@ -124,7 +154,8 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         "attribution_model_id",
         "component_order_frozen",
         "unit",
-        "contract",
+        "case_reference",
+        "gate_evaluation_input",
         "total_move",
         "components",
     }
@@ -138,7 +169,18 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         raise ValueError("component_order_frozen must be true")
     if value.get("unit") != "return_fraction":
         raise ValueError("unit must be return_fraction")
-    contract = validate_finance_case_contract(value.get("contract"))
+    case_reference = _case_reference(value.get("case_reference"))
+    # Evaluate the gate contract this attribution is bound to, so a failing or
+    # missing gate cannot be presented as a research-complete attribution.
+    gate_evaluation = evaluate_finance_case_gates(value.get("gate_evaluation_input"))
+    contract = gate_evaluation["contract"]
+    if gate_evaluation["case_id"] != case_reference["case_id"]:
+        raise ValueError(
+            "case_reference.case_id must match gate_evaluation_input.case_id"
+        )
+    gate_eligible = (
+        gate_evaluation["disposition"] == "eligible_for_research_successor"
+    )
     total_move = _decimal(value.get("total_move"), field="total_move")
     raw_components = value.get("components")
     if not isinstance(raw_components, Sequence) or isinstance(
@@ -165,7 +207,7 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         for item in components
         if item["observation_state"] == "conflict"
     ]
-    complete = not missing and not conflicts
+    complete = not missing and not conflicts and gate_eligible
     explained = (
         sum(
             (
@@ -191,6 +233,14 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
             limit=96,
         ),
         "contract": contract,
+        "case_reference": case_reference,
+        "gate_evaluation_receipt": {
+            "case_id": gate_evaluation["case_id"],
+            "disposition": gate_evaluation["disposition"],
+            "gate_eligible": gate_eligible,
+            "first_blocking_gate": gate_evaluation["first_blocking_gate"],
+            "evaluation_sha256": canonical_sha256(gate_evaluation),
+        },
         "unit": "return_fraction",
         "total_move": _decimal_text(total_move),
         "components": components
@@ -207,7 +257,7 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
                     if complete
                     else (
                         "Residual is unavailable while an explained component "
-                        "is missing or conflicting."
+                        "is missing/conflicting or the bound gate did not clear."
                     )
                 ),
             }
@@ -215,11 +265,12 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         "explained_sum": _decimal_text(explained) if explained is not None else None,
         "residual": _decimal_text(residual) if residual is not None else None,
         "disposition": "complete" if complete else "insufficient_evidence",
+        "gate_eligible": gate_eligible,
         "missing_component_ids": missing,
         "conflicting_component_ids": conflicts,
         "boundary": {
-            "public_evidence_only": True,
-            "outcome_blind": True,
+            "public_evidence_only_state": contract["public_evidence_only_state"],
+            "outcome_blind_state": contract["outcome_blind_state"],
             "investment_advice": False,
             "trading_allowed": False,
             "automatic_promotion_allowed": False,

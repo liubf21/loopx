@@ -37,8 +37,8 @@ def test_missing_gate_short_circuits_to_insufficient_evidence() -> None:
         "reason": "A complete terminal-loss path is not yet supported.",
     }
     assert evaluation["boundary"] == {
-        "public_evidence_only": True,
-        "outcome_blind": True,
+        "public_evidence_only_state": "caller_asserted",
+        "outcome_blind_state": "caller_asserted",
         "investment_advice": False,
         "trading_allowed": False,
         "automatic_promotion_allowed": False,
@@ -254,3 +254,30 @@ def test_direct_cli_evaluate_and_replay(
     )
     verified = json.loads(capsys.readouterr().out)
     assert verified["replay_verified"] is True
+
+
+def test_point_in_time_after_evaluation_as_of_is_rejected() -> None:
+    payload = _example()
+    # future cutoff: point_in_time later than evaluation_as_of must fail closed
+    payload["contract"]["point_in_time"] = "2999-12-31"
+    with pytest.raises(ValueError, match="must not be after"):
+        build_finance_case_evaluation(payload)
+
+
+def test_evaluation_as_of_is_required() -> None:
+    payload = _example()
+    del payload["contract"]["evaluation_as_of"]
+    with pytest.raises(ValueError, match="evaluation_as_of"):
+        build_finance_case_evaluation(payload)
+
+
+def test_unverified_guarantees_are_recorded_as_caller_asserted() -> None:
+    payload = _example()
+    evaluation = build_finance_case_evaluation(payload)
+    # the engine records the caller's assertion state, not an unverified fact
+    assert evaluation["boundary"]["outcome_blind_state"] == "caller_asserted"
+    assert evaluation["boundary"]["public_evidence_only_state"] == "caller_asserted"
+    assert evaluation["contract"]["outcome_blind_state"] == "caller_asserted"
+    assert evaluation["contract"]["public_evidence_only_state"] == "caller_asserted"
+    assert "outcome_blind" not in evaluation["boundary"]
+    assert "public_evidence_only" not in evaluation["boundary"]

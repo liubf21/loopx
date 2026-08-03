@@ -268,3 +268,61 @@ def test_direct_cli_beta_pack_and_catalog(
         ]
         is True
     )
+
+
+def _fail_gate_evaluation_input(payload: dict) -> dict:
+    """Flip the bound gate case into a failing/blocking disposition.
+
+    evidence_quality becomes the first blocking gate; every gate after it must
+    be not_run, while earlier gates keep their passing observation.
+    """
+    gei = payload["gate_evaluation_input"]
+    blocked = False
+    for obs in gei["observations"]:
+        if obs["gate_id"] == "evidence_quality":
+            obs.update(
+                {
+                    "observation_state": "missing",
+                    "value": None,
+                    "evidence_refs": [],
+                    "reason": "Evidence quality gate is unresolved.",
+                }
+            )
+            blocked = True
+        elif blocked:
+            obs.update(
+                {"observation_state": "not_run", "value": None, "evidence_refs": []}
+            )
+    return payload
+
+
+def test_attribution_cannot_be_reused_under_another_case() -> None:
+    payload = _json(BETA_EXAMPLE)
+    payload["case_reference"]["case_id"] = "some-other-case"
+    with pytest.raises(ValueError, match="case_id must match"):
+        build_finance_beta_attribution(payload)
+
+
+def test_failed_gate_cannot_be_presented_as_research_complete() -> None:
+    payload = _fail_gate_evaluation_input(_json(BETA_EXAMPLE))
+    attribution = build_finance_beta_attribution(payload)
+
+    # even with all six components observed, a non-eligible gate forces
+    # insufficient_evidence and refuses to fabricate a residual
+    assert attribution["gate_eligible"] is False
+    assert attribution["disposition"] == "insufficient_evidence"
+    assert attribution["residual"] is None
+    assert attribution["gate_evaluation_receipt"]["disposition"] != (
+        "eligible_for_research_successor"
+    )
+
+
+def test_attribution_binds_case_reference_and_gate_receipt() -> None:
+    payload = _json(BETA_EXAMPLE)
+    attribution = build_finance_beta_attribution(payload)
+
+    assert attribution["case_reference"]["case_id"] == (
+        payload["gate_evaluation_input"]["case_id"]
+    )
+    assert attribution["gate_evaluation_receipt"]["gate_eligible"] is True
+    assert attribution["gate_evaluation_receipt"]["evaluation_sha256"]

@@ -43,6 +43,14 @@ def _iso_date(value: object, *, field: str) -> str:
     return result
 
 
+def _as_datetime(value: str) -> datetime:
+    """Parse an ISO date or datetime into a comparable datetime (UTC-naive)."""
+    if "T" in value:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+    return datetime.combine(date.fromisoformat(value), datetime.min.time())
+
+
 def _required_boolean(
     payload: Mapping[str, Any],
     field: str,
@@ -101,6 +109,7 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
         "contract_id",
         "method_revision",
         "point_in_time",
+        "evaluation_as_of",
         "universe_id",
         "universe_frozen",
         "identities_frozen",
@@ -135,6 +144,16 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
     gate_ids = [item["gate_id"] for item in gates]
     if len(gate_ids) != len(set(gate_ids)):
         raise ValueError("contract.gates must use unique gate ids")
+    point_in_time = _iso_date(
+        value.get("point_in_time"), field="contract.point_in_time"
+    )
+    evaluation_as_of = _iso_date(
+        value.get("evaluation_as_of"), field="contract.evaluation_as_of"
+    )
+    if _as_datetime(point_in_time) > _as_datetime(evaluation_as_of):
+        raise ValueError(
+            "contract.point_in_time must not be after contract.evaluation_as_of"
+        )
     return {
         "schema_version": FINANCE_CASE_CONTRACT_SCHEMA_VERSION,
         "contract_id": _text(
@@ -145,9 +164,8 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
             field="contract.method_revision",
             limit=96,
         ),
-        "point_in_time": _iso_date(
-            value.get("point_in_time"), field="contract.point_in_time"
-        ),
+        "point_in_time": point_in_time,
+        "evaluation_as_of": evaluation_as_of,
         "universe_id": _text(
             value.get("universe_id"), field="contract.universe_id", limit=96
         ),
@@ -160,9 +178,18 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
         "thresholds_frozen": _required_boolean(
             value, "thresholds_frozen", expected=True
         ),
-        "outcome_blind": _required_boolean(value, "outcome_blind", expected=True),
-        "public_evidence_only": _required_boolean(
-            value, "public_evidence_only", expected=True
+        # These two remain caller assertions until a public lineage contract can
+        # verify them; the engine records the assertion state rather than
+        # projecting an unverified guarantee as fact.
+        "outcome_blind_state": (
+            "caller_asserted"
+            if _required_boolean(value, "outcome_blind", expected=True)
+            else "unset"
+        ),
+        "public_evidence_only_state": (
+            "caller_asserted"
+            if _required_boolean(value, "public_evidence_only", expected=True)
+            else "unset"
         ),
         "gates": gates,
         "investment_advice_allowed": _required_boolean(
