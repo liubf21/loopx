@@ -812,7 +812,7 @@ with product-path proof.
 On a host with the LoopX slash entry, start the long-running goal directly:
 
 ```text
-/loopx Fix https://github.com/owner/repo/issues/123
+/loopx --capability-route issue-fix Fix https://github.com/owner/repo/issues/123
 ```
 
 For a manually integrated host, inspect the command pack and then start the
@@ -821,12 +821,14 @@ same exact goal text through the guided CLI transaction:
 ```bash
 loopx bootstrap-command-pack --project .
 loopx start-goal --guided --project . \
+  --capability-route issue-fix \
   --goal-text "Fix https://github.com/owner/repo/issues/123"
 ```
 
-The conversational entry does not bypass issue selection, authority, or
-validation. It creates the durable goal/todo/host-loop route from which the
-issue-fix commands below can be executed.
+The explicit route switch does not bypass issue selection, authority, or
+validation. Without it, goal text never activates issue-fix. With it, the
+guided transaction creates the goal/todo/host-loop route from which the
+capability-owned admission commands below can be executed.
 
 ## Feasibility Decision
 

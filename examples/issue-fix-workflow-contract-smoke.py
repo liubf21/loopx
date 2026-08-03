@@ -83,8 +83,12 @@ def main() -> int:
     assert "issue-fix-workflow-contract-v0.md" in readme
     assert "python3 examples/issue-fix-workflow-contract-smoke.py" in readme
     assert "## Conversational `/loopx` Entry" in readme
-    assert "/loopx Fix https://github.com/owner/repo/issues/123" in readme
+    assert (
+        "/loopx --capability-route issue-fix Fix "
+        "https://github.com/owner/repo/issues/123"
+    ) in readme
     assert "loopx bootstrap-command-pack --project ." in readme
+    assert "--capability-route issue-fix" in readme
     assert "--goal-text \"Fix https://github.com/owner/repo/issues/123\"" in readme
     assert "loopx issue-fix workflow-plan" in readme
     assert "loopx issue-fix feasibility" in readme
@@ -97,7 +101,8 @@ def main() -> int:
     assert "runnable_successor" in readme
     assert "examples/issue-fix-pr-lifecycle-smoke.py" in readme
     assert "explicit gates" in readme
-    assert "## Issue-Fix Domain Route" in loopx_goal_command
+    assert "## Explicit Issue-Fix Capability Route" in loopx_goal_command
+    assert "Goal text never selects a product capability" in loopx_goal_command
     assert "loopx issue-fix workflow-plan" in loopx_goal_command
     assert "--repository-context-json <compact-context.json>" in loopx_goal_command
     assert "--goal-id <goal-id>" in loopx_goal_command
