@@ -24,7 +24,10 @@ def assert_release_readiness_gets_no_write_argument() -> None:
     normalized = normalize_canary_command("python3 examples/canary/canary-promotion-readiness-smoke.py")
     assert normalized["ok"] is True, normalized
     assert "--no-write-evidence" in normalized["argv"], normalized
-    assert normalized["injected_args"] == ["--no-write-evidence"], normalized
+    assert normalized["injected_args"] == [
+        "--no-write-evidence",
+        "--dashboard-mode=skip",
+    ], normalized
 
 
 def assert_preview_does_not_execute_or_write() -> None:

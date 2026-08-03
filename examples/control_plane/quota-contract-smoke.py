@@ -165,7 +165,7 @@ def main() -> int:
     )
     assert_contains(
         quota_doc,
-        "report release readiness blockers from the shared run-history projection",
+        "report release readiness blockers from the shared runtime release ledger",
         label="quota doc",
     )
     assert_contains(

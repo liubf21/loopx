@@ -48,6 +48,7 @@ def assert_full_public_preview_injects_safe_group_args() -> None:
         for check in payload["selected_checks"]
     }
     assert "--no-write-evidence" in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"], payload
+    assert "--dashboard-mode=skip" in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"], payload
     assert "--skip-browser" in by_script["examples/dashboard-demo-readiness-smoke.py"]["argv"], payload
 
 
