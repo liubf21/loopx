@@ -12,6 +12,11 @@ LoopX-repo-specific.
 The command is read-only. It does not approve reviews, post PR comments, merge,
 push, spend LoopX quota, or mark LoopX todos complete.
 
+The built-in `pull-request-review` capability adds an optional autonomous
+observation to this same command. It reuses the existing GitHub scan and
+normalized review queue; it does not introduce a second crawler or a new write
+authority.
+
 Codex agents should use the dedicated `loopx-pr-review` skill for this slash
 command. Do not route `/loopx-pr-review` through the broader `loopx-project`
 workflow or the merge-focused `loopx-pr-merge` skill.
@@ -33,6 +38,44 @@ templates enter the model context:
 ```bash
 loopx --format json pr-review --state all [--repo owner/repo] [--since ISO]
 ```
+
+For an autonomous maintainer monitor, request the complete open queue and the
+read-only observation packet:
+
+```bash
+loopx --format json pr-review --repo owner/repo --state open \
+  --autonomous-observation
+```
+
+On a later poll, pass either the prior `autonomous_review` object or the full
+prior PR-review packet:
+
+```bash
+loopx --format json pr-review --repo owner/repo --state open \
+  --autonomous-observation \
+  --previous-observation-json previous.json
+```
+
+`pull_request_review_queue_observation_v0` has exactly three observation
+states:
+
+- `not_observed`: the source or packet slice was incomplete. Preserve the
+  previous baseline and do not claim the queue is unchanged.
+- `observed_unchanged`: a complete observation has the same queue fingerprint.
+  Emit no duplicate advancement candidate.
+- `material_transition`: a complete observation changed an exact head, review
+  decision, check state, draft state, mergeability, or open-queue membership.
+
+The repository-scoped fingerprint contains only compact public PR metadata.
+Persisted `items` carry only PR number and item fingerprint, so the autonomous
+packet does not duplicate the full review queue. On a material transition, the
+capability selects at most one changed, non-draft open PR in the existing
+`pr-review` sequence and emits a
+`pull_request_review_todo_preview_v0` bound to its exact head. The preview may
+route to initial review, re-review after changes, or merge-readiness
+qualification. It grants no Todo write, GitHub review/comment, push, or merge
+authority; callers must use normal LoopX Todo authority, `loopx-pr-review`, and
+`loopx-pr-merge` policy for those actions.
 
 Do not pipe that first packet through `jq` or another projection that only
 keeps `.summary` and `.review_sequence`; that drops
