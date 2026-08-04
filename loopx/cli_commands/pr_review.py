@@ -66,6 +66,16 @@ def register_pr_review_command(
         "--previous-observation-json",
         help="Compare against a prior autonomous observation or full pr-review packet.",
     )
+    parser.add_argument(
+        "--handled-exact-head",
+        action="append",
+        default=[],
+        metavar="NUMBER@HEAD_OID",
+        help=(
+            "Record one externally completed exact-head candidate so an autonomous "
+            "monitor can advance to the next unhandled PR. Repeatable."
+        ),
+    )
 
 
 def handle_pr_review_command(
@@ -81,6 +91,8 @@ def handle_pr_review_command(
             raise ValueError(
                 "--previous-observation-json requires --autonomous-observation"
             )
+        if args.handled_exact_head and not args.autonomous_observation:
+            raise ValueError("--handled-exact-head requires --autonomous-observation")
         previous_observation = None
         if args.previous_observation_json:
             previous_observation = json.loads(
@@ -123,10 +135,14 @@ def handle_pr_review_command(
                 pull_requests=payload.get("pull_requests") or [],
                 result_completeness=payload.get("result_completeness") or {},
                 previous_observation=previous_observation,
+                handled_exact_heads=args.handled_exact_head,
             )
             payload["request"]["autonomous_observation"] = True
             payload["request"]["previous_observation_supplied"] = bool(
                 previous_observation
+            )
+            payload["request"]["handled_exact_head_count_supplied"] = len(
+                args.handled_exact_head
             )
             payload["request"]["include"].append("autonomous_review")
     except Exception as exc:

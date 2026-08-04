@@ -226,9 +226,10 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "command": (
                     "loopx pr-review --repo <owner/repo> --state open "
                     "--autonomous-observation --previous-observation-json "
-                    "<previous.json> --format json"
+                    "<previous.json> [--handled-exact-head NUMBER@HEAD_OID] "
+                    "--format json"
                 ),
-                "purpose": "Classify a complete queue as unchanged or materially transitioned against a prior public-safe observation.",
+                "purpose": "Classify a complete queue and advance from explicitly handled exact heads to the next unhandled candidate.",
                 "write_boundary": "reads one caller-supplied local observation; emits a preview only and grants no external authority",
             },
         ],
@@ -257,7 +258,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "boundaries": [
             "A queue is observed only when result_completeness.complete=true; partial or failed reads are not_observed and never count as unchanged.",
             "Fingerprints cover exact head, review decision, check state, draft state, and mergeability for every open PR.",
-            "One material observation emits at most one exact-head advancement Todo preview; unchanged observations emit no duplicate candidate.",
+            "One observation emits at most one exact-head advancement Todo preview; unchanged observations emit no duplicate candidate and may advance only from an explicit handled exact-head cursor.",
             "The capability reuses the existing pr-review GitHub scan and normalized packet; it does not add a second provider or capture review bodies and logs.",
             "Candidate selection grants no GitHub review, comment, push, merge, quota, or Todo-write authority; those remain with their existing policy surfaces.",
         ],

@@ -56,21 +56,50 @@ loopx --format json pr-review --repo owner/repo --state open \
   --previous-observation-json previous.json
 ```
 
+After the selected candidate has an externally verifiable review or
+merge-readiness result at that exact head, advance the queue with an explicit
+handled cursor:
+
+```bash
+loopx --format json pr-review --repo owner/repo --state open \
+  --autonomous-observation \
+  --previous-observation-json previous.json \
+  --handled-exact-head 2768@0123456789abcdef0123456789abcdef01234567
+```
+
+`--handled-exact-head` is repeatable and uses `NUMBER@HEAD_OID`. The observation
+persists these public-safe cursors in `handled_exact_heads`. Candidate emission
+alone is not a completion receipt: callers must add the cursor only after
+review-result readback proves that exact head was handled. A newly supplied
+cursor must match the prior packet's candidate; a caller cannot skip an
+unselected PR by naming it handled. A new head is a new candidate even when the
+prior head was handled.
+
+`pending_candidate_exact_head` preserves the last selected but unhandled exact
+head across unchanged and incomplete polls. It is a scheduling cursor only;
+callers still deduplicate Todo creation by exact target key and must not treat
+the cursor as evidence that a review happened.
+
 `pull_request_review_queue_observation_v0` has exactly three observation
 states:
 
 - `not_observed`: the source or packet slice was incomplete. Preserve the
   previous baseline and do not claim the queue is unchanged.
 - `observed_unchanged`: a complete observation has the same queue fingerprint.
-  Emit no duplicate advancement candidate.
+  Do not create a duplicate exact-head Todo. When an explicit handled cursor
+  advances the scheduling state, the packet may select the next unhandled
+  backlog PR while preserving this observation state. An unhandled candidate
+  can remain selected across polls until the caller supplies its completion
+  cursor.
 - `material_transition`: a complete observation changed an exact head, review
   decision, check state, draft state, mergeability, or open-queue membership.
 
 The repository-scoped fingerprint contains only compact public PR metadata.
 Persisted `items` carry only PR number and item fingerprint, so the autonomous
-packet does not duplicate the full review queue. On a material transition, the
-capability selects at most one changed, non-draft open PR in the existing
-`pr-review` sequence and emits a
+packet does not duplicate the full review queue. The capability selects at
+most one unhandled, non-draft open PR in the existing `pr-review` sequence:
+changed PRs first, then the unchanged backlog after an explicit handled cursor.
+It emits a
 `pull_request_review_todo_preview_v0` bound to its exact head. The preview may
 route to initial review, re-review after changes, or merge-readiness
 qualification. It grants no Todo write, GitHub review/comment, push, or merge

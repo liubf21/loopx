@@ -43,12 +43,14 @@ def _observe(
     *,
     complete: bool = True,
     previous: dict[str, object] | None = None,
+    handled: list[str] | None = None,
 ) -> dict[str, object]:
     return build_pull_request_review_queue_observation(
         repository="owner/repo",
         pull_requests=items,
         result_completeness={"complete": complete},
         previous_observation=previous,
+        handled_exact_heads=handled or [],
     )
 
 
@@ -64,10 +66,18 @@ def test_incomplete_queue_is_not_observed_and_preserves_baseline() -> None:
     assert result["queue_size"] is None
     assert result["candidate_count"] == 0
     assert result["candidate"] is None
+    assert result["pending_candidate_exact_head"] == f"1@{1:040d}"
 
     recovered = _observe([_pr(1)], previous=result)
     assert recovered["observation_state"] == "observed_unchanged"
     assert recovered["candidate"] is None
+
+    advanced = _observe(
+        [_pr(1), _pr(2)],
+        previous=result,
+        handled=[f"1@{1:040d}"],
+    )
+    assert advanced["candidate"]["number"] == 2
 
 
 def test_initial_complete_observation_selects_one_exact_head_candidate() -> None:
@@ -97,6 +107,84 @@ def test_unchanged_observation_emits_no_duplicate_candidate() -> None:
     assert repeated["observation_state"] == "observed_unchanged"
     assert repeated["changed_pr_numbers"] == []
     assert repeated["candidate"] is None
+    assert repeated["pending_candidate_exact_head"] == f"1@{1:040d}"
+
+
+def test_handled_exact_head_advances_unchanged_backlog() -> None:
+    first = _observe([_pr(1), _pr(2)])
+    handled = [f"1@{1:040d}"]
+    repeated = _observe([_pr(1), _pr(2)], previous=first, handled=handled)
+
+    assert repeated["observation_state"] == "observed_unchanged"
+    assert repeated["changed_pr_numbers"] == []
+    assert repeated["handled_exact_heads"] == handled
+    assert repeated["candidate"]["number"] == 2
+    assert repeated["candidate_selection_reason"] == "unhandled_backlog_progression"
+
+    still_pending = _observe([_pr(1), _pr(2)], previous=repeated)
+    assert still_pending["observation_state"] == "observed_unchanged"
+    assert still_pending["candidate"]["number"] == 2
+
+
+def test_handled_changed_pr_does_not_strand_unchanged_backlog() -> None:
+    first = _observe([_pr(1), _pr(2)])
+    result = _observe(
+        [_pr(1, decision="CHANGES_REQUESTED"), _pr(2)],
+        previous=first,
+        handled=[f"1@{1:040d}"],
+    )
+
+    assert result["observation_state"] == "material_transition"
+    assert result["changed_pr_numbers"] == [1]
+    assert result["candidate"]["number"] == 2
+    assert result["candidate_selection_reason"] == "unhandled_backlog_progression"
+
+
+def test_new_head_reopens_a_previously_handled_pr() -> None:
+    first = _observe([_pr(1), _pr(2)])
+    result = _observe(
+        [_pr(1, head="f" * 40), _pr(2)],
+        previous=first,
+        handled=[f"1@{1:040d}"],
+    )
+
+    assert result["candidate"]["number"] == 1
+    assert result["candidate"]["head_oid"] == "f" * 40
+    assert result["candidate_selection_reason"] == "unhandled_material_transition"
+    assert result["handled_exact_heads"] == []
+
+
+def test_closed_handled_pr_advances_and_prunes_cursor() -> None:
+    first = _observe([_pr(1), _pr(2)])
+    result = _observe(
+        [_pr(2)],
+        previous=first,
+        handled=[f"1@{1:040d}"],
+    )
+
+    assert result["removed_pr_numbers"] == ["1"]
+    assert result["candidate"]["number"] == 2
+    assert result["candidate_selection_reason"] == "unhandled_backlog_progression"
+    assert result["handled_exact_heads"] == []
+
+
+def test_handled_exact_head_must_be_number_and_full_oid() -> None:
+    try:
+        _observe([_pr(1)], handled=["1@short"])
+    except ValueError as exc:
+        assert "NUMBER@HEAD_OID" in str(exc)
+    else:
+        raise AssertionError("invalid handled exact head was accepted")
+
+
+def test_handled_exact_head_must_match_prior_candidate() -> None:
+    first = _observe([_pr(1), _pr(2)])
+    try:
+        _observe([_pr(1), _pr(2)], previous=first, handled=[f"2@{2:040d}"])
+    except ValueError as exc:
+        assert "prior candidate" in str(exc)
+    else:
+        raise AssertionError("an unselected exact head was marked handled")
 
 
 def test_exact_review_fingerprint_change_selects_changed_pr_only() -> None:

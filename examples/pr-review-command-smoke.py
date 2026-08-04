@@ -271,6 +271,22 @@ def main() -> int:
                 str(previous_path),
             ).stdout
         )
+        progressed = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "pr-review",
+                "--fixture",
+                str(FIXTURE),
+                "--state",
+                "open",
+                "--autonomous-observation",
+                "--previous-observation-json",
+                str(previous_path),
+                "--handled-exact-head",
+                "773@7730000000000000000000000000000000000000",
+            ).stdout
+        )
     assert unchanged["request"]["previous_observation_supplied"] is True, unchanged[
         "request"
     ]
@@ -278,6 +294,16 @@ def main() -> int:
         unchanged["autonomous_review"]["observation_state"] == "observed_unchanged"
     ), unchanged
     assert unchanged["autonomous_review"]["candidate"] is None, unchanged
+    progressed_observation = progressed["autonomous_review"]
+    assert (
+        progressed_observation["observation_state"] == "observed_unchanged"
+    ), progressed
+    assert progressed_observation["candidate"]["number"] == 771, progressed
+    assert (
+        progressed_observation["candidate_selection_reason"]
+        == "unhandled_backlog_progression"
+    ), progressed
+    assert progressed_observation["handled_exact_head_count"] == 1, progressed
 
     incomplete_observation = json.loads(
         run_cli(
