@@ -249,9 +249,11 @@ def run_worker(args: argparse.Namespace) -> int:
         if decision.should_run:
             wake_status = "would_wake"
             wake_rc = None
+            wake_failed = False
             if args.wake_cmd:
                 wake_rc = _run_wake(args.wake_cmd)
                 wake_status = "wake_ok" if wake_rc == 0 else "wake_failed"
+                wake_failed = wake_rc != 0
             _log(
                 f"status=should_run {wake_status} "
                 f"action={decision.action} class={decision.cadence_class} "
@@ -260,6 +262,27 @@ def run_worker(args: argparse.Namespace) -> int:
                 f"reason={shlex.quote(decision.reason)}"
                 + (f" wake_rc={wake_rc}" if wake_rc is not None else "")
             )
+            if wake_failed:
+                # A non-zero wake is a failed delivery, not a successful tick.
+                # Do not reset the unchanged-poll progression, and persist the
+                # failure so launchd/systemd and operators can see it.
+                _save_state(
+                    state_path,
+                    {
+                        "reset_token": decision.reset_token,
+                        "unchanged_count": unchanged_count,
+                        "last_wake_rc": wake_rc,
+                        "last_wake_status": "wake_failed",
+                    },
+                )
+                if once:
+                    return int(wake_rc) if wake_rc else 1
+                _log(
+                    "status=wake_failed_backoff "
+                    f"backoff_seconds={max(5, int(args.error_backoff_seconds))}"
+                )
+                time.sleep(max(5, args.error_backoff_seconds))
+                continue
             unchanged_count = 0
         else:
             _log(

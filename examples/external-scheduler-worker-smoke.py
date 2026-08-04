@@ -334,6 +334,49 @@ def test_end_to_end_should_run_invokes_wake_cmd(tmp_path: Path) -> None:
     assert persisted["unchanged_count"] == 0
 
 
+def test_end_to_end_failed_wake_returns_nonzero_once(tmp_path: Path) -> None:
+    """A non-zero wake_cmd is a failed delivery, not a healthy tick."""
+    active = _hint_payload(
+        action="run_now",
+        initial=3,
+        progression=[3],
+        limit=None,
+        should_run=True,
+        cadence_class="active_work",
+        reset_token="tok-run",
+    )
+    registry = tmp_path / "wakefail" / "registry"
+    state_file = tmp_path / "wakefail" / "worker-state.json"
+    fake_cli = tmp_path / "wakefail" / "fake-loopx"
+    _write_fake_cli(fake_cli, [active])
+
+    original_sleep = worker.time.sleep
+    worker.time.sleep = lambda seconds: None  # type: ignore[assignment]
+    try:
+        args = argparse.Namespace(
+            cli_bin=str(fake_cli),
+            registry=str(registry),
+            runtime_root=None,
+            runtime_profile="generic_cli",
+            goal_id="g",
+            agent_id="a",
+            state_file=str(state_file),
+            wake_cmd="exit 17",
+            once=True,
+            error_backoff_seconds=5.0,
+        )
+        rc = run_worker(args)
+    finally:
+        worker.time.sleep = original_sleep  # type: ignore[assignment]
+
+    assert rc == 17  # propagate the wake command's non-zero exit
+    persisted = json.loads(state_file.read_text())
+    # The failed wake must not be counted as successful progress.
+    assert persisted["last_wake_status"] == "wake_failed"
+    assert persisted["last_wake_rc"] == 17
+    assert persisted["unchanged_count"] == 0
+
+
 def main() -> int:
     tests = [
         test_active_work_uses_initial_interval,
@@ -347,6 +390,7 @@ def main() -> int:
         test_end_to_end_token_change_resets_count,
         test_end_to_end_terminal_stops_immediately,
         test_end_to_end_should_run_invokes_wake_cmd,
+        test_end_to_end_failed_wake_returns_nonzero_once,
     ]
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
