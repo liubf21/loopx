@@ -43,6 +43,21 @@ about the work.
 | `computer_use_runtime` | Browser, desktop, or app automation runtime | Visible or replayable UI execution surface | Approved connector plan, bounded todo, host replay event, or user takeover handoff | Compact action plan, observation, receipt, gate, and evidence-handle writeback | Host-owned replay/screenshot pointer plus compact receipt fields | Stop at unknown modal, privacy ambiguity, or final external action; scheduler hints still come from LoopX quota | Quota spend only after validated receipt and LoopX writeback; readiness/profile checks stay no-spend | Review card with intended action, forbidden actions, evidence handle, and takeover path | Do not copy credentials, cookies, raw screenshots, private UI bodies, or perform sends/purchases/production mutations without exact gate | Synthetic capability/action/receipt smokes prove gate-before-write, raw-evidence stripping, and concrete user-question projection. |
 | `loopx_turn` | LoopX Turn host adapter | Isolated headless bounded execution | `loopx host-mode-plan` selects the mode, then `loopx turn plan` previews one typed decision | `loopx turn run-once --execute` writes back only after independent validation | Compact Turn receipt and scheduler execution context | Outer controller obeys scheduler hints; cadence-only/preview work stays no-spend | Quota slot only after validated writeback | Operator sees selected host, execution mode, validator requirement, and next preview command | Do not publish opaque session handles, raw transcripts, local paths, credentials, or host-local logs | Host-mode-plan smoke proves host-mode selection, scoped identity, Turn mapping, and visible/headless/hybrid handoff readiness. |
 
+### Reusable shell_worker reference
+
+`scripts/external_scheduler_worker.py` is a scheduler-hint-aware `shell_worker`
+for generic visible CLI loops (for example TraeX). Each tick runs
+`quota should-run --include-detail scheduler`, projects a one-line public-safe
+status (`waiting`/`should_run`/`terminal`, cadence class, next check minutes,
+unchanged count), and sleeps per the `local_scheduler` progression ladder. It
+tracks the consecutive-unchanged index in a small state file and resets it when
+`scheduler_hint.reset_policy.reset_token` changes. It is observe-only by
+default; pass `--wake-cmd` only to trigger a bounded headless turn (for example
+`loopx turn run-once ... --execute`). It cannot type into a visible TUI, so it
+does not replace the interactive host loop. A launchd template ships at
+`examples/external-scheduler-worker.launchd.plist` and the contract is guarded
+by `examples/external-scheduler-worker-smoke.py`.
+
 ## External Tool Extension Candidates
 
 An MCP server can play two different roles around LoopX:
