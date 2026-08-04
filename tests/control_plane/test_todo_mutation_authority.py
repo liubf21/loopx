@@ -14,6 +14,7 @@ from loopx.control_plane.scheduler.monitor_poll_writeback import (
 from loopx.event_sourced_state import (
     AppendOnlyStateEventStore,
     TODO_ADDED,
+    backfill_todo_events_from_markdown,
     build_state_projection,
     make_state_event,
 )
@@ -357,6 +358,28 @@ def test_capability_binding_follows_event_projected_successor(tmp_path: Path) ->
     assert successor["capability_binding_ref"] == (
         "issue-fix:feasibility-a1b2c3d4"
     )
+
+
+def test_task_domain_survives_markdown_event_projection() -> None:
+    events = backfill_todo_events_from_markdown(
+        "\n".join(
+            [
+                "## Agent Todo",
+                "",
+                "- [ ] [P0] Validate one adaptive lane.",
+                (
+                    "  <!-- loopx:todo todo_id=todo_domain001 status=open "
+                    "task_class=advancement_task action_kind=validate "
+                    "task_domain=validation -->"
+                ),
+            ]
+        ),
+        goal_id=GOAL_ID,
+    )
+
+    projection = build_state_projection(events)
+
+    assert projection["agent_todos"]["items"][0]["task_domain"] == "validation"
 
 
 def test_monitor_schedule_fields_remain_monitor_only(tmp_path: Path) -> None:

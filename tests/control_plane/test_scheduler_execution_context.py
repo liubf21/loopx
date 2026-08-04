@@ -16,6 +16,7 @@ from loopx.control_plane.scheduler.execution_context import (
     render_scheduler_execution_args,
     resolve_scheduler_execution_context,
     scheduler_execution_context_for_runtime_profile,
+    scheduler_host_capabilities,
     scheduler_runtime_profile_for_execution_context,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
@@ -925,6 +926,35 @@ def test_first_class_runtime_profiles_round_trip_to_compact_args(
         render_scheduler_execution_args(scheduler_execution_context=resolution)
         == expected_args
     )
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    (
+        (
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+            ["subagent_spawn", "subagent_resume"],
+        ),
+        (
+            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+            ["subagent_spawn", "subagent_resume"],
+        ),
+        (
+            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+            ["subagent_spawn", "subagent_resume"],
+        ),
+        (SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE, ["subagent_spawn"]),
+        (SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP, []),
+        (SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL, []),
+    ),
+)
+def test_scheduler_host_capabilities_are_derived_not_persisted(
+    profile: SchedulerRuntimeProfile,
+    expected: list[str],
+) -> None:
+    context = scheduler_execution_context_for_runtime_profile(profile)
+
+    assert scheduler_host_capabilities(context) == expected
 
 
 def test_advanced_scheduler_context_keeps_explicit_context_args() -> None:

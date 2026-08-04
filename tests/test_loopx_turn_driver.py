@@ -13,7 +13,9 @@ from loopx.cli import main as cli_main
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
+    build_loopx_turn_host_request,
     build_loopx_turn_plan,
+    child_host_capabilities,
     loopx_turn_execution_committed,
     run_loopx_turn_once,
 )
@@ -98,6 +100,165 @@ def test_turn_plan_projects_ready_route_without_side_effects() -> None:
         "quota_spent": False,
     }
     assert payload["boundary"]["read_only"] is True
+
+
+def _adaptive_envelope() -> dict[str, object]:
+    envelope = _envelope()
+    envelope["task_orchestration_contract"] = {
+        "schema_version": "task_orchestration_contract_v2",
+        "mode": "adaptive",
+        "coordinator_agent_id": "codex-fixture",
+        "child_brief_defaults": {
+            "schema_version": "subagent_control_plane_handoff_v0",
+            "parent_goal_id": "fixture-goal",
+            "context_policy": {
+                "selection_owner": "task_coordinator",
+                "default": "fresh",
+                "allowed": ["fresh", "resume"],
+            },
+        },
+        "eligible_child_lanes": [
+            {
+                "todo_id": "todo_child001",
+                "task_domain": "validation",
+                "execution_kind": "ephemeral_child",
+                "child_brief": {
+                    "todo_id": "todo_child001",
+                    "objective": "Validate one independent fixture.",
+                    "task_domain": "validation",
+                },
+            }
+        ],
+        "writeback_owner": "task_coordinator",
+    }
+    return envelope
+
+
+def test_turn_plan_maps_admitted_child_to_codex_native_operation() -> None:
+    payload = build_loopx_turn_plan(
+        _adaptive_envelope(),
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+
+    orchestration = payload["turn_envelope"]["task_orchestration_contract"]
+    lane_brief = orchestration["eligible_child_lanes"][0]["child_brief"]
+    brief = {
+        **orchestration["child_brief_defaults"],
+        **lane_brief,
+        "evidence_boundary": {
+            "task_domain": "validation",
+            "task_repository": None,
+            "required_write_scopes": [],
+        },
+    }
+    assert payload["child_operations"] == [
+        {
+            "schema_version": "loopx_child_host_operation_v0",
+            "todo_id": "todo_child001",
+            "host": "codex-cli",
+            "selection_owner": "task_coordinator",
+            "recommended_context": "fresh",
+            "available_contexts": [
+                {
+                    "context": "fresh",
+                    "native_operation": "spawn_agent",
+                    "requires_session": False,
+                },
+                {
+                    "context": "resume",
+                    "native_operation": "resume_agent",
+                    "requires_session": True,
+                },
+            ],
+            "brief": brief,
+            "result_channel": "public_safe_typed_evidence",
+            "writeback_owner": "task_coordinator",
+        }
+    ]
+
+
+def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
+    envelope = _adaptive_envelope()
+    envelope["action"]["selected_todo"] = None
+    envelope["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
+    payload = build_loopx_turn_plan(
+        envelope,
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+
+    assert payload["ok"] is True
+    assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
+    assert payload["route"]["selected_todo"] == {
+        "todo_id": "todo_primary",
+        "source": "task_orchestration_contract.primary_todo_id",
+    }
+
+
+def test_turn_plan_exposes_only_qualified_claude_child_contexts() -> None:
+    envelope = _adaptive_envelope()
+    payload = build_loopx_turn_plan(
+        envelope,
+        host="claude-code",
+        execution_mode="interactive-visible",
+    )
+    orchestration = envelope["task_orchestration_contract"]
+    lane_brief = orchestration["eligible_child_lanes"][0]["child_brief"]
+    brief = {
+        **orchestration["child_brief_defaults"],
+        **lane_brief,
+        "evidence_boundary": {
+            "task_domain": "validation",
+            "task_repository": None,
+            "required_write_scopes": [],
+        },
+    }
+
+    assert payload["child_operations"][0] == {
+        "schema_version": "loopx_child_host_operation_v0",
+        "todo_id": "todo_child001",
+        "host": "claude-code",
+        "selection_owner": "task_coordinator",
+        "recommended_context": "fresh",
+        "available_contexts": [
+            {
+                "context": "fresh",
+                "native_operation": "Task",
+                "requires_session": False,
+            }
+        ],
+        "brief": brief,
+        "result_channel": "public_safe_typed_evidence",
+        "writeback_owner": "task_coordinator",
+    }
+
+
+def test_child_host_capabilities_open_only_qualified_default_contracts() -> None:
+    assert child_host_capabilities("codex-cli") == [
+        "subagent_spawn",
+        "subagent_resume",
+    ]
+    assert child_host_capabilities("claude-code") == ["subagent_spawn"]
+    assert child_host_capabilities("generic-cli") == []
+
+
+def test_turn_host_request_carries_typed_child_operations() -> None:
+    plan = build_loopx_turn_plan(
+        _adaptive_envelope(),
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+
+    request = build_loopx_turn_host_request(plan)
+
+    assert request["child_operations"] == plan["child_operations"]
+    assert request["child_operations"][0]["available_contexts"][0] == {
+        "context": "fresh",
+        "native_operation": "spawn_agent",
+        "requires_session": False,
+    }
+    assert request["result_contract"]["stdout"] == "one public-safe JSON object"
 
 
 def test_turn_help_omits_legacy_agent_loop_entrypoint() -> None:
