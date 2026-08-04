@@ -4,6 +4,7 @@ from .driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
     build_loopx_turn_plan,
+    child_host_capabilities,
 )
 from .codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
@@ -44,6 +45,7 @@ __all__ = [
     "LoopXTurnRoute",
     "LoopXTurnResultKind",
     "build_loopx_turn_plan",
+    "child_host_capabilities",
     "build_loopx_turn_host_request",
     "build_loopx_turn_command_validator",
     "build_loopx_turn_transaction_plan",

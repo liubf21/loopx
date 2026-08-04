@@ -173,6 +173,24 @@ class SchedulerExecutionContextResolution:
         }
 
 
+def scheduler_host_capabilities(
+    value: Mapping[str, Any] | SchedulerExecutionContextResolution | None,
+) -> list[str]:
+    resolution = resolve_scheduler_execution_context(value)
+    if not resolution.ok or resolution.context is None:
+        return []
+    host_surface = resolution.context.host_surface
+    if host_surface in {
+        HostSurface.CODEX_APP,
+        HostSurface.CODEX_APP_SSH,
+        HostSurface.CODEX_CLI,
+    }:
+        return ["subagent_spawn", "subagent_resume"]
+    if host_surface is HostSurface.CLAUDE_CODE:
+        return ["subagent_spawn"]
+    return []
+
+
 def _validation_errors(context: SchedulerExecutionContext) -> list[str]:
     errors: list[str] = []
     cli_surfaces = {

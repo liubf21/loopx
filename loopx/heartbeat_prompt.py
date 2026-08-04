@@ -906,7 +906,7 @@ Guard/retry; `LOOPX_TURN=<current_time_iso>`:
 {pr_review_pre_quota_block}{quota_guard_command}
 ```
 
-Fail: quiet.
+Fail:quiet.
 
 User NOTIFY: Chinese actions incl. non_blocking at false/0; never only "owner
 gate"; required missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
@@ -1018,8 +1018,8 @@ If `should_run=true`:
    `mapped_noop_if_unchanged` plus
    `stop_if_unchanged=true` means quiet no-op if no new instruction/evidence/
    todo/stale source/safe handoff.
-   `task_orchestration_contract`: activate/resume eligible peer lanes; the
-   task-scoped coordinator reviews accepted evidence and writes this bundle.
+   `task_orchestration_contract`: spawn admitted child lanes or resume peers;
+   the coordinator alone accepts evidence and writes/spends once.
    Check `delivery_batch_scale`, `delivery_outcome`,
    `post_handoff_outcome_gap_streak`, `handoff_delivery_contract`; obey
    repeated-small/surface-loop contracts.

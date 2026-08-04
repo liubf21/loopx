@@ -132,6 +132,7 @@ from .control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from .control_plane.scheduler.execution_context import (
     SchedulerExecutionContextResolution,
     resolve_scheduler_execution_context,
+    scheduler_host_capabilities,
 )
 from .control_plane.scheduler.external_evidence_observation import build_external_evidence_observation_obligation
 from .control_plane.scheduler.automation_liveness import build_automation_liveness
@@ -1184,6 +1185,7 @@ def _build_agent_work_lane(
     goal_boundary: Mapping[str, Any],
     agent_identity: Mapping[str, Any] | None,
     agent_todo_summary: Mapping[str, Any],
+    available_capabilities: Any,
     monitor_debt_arbitration: Mapping[str, Any] | None,
 ) -> tuple[bool, dict[str, Any], dict[str, Any] | None]:
     monitor_only = _agent_monitor_only(agent_identity)
@@ -1211,6 +1213,15 @@ def _build_agent_work_lane(
             if isinstance(project_asset.get("agent_todos"), dict)
             else None
         ),
+        raw_user_todo_summary=(
+            item.get("user_todos")
+            if isinstance(item.get("user_todos"), dict)
+            else project_asset.get("user_todos")
+            if isinstance(project_asset.get("user_todos"), dict)
+            else None
+        ),
+        available_capabilities=available_capabilities,
+        parent_goal_id=goal_id,
     )
     return monitor_only, work_lane, task_orchestration
 
@@ -1549,6 +1560,14 @@ def _prepare_quota_should_run_item(
         item=item,
         project_asset=project_asset,
     )
+    orchestration_capabilities = list(
+        dict.fromkeys(
+            [
+                *effective_available_capabilities,
+                *scheduler_host_capabilities(resolved_scheduler_context),
+            ]
+        )
+    )
     user_todo_summary = select_quota_todo_summary(
         item.get("user_todos"),
         project_asset.get("user_todos") if project_asset else None,
@@ -1669,6 +1688,7 @@ def _prepare_quota_should_run_item(
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
+            available_capabilities=orchestration_capabilities,
             monitor_debt_arbitration=monitor_debt_arbitration,
         )
     )
