@@ -243,6 +243,17 @@ def test_child_host_capabilities_open_only_qualified_default_contracts() -> None
     assert child_host_capabilities("generic-cli") == []
 
 
+def test_generic_host_does_not_project_unqualified_child_operations() -> None:
+    payload = build_loopx_turn_plan(
+        _adaptive_envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+    )
+
+    assert payload["ok"] is True
+    assert "child_operations" not in payload
+
+
 def test_turn_host_request_carries_typed_child_operations() -> None:
     plan = build_loopx_turn_plan(
         _adaptive_envelope(),

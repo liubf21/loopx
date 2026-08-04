@@ -340,11 +340,49 @@ def test_claimed_primary_agent_coordinates_unclaimed_child_work() -> None:
             _todo("todo_child"),
         ]
     }
+    contracts = []
+    for agent_id in peers:
+        contract, _work_lane = apply_task_orchestration_contract(
+            fallback_work_lane_contract={"lane": "advancement_task"},
+            goal_boundary={
+                "write_scope": ["loopx/**"],
+                "orchestration": {
+                    "mode": "multi_subagent",
+                    "spawn_allowed": True,
+                    "max_children": 1,
+                },
+            },
+            agent_identity={
+                "agent_id": agent_id,
+                "registered_agents": peers,
+            },
+            agent_todo_summary=summary,
+            raw_agent_todo_summary=summary,
+            available_capabilities=["subagent_spawn"],
+        )
+        if contract:
+            contracts.append(contract)
+
+    assert len(contracts) == 1
+    assert contracts[0]["coordinator_agent_id"] == AGENT_ID
+    assert contracts[0]["primary_todo_id"] == "todo_primary"
+    assert contracts[0]["eligible_child_lanes"][0]["todo_id"] == "todo_child"
+
+
+def test_admission_rejects_explicit_repository_without_goal_authority() -> None:
+    summary = {
+        "items": [
+            _todo("todo_primary"),
+            {
+                **_todo("todo_child"),
+                "task_repository": "git:github.com/owner/other-repo",
+            },
+        ]
+    }
 
     contract, _work_lane = apply_task_orchestration_contract(
         fallback_work_lane_contract={"lane": "advancement_task"},
         goal_boundary={
-            "write_scope": ["loopx/**"],
             "orchestration": {
                 "mode": "multi_subagent",
                 "spawn_allowed": True,
@@ -353,7 +391,44 @@ def test_claimed_primary_agent_coordinates_unclaimed_child_work() -> None:
         },
         agent_identity={
             "agent_id": AGENT_ID,
-            "registered_agents": peers,
+            "registered_agents": [AGENT_ID],
+        },
+        agent_todo_summary=summary,
+        raw_agent_todo_summary=summary,
+        available_capabilities=["subagent_spawn"],
+    )
+
+    assert contract is None
+
+
+def test_admission_accepts_only_goal_repository_identity() -> None:
+    summary = {
+        "items": [
+            _todo("todo_primary"),
+            {
+                **_todo("todo_same_repo"),
+                "task_repository": "git:github.com/owner/loopx",
+            },
+            {
+                **_todo("todo_other_repo"),
+                "task_repository": "git:github.com/owner/other-repo",
+            },
+        ]
+    }
+
+    contract, _work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract={"lane": "advancement_task"},
+        goal_boundary={
+            "task_repository": "git:github.com/owner/loopx",
+            "orchestration": {
+                "mode": "multi_subagent",
+                "spawn_allowed": True,
+                "max_children": 2,
+            },
+        },
+        agent_identity={
+            "agent_id": AGENT_ID,
+            "registered_agents": [AGENT_ID],
         },
         agent_todo_summary=summary,
         raw_agent_todo_summary=summary,
@@ -361,6 +436,81 @@ def test_claimed_primary_agent_coordinates_unclaimed_child_work() -> None:
     )
 
     assert contract is not None
-    assert contract["coordinator_agent_id"] == AGENT_ID
-    assert contract["primary_todo_id"] == "todo_primary"
-    assert contract["eligible_child_lanes"][0]["todo_id"] == "todo_child"
+    assert [lane["todo_id"] for lane in contract["eligible_child_lanes"]] == [
+        "todo_same_repo"
+    ]
+    assert contract["blocked_lanes"] == [
+        {
+            "todo_id": "todo_other_repo",
+            "task_domain": "code",
+            "reason_codes": ["task_repository_not_allowed"],
+        }
+    ]
+
+
+def test_admission_requires_scope_for_mutating_child_work() -> None:
+    summary = {
+        "items": [
+            _todo("todo_primary"),
+            _todo("todo_mutating", action_kind="implement"),
+            _todo("todo_read_only", action_kind="inspect"),
+        ]
+    }
+
+    contract, _work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract={"lane": "advancement_task"},
+        goal_boundary={
+            "write_scope": ["loopx/**"],
+            "orchestration": {
+                "mode": "multi_subagent",
+                "spawn_allowed": True,
+                "max_children": 2,
+            },
+        },
+        agent_identity={
+            "agent_id": AGENT_ID,
+            "registered_agents": [AGENT_ID],
+        },
+        agent_todo_summary=summary,
+        raw_agent_todo_summary=summary,
+        available_capabilities=["subagent_spawn"],
+    )
+
+    assert contract is not None
+    assert [lane["todo_id"] for lane in contract["eligible_child_lanes"]] == [
+        "todo_read_only"
+    ]
+    assert contract["blocked_lanes"] == [
+        {
+            "todo_id": "todo_mutating",
+            "task_domain": "code",
+            "reason_codes": ["write_scope_missing"],
+        }
+    ]
+
+
+def test_admission_requires_scope_for_unknown_child_action() -> None:
+    summary = {
+        "items": [
+            _todo("todo_primary"),
+            _todo("todo_unknown", action_kind="custom_action"),
+            _todo("todo_review", action_kind="review_pr"),
+        ]
+    }
+
+    contract = _contract(
+        summary["items"],
+        available_capabilities=["subagent_spawn"],
+    )
+
+    assert contract is not None
+    assert [lane["todo_id"] for lane in contract["eligible_child_lanes"]] == [
+        "todo_review"
+    ]
+    assert contract["blocked_lanes"] == [
+        {
+            "todo_id": "todo_unknown",
+            "task_domain": "code",
+            "reason_codes": ["write_scope_missing"],
+        }
+    ]

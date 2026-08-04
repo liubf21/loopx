@@ -383,6 +383,7 @@ def test_three_long_child_briefs_stay_within_turn_envelope_budget() -> None:
             "action_kind": "implement",
             "task_domain": "code",
             "text": "Implement the primary slice.",
+                "required_write_scopes": ["loopx/**"],
         },
         *[
             {
@@ -400,6 +401,7 @@ def test_three_long_child_briefs_stay_within_turn_envelope_budget() -> None:
     contract, _work_lane = apply_task_orchestration_contract(
         fallback_work_lane_contract={"lane": "advancement_task"},
         goal_boundary={
+            "write_scope": ["loopx/**"],
             "orchestration": {
                 "mode": "multi_subagent",
                 "spawn_allowed": True,
