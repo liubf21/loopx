@@ -194,12 +194,12 @@ def build_should_run_command(args: argparse.Namespace) -> list[str]:
             args.goal_id,
             "--agent-id",
             args.agent_id,
+            "--runtime-profile",
+            args.runtime_profile,
             "--include-detail",
             "scheduler",
         ]
     )
-    if args.project:
-        command.extend(["--project", str(args.project)])
     return command
 
 
@@ -319,7 +319,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Path to the LoopX registry.",
     )
     parser.add_argument("--runtime-root", help="Override registry common_runtime_root.")
-    parser.add_argument("--project", help="Project directory for quota should-run.")
+    parser.add_argument(
+        "--runtime-profile",
+        default="generic_cli",
+        help="Quota runtime profile that emits the local_scheduler hint "
+        "(generic_cli for generic visible CLI loops such as TraeX/OpenCode).",
+    )
     parser.add_argument("--goal-id", required=True)
     parser.add_argument("--agent-id", required=True)
     parser.add_argument(

@@ -6,7 +6,6 @@
     __LABEL__         unique launchd label, e.g. com.loopx.traex-goal-watcher
     __WORKER__        absolute path to scripts/external_scheduler_worker.py
     __LOOPX_BIN__     absolute path to the loopx executable (run `which loopx`)
-    __PROJECT__       absolute path to the project checkout
     __REGISTRY__      absolute path to the registry (global or project-local)
     __RUNTIME_ROOT__  common runtime root (optional; remove the key if unused)
     __GOAL_ID__       registered goal id
@@ -16,9 +15,10 @@
 
   This is observe-only by default: it projects wait/backoff status without
   driving the host TUI. To also trigger a bounded headless turn, add an
-  argument pair:
+  argument pair (the wake command runs in a shell; __PROJECT__ is the
+  workspace path run-once executes in):
       <string>--wake-cmd</string>
-      <string>loopx turn run-once --goal-id __GOAL_ID__ --agent-id __AGENT_ID__ --execute</string>
+      <string>__LOOPX_BIN__ --registry __REGISTRY__ turn run-once --goal-id __GOAL_ID__ --agent-id __AGENT_ID__ --host generic-cli --execution-mode isolated-headless --project __PROJECT__ --host-adapter-command-json '["python3","/abs/path/to/traex_turn_host_adapter.py"]' --validation-command-json '[...]' --execute</string>
 
   Install:
     cp this-file ~/Library/LaunchAgents/__LABEL__.plist
