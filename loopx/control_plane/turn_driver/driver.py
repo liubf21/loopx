@@ -25,10 +25,6 @@ HOST_CHILD_CONTEXT_OPERATIONS = {
     "claude-code": {
         "fresh": ("Task", False),
     },
-    "generic-cli": {
-        "fresh": ("start_child", False),
-        "resume": ("resume_child", True),
-    },
 }
 REPLAN_ACTIONS = {
     "autonomous_replan",

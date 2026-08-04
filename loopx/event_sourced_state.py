@@ -466,6 +466,13 @@ def normalize_state_event(event: dict[str, Any], *, append_sequence: int | None 
                     "capability_binding_ref must be a public-safe namespaced token"
                 )
             payload["capability_binding_ref"] = capability_binding_ref
+        if payload.get("task_domain") is not None:
+            task_domain = normalize_todo_task_domain(payload.get("task_domain"))
+            if not task_domain:
+                raise StateEventError(
+                    "task_domain must be a public-safe lowercase token"
+                )
+            payload["task_domain"] = task_domain
 
     privacy = compact_text(event.get("privacy") or PUBLIC_PRIVACY)
     if privacy not in PRIVACY_VALUES:
@@ -702,10 +709,12 @@ def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None
             "title",
             "task_class",
             "action_kind",
-            "task_domain",
         ):
             if payload.get(key):
                 todo[key] = compact_text(payload[key])
+        task_domain = normalize_todo_task_domain(payload.get("task_domain"))
+        if task_domain:
+            todo["task_domain"] = task_domain
         capability_binding_ref = normalize_todo_capability_binding_ref(
             payload.get("capability_binding_ref")
         )

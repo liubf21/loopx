@@ -20,6 +20,16 @@ from .projection_repair import write_scope_allowed
 
 SUBAGENT_SPAWN_CAPABILITY = "subagent_spawn"
 SUBAGENT_RESUME_CAPABILITY = "subagent_resume"
+READ_ONLY_ACTION_KINDS = frozenset(
+    {
+        "analyze",
+        "compare",
+        "inspect",
+        "review",
+        "test",
+        "validate",
+    }
+)
 
 
 def build_adaptive_task_orchestration_contract(
@@ -36,28 +46,32 @@ def build_adaptive_task_orchestration_contract(
 ) -> dict[str, Any] | None:
     source_items = _summary_items(raw_agent_todo_summary)
     user_items = _summary_items(raw_user_todo_summary)
-    candidates = [
-        item
-        for item in source_items
-        if _candidate_owned_by_coordinator(item, agent_id=agent_id)
+    global_candidates = [
+        item for item in source_items if _is_adaptive_candidate(item)
     ]
-    if len(candidates) < 2:
+    election_candidates = [
+        item
+        for item in global_candidates
+        if todo_item_is_actionable_open(item)
+        and not _has_open_dependency(item, user_items=user_items)
+    ]
+    if len(election_candidates) < 2:
         return None
+    claimed_owners = {
+        claimed_by
+        for item in election_candidates
+        for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+        if claimed_by
+    }
     assignment_key = peer_work_key(
         {
             "mode": "adaptive",
             "todo_ids": sorted(
-                str(item.get("todo_id") or "") for item in candidates
+                str(item.get("todo_id") or "") for item in election_candidates
             ),
         },
         fallback="adaptive_task_orchestration",
     )
-    claimed_owners = {
-        claimed_by
-        for item in candidates
-        for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
-        if claimed_by
-    }
     coordinator = (
         next(iter(claimed_owners))
         if len(claimed_owners) == 1
@@ -67,6 +81,13 @@ def build_adaptive_task_orchestration_contract(
         )
     )
     if coordinator != agent_id:
+        return None
+    candidates = [
+        item
+        for item in global_candidates
+        if _candidate_owned_by_coordinator(item, agent_id=agent_id)
+    ]
+    if len(candidates) < 2:
         return None
 
     allowed_domains = {
@@ -78,6 +99,9 @@ def build_adaptive_task_orchestration_contract(
     goal_write_scope = normalize_required_write_scopes(
         goal_boundary.get("write_scope")
     )
+    goal_repository = normalize_todo_task_repository(
+        goal_boundary.get("task_repository")
+    )
     admitted: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
     for item in candidates:
@@ -88,6 +112,7 @@ def build_adaptive_task_orchestration_contract(
             allowed_domains=allowed_domains,
             available_capabilities=available_capabilities,
             goal_write_scope=goal_write_scope,
+            goal_repository=goal_repository,
         )
         if reason_codes:
             blocked.append(_blocked_lane(item, reason_codes=reason_codes))
@@ -181,6 +206,13 @@ def _candidate_owned_by_coordinator(
     return not claimed_by or claimed_by == agent_id
 
 
+def _is_adaptive_candidate(item: dict[str, Any]) -> bool:
+    return bool(
+        item.get("done") is not True
+        and str(item.get("task_class") or "") == "advancement_task"
+    )
+
+
 def _block_reasons(
     item: dict[str, Any],
     *,
@@ -189,6 +221,7 @@ def _block_reasons(
     allowed_domains: set[str],
     available_capabilities: list[str],
     goal_write_scope: list[str],
+    goal_repository: str | None,
 ) -> list[str]:
     reasons: list[str] = []
     if agent_id in normalize_todo_excluded_agents(item.get("excluded_agents")):
@@ -207,11 +240,18 @@ def _block_reasons(
     ):
         reasons.append("capability_unavailable")
     raw_repository = item.get("task_repository")
-    if raw_repository and not normalize_todo_task_repository(raw_repository):
-        reasons.append("task_repository_invalid")
+    task_repository = normalize_todo_task_repository(raw_repository)
+    if raw_repository:
+        if not task_repository:
+            reasons.append("task_repository_invalid")
+        elif not goal_repository or task_repository != goal_repository:
+            reasons.append("task_repository_not_allowed")
     required_write_scopes = normalize_required_write_scopes(
         item.get("required_write_scopes")
     )
+    action_kind = str(item.get("action_kind") or "").strip().lower()
+    if _action_requires_write_scope(action_kind) and not required_write_scopes:
+        reasons.append("write_scope_missing")
     if required_write_scopes and (
         not goal_write_scope
         or any(
@@ -221,6 +261,13 @@ def _block_reasons(
     ):
         reasons.append("write_scope_not_allowed")
     return reasons
+
+
+def _action_requires_write_scope(action_kind: str) -> bool:
+    return not any(
+        action_kind == prefix or action_kind.startswith(f"{prefix}_")
+        for prefix in READ_ONLY_ACTION_KINDS
+    )
 
 
 def _has_open_dependency(
