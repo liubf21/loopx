@@ -28,7 +28,9 @@ Layered beta attribution is deterministic arithmetic over caller-supplied,
 point-in-time observations. The explained order is frozen as market, rate,
 sector, narrow peer, cycle, and event. Residual is computed as total move minus
 all six explained components only when every component is observed. Attribution
-does not estimate a factor, select a source, or execute a gate.
+does not estimate a factor or select a source. It does execute the bound gate
+input and requires the observation window to satisfy the contract cutoff before
+it can report a complete result.
 
 An attribution is bound to one gated case identity. The gate input carries the
 `case_id` and `subject_ref` of the case it evaluates, and the attribution's

@@ -335,6 +335,23 @@ def test_attribution_rejects_invalid_or_out_of_window_observation(
         build_finance_beta_attribution(payload)
 
 
+def test_attribution_rejects_offset_aware_observation_after_cutoff() -> None:
+    payload = _json(BETA_EXAMPLE)
+    payload["case_reference"]["observation_window"] = {
+        "start": "2026-07-27T23:00:00-04:00",
+        "end": "2026-07-27T23:30:00-04:00",
+    }
+    payload["gate_evaluation_input"]["contract"]["point_in_time"] = (
+        "2026-07-28T03:00:00Z"
+    )
+    payload["gate_evaluation_input"]["contract"]["evaluation_as_of"] = (
+        "2026-07-28T03:15:00Z"
+    )
+
+    with pytest.raises(ValueError, match="end must not exceed"):
+        build_finance_beta_attribution(payload)
+
+
 def test_gate_input_requires_subject_ref() -> None:
     payload = _json(BETA_EXAMPLE)
     del payload["gate_evaluation_input"]["subject_ref"]

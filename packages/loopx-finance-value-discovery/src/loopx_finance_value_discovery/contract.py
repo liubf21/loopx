@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from math import isfinite
 from typing import Any
 
@@ -47,7 +47,7 @@ def iso_comparable_datetime(value: str) -> datetime:
     """Parse an ISO date or datetime into a comparable datetime (UTC-naive)."""
     if "T" in value:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        return parsed.astimezone(UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
     return datetime.combine(date.fromisoformat(value), datetime.min.time())
 
 

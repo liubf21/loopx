@@ -264,6 +264,15 @@ def test_point_in_time_after_evaluation_as_of_is_rejected() -> None:
         build_finance_case_evaluation(payload)
 
 
+def test_offset_aware_point_in_time_after_cutoff_is_rejected() -> None:
+    payload = _example()
+    payload["contract"]["point_in_time"] = "2026-07-27T23:30:00-04:00"
+    payload["contract"]["evaluation_as_of"] = "2026-07-28T03:00:00Z"
+
+    with pytest.raises(ValueError, match="must not be after"):
+        build_finance_case_evaluation(payload)
+
+
 def test_evaluation_as_of_is_required() -> None:
     payload = _example()
     del payload["contract"]["evaluation_as_of"]
