@@ -1,41 +1,38 @@
-"""Export sanitized LoopX run conclusions as public-safe documents.
+"""Atomically export sanitized LoopX run conclusions as public-safe documents.
 
-This is a delivery-unit helper co-located with the OpenViking semantic-preference
-provider family. It converts LoopX run-history conclusions into compact,
-public-safe markdown documents suitable for ingest into an OpenViking
-``resources`` scope, where they can later be recalled semantically.
+This extension-owned command converts LoopX run-history conclusions into
+compact public-safe Markdown documents. It deliberately stops at a verified
+local corpus: OpenViking ingest and recall need a separate caller-owned
+capability and effect lifecycle.
 
 Design boundary: run conclusions are *documents/knowledge*, not provider-managed
-*peer preference memory*. They therefore target the ``resources`` scope and the
-generic ``ov find`` document-recall path, never the peer-preference contract in
-``project_peer.py``. This keeps the OpenViking ``memories`` (managed) vs
-``resources`` (documents) scope convention intact.
+*peer preference memory*. This exporter therefore does not extend or bypass the
+semantic-preference provider contract in ``provider.py``.
 
 Reuses:
 - ``loopx.history.collect_history`` to read run records (no bespoke JSON parsing).
 - ``loopx.control_plane.runtime.public_safety.public_safe_compact_text`` to drop
   any field carrying local paths or secret-like tokens before it leaves the repo.
 """
+
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
-import math
 import os
 import re
 import shutil
-import subprocess
+import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from ...history import collect_history, validate_goal_id_path_segment
 
 HISTORY_EXPORT_SCHEMA_VERSION = "loopx_history_conclusion_export_v0"
-HISTORY_RECALL_SCHEMA_VERSION = "loopx_history_conclusion_recall_v0"
 
 _CONCLUSION_LIMIT = 400
 _MAX_PROGRESS_BULLETS = 3
@@ -46,7 +43,35 @@ _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 # Bounded ISO-8601-ish timestamp: digits, T/space, colon, dot, +/- and Z only.
 _TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.+\-]{1,20}Z?$")
-_MAX_URI_LENGTH = 1_000
+_PUBLIC_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+_SECRET_SHAPED_GOAL_ID_RE = re.compile(
+    r"(?i)^(?:"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"(?:AKIA|ASIA)[A-Z0-9]{16}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"AIza[A-Za-z0-9_-]{20,}|"
+    r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{12,}|"
+    r"npm_[A-Za-z0-9]{20,}|"
+    r"pypi-[A-Za-z0-9_-]{20,}"
+    r")$"
+)
+
+
+def _public_goal_id(value: Any) -> str:
+    raw = str(value or "")
+    goal_id = validate_goal_id_path_segment(raw)
+    if (
+        raw != goal_id
+        or not _PUBLIC_GOAL_ID_RE.fullmatch(goal_id)
+        or _SECRET_SHAPED_GOAL_ID_RE.fullmatch(goal_id)
+        or public_safe_compact_text(goal_id, limit=121) != goal_id
+    ):
+        raise ValueError(
+            "goal_id must be a public-safe token using letters, digits, dot, "
+            "colon, dash, or underscore"
+        )
+    return goal_id
 
 
 def _safe_generated_at(value: Any) -> str:
@@ -80,9 +105,9 @@ def _document_name(
     occurrence = digest_occurrences.get(digest, 0) + 1
     digest_occurrences[digest] = occurrence
     generated_at = _safe_generated_at(run.get("generated_at"))
-    classification = public_safe_compact_text(
-        run.get("classification"), limit=80
-    ) or "run"
+    classification = (
+        public_safe_compact_text(run.get("classification"), limit=80) or "run"
+    )
     prefix = _slug(f"{generated_at}-{classification}")[:56]
     duplicate_suffix = f"-{occurrence}" if occurrence > 1 else ""
     return f"{prefix}-{digest[:16]}{duplicate_suffix}.md"
@@ -145,6 +170,42 @@ def _read_owned_manifest(path: Path, *, goal_id: str) -> dict[str, str]:
     return owned
 
 
+def _validated_owned_generation(path: Path, *, goal_id: str) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    if path.is_symlink() or not path.is_dir():
+        raise RuntimeError("history export generation must be a directory")
+    manifest_path = path / _MANIFEST_FILE
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise RuntimeError(
+            "existing history corpus lacks an exporter ownership manifest"
+        )
+    owned = _read_owned_manifest(manifest_path, goal_id=goal_id)
+    expected_names = {_MANIFEST_FILE, *owned}
+    actual_names = {item.name for item in path.iterdir()}
+    unowned = sorted(actual_names - expected_names)
+    if unowned:
+        raise RuntimeError(
+            f"history export generation contains unowned entries: {unowned}"
+        )
+    missing = sorted(expected_names - actual_names)
+    if missing:
+        raise RuntimeError(
+            f"history export generation is missing owned entries: {missing}"
+        )
+    for name, digest in owned.items():
+        document = path / name
+        if document.is_symlink() or not document.is_file():
+            raise RuntimeError(
+                f"manifest-owned history document is not a regular file: {name}"
+            )
+        if _sha256(document.read_bytes()) != digest:
+            raise RuntimeError(
+                f"manifest-owned history document digest does not match: {name}"
+            )
+    return owned
+
+
 def _validate_staged_generation(
     staged: Path,
     *,
@@ -166,17 +227,22 @@ def _publish_generation(
     manifest: Mapping[str, Any],
 ) -> int:
     corpus_out.parent.mkdir(parents=True, exist_ok=True)
-    if corpus_out.exists() and not (corpus_out / _MANIFEST_FILE).is_file():
-        raise RuntimeError(
-            "existing history corpus lacks an exporter ownership manifest"
-        )
-    prior_owned = _read_owned_manifest(
-        corpus_out / _MANIFEST_FILE,
-        goal_id=str(manifest["goal_id"]),
-    )
     backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
     if backup.exists():
-        raise RuntimeError(f"stale history export backup requires inspection: {backup}")
+        if corpus_out.exists():
+            raise RuntimeError(
+                "history export has both live and backup generations; "
+                "manual inspection is required"
+            )
+        _validated_owned_generation(
+            backup,
+            goal_id=str(manifest["goal_id"]),
+        )
+        os.replace(backup, corpus_out)
+    prior_owned = _validated_owned_generation(
+        corpus_out,
+        goal_id=str(manifest["goal_id"]),
+    )
 
     with tempfile.TemporaryDirectory(
         prefix=f".{corpus_out.name}.loopx-stage-",
@@ -205,75 +271,6 @@ def _publish_generation(
         if backup.exists():
             shutil.rmtree(backup)
     return len(prior_owned)
-
-
-def _safe_viking_resource_uri(value: Any) -> str:
-    def _contains_control(text: str) -> bool:
-        return any(
-            character.isspace() or ord(character) < 32 or ord(character) == 127
-            for character in text
-        )
-
-    uri = str(value or "").strip()
-    if not uri or len(uri) > _MAX_URI_LENGTH:
-        raise ValueError("viking resource uri must contain 1 to 1000 characters")
-    if _contains_control(uri):
-        raise ValueError("viking resource uri must not contain whitespace or controls")
-    decoded = uri
-    for _ in range(3):
-        next_decoded = unquote(decoded)
-        if next_decoded == decoded:
-            break
-        decoded = next_decoded
-    if unquote(decoded) != decoded:
-        raise ValueError("viking resource uri is excessively encoded")
-    for candidate in (uri, decoded):
-        if _contains_control(candidate):
-            raise ValueError("viking resource uri must not contain whitespace or controls")
-        if public_safe_compact_text(candidate, limit=_MAX_URI_LENGTH) != candidate:
-            raise ValueError("viking resource uri contains an unsafe surface")
-        if "\\" in candidate:
-            raise ValueError("viking resource uri must not contain backslashes")
-
-    parsed = urlsplit(decoded)
-    if (
-        parsed.scheme != "viking"
-        or not parsed.netloc
-        or parsed.query
-        or parsed.fragment
-        or parsed.username is not None
-        or parsed.password is not None
-    ):
-        raise ValueError("scope_uri must be a structured viking:// resource uri")
-    decoded_path = parsed.path
-    path_segments = decoded_path.split("/")
-    if (
-        not decoded_path.startswith("/")
-        or any(segment in {"", ".", ".."} for segment in path_segments[1:])
-        or "resources" not in path_segments[1:]
-    ):
-        raise ValueError("scope_uri must identify a bounded resources path")
-    return uri
-
-
-def _is_descendant_resource_uri(uri: str, *, scope_uri: str) -> bool:
-    candidate = urlsplit(uri)
-    scope = urlsplit(scope_uri)
-    if candidate.scheme != scope.scheme or candidate.netloc != scope.netloc:
-        return False
-    candidate_segments = unquote(candidate.path).split("/")[1:]
-    scope_segments = unquote(scope.path).split("/")[1:]
-    return (
-        len(candidate_segments) > len(scope_segments)
-        and candidate_segments[: len(scope_segments)] == scope_segments
-    )
-
-
-def _safe_score(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    score = float(value)
-    return score if math.isfinite(score) else None
 
 
 def conclusion_fields(run: dict[str, Any]) -> list[tuple[str, str]]:
@@ -315,7 +312,7 @@ def render_conclusion_markdown(goal_id: str, run: dict[str, Any]) -> str | None:
     ``generated_at`` is echoed only when it matches a bounded timestamp shape, so
     neither can inject unsafe content into the document.
     """
-    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    safe_goal_id = _public_goal_id(goal_id)
     fields = conclusion_fields(run)
     substantive = [pair for pair in fields if pair[0] != "classification"]
     if not substantive:
@@ -359,7 +356,7 @@ def export_goal_conclusions(
     - The local filesystem output path lives only in ``local_receipt`` and is
       never part of the ``public_projection``.
     """
-    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    safe_goal_id = _public_goal_id(goal_id)
     history = collect_history(
         registry_path=registry_path,
         runtime_root=runtime_root,
@@ -417,110 +414,28 @@ def export_goal_conclusions(
     }
 
 
-def recall_history_conclusions(
-    *,
-    query: str,
-    scope_uri: str,
-    ov_bin: str = "ov",
-    limit: int = 5,
-    timeout_seconds: int = 25,
-) -> dict[str, Any]:
-    """Semantically recall exported history conclusions from a resources scope.
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--goal-id", required=True)
+    parser.add_argument("--registry-path", type=Path, required=True)
+    parser.add_argument("--runtime-root", type=Path, required=True)
+    parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--limit", type=int, default=50)
+    return parser
 
-    This is the document-recall counterpart to the peer-preference ``_find`` in
-    ``provider.py``: it targets an arbitrary ``resources`` document scope (where
-    :func:`export_goal_conclusions` writes) instead of the provider-managed
-    preference contract, so it does not touch or reinterpret peer memories.
 
-    Runs one read-only ``ov find`` scoped to ``scope_uri`` and returns compact
-    ``{uri, score, summary}`` items filtered to that scope. Provider-produced
-    ``abstract``/``overview`` text is passed through ``public_safe_compact_text``
-    and any row whose summary carries a local path or secret-like token is
-    dropped, so the returned packet is public-safe end to end. Returned ``uri``
-    values are constrained to the requested ``scope_uri`` prefix.
-    """
-    clean_query = str(query or "").strip()
-    if not 1 <= len(clean_query) <= 500:
-        raise ValueError("query must contain 1 to 500 characters")
-    if public_safe_compact_text(clean_query, limit=500) != clean_query:
-        raise ValueError("query must be public-safe compact text")
-    safe_scope_uri = _safe_viking_resource_uri(scope_uri)
-    if not 1 <= int(limit) <= 20:
-        raise ValueError("limit must be between 1 and 20")
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    payload = export_goal_conclusions(
+        goal_id=args.goal_id,
+        registry_path=args.registry_path,
+        runtime_root=args.runtime_root,
+        out_dir=args.out_dir,
+        limit=args.limit,
+    )
+    json.dump(payload, sys.stdout, ensure_ascii=False)
+    return 0
 
-    try:
-        completed = subprocess.run(
-            [
-                ov_bin,
-                "find",
-                "-o",
-                "json",
-                "-n",
-                str(min(int(limit) * 3, 20)),
-                "-u",
-                safe_scope_uri,
-                clean_query,
-            ],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=timeout_seconds,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError("OpenViking find execution failed") from exc
-    if completed.returncode != 0:
-        raise RuntimeError("OpenViking find returned a non-zero exit")
 
-    try:
-        result = json.loads(completed.stdout[completed.stdout.find("{"):])
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("OpenViking find returned unparseable output") from exc
-
-    payload = result.get("result") if isinstance(result, Mapping) else {}
-    rows: list[Any] = []
-    if isinstance(payload, Mapping):
-        for key in ("resources", "memories"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                rows.extend(value)
-
-    items: list[dict[str, Any]] = []
-    dropped_unsafe = 0
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        try:
-            uri = _safe_viking_resource_uri(row.get("uri"))
-        except ValueError:
-            dropped_unsafe += 1
-            continue
-        if not _is_descendant_resource_uri(uri, scope_uri=safe_scope_uri):
-            continue
-        score = _safe_score(row.get("score"))
-        if score is None:
-            dropped_unsafe += 1
-            continue
-        raw_summary = row.get("abstract") or row.get("overview")
-        # Provider text is untrusted: sanitize end to end and drop on any hit.
-        summary = public_safe_compact_text(raw_summary, limit=2_000)
-        if not summary:
-            dropped_unsafe += 1
-            continue
-        items.append(
-            {
-                "uri": uri,
-                "score": score,
-                "summary": summary,
-            }
-        )
-    items.sort(key=lambda item: item["score"], reverse=True)
-    items = items[: int(limit)]
-
-    return {
-        "schema_version": HISTORY_RECALL_SCHEMA_VERSION,
-        "query": clean_query,
-        "scope_uri": safe_scope_uri,
-        "item_count": len(items),
-        "dropped_unsafe": dropped_unsafe,
-        "items": items,
-    }
+if __name__ == "__main__":
+    raise SystemExit(main())
