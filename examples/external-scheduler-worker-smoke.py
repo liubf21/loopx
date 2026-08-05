@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import plistlib
 import shlex
 import stat
 import sys
@@ -151,6 +152,54 @@ def _write_fake_cli(path: Path, payloads: list[dict]) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def test_launchd_program_arguments_match_worker_entrypoint(tmp_path: Path) -> None:
+    terminal = _hint_payload(
+        action="stop_until_explicit_resume",
+        initial=0,
+        progression=[0],
+        limit=None,
+        cadence_class="terminal_no_followup",
+    )
+    fake_cli = tmp_path / "launchd" / "fake-loopx"
+    _write_fake_cli(fake_cli, [terminal])
+
+    replacements = {
+        "__LABEL__": "com.loopx.external-worker-smoke",
+        "__WORKER__": str(REPO_ROOT / "scripts" / "external_scheduler_worker.py"),
+        "__LOOPX_BIN__": str(fake_cli),
+        "__REGISTRY__": str(tmp_path / "launchd" / "registry"),
+        "__RUNTIME_ROOT__": str(tmp_path / "launchd" / "runtime"),
+        "__GOAL_ID__": "goal-launchd",
+        "__AGENT_ID__": "agent-launchd",
+        "__STATE__": str(tmp_path / "launchd" / "worker-state.json"),
+        "__LOG__": str(tmp_path / "launchd" / "worker.log"),
+    }
+    template_path = REPO_ROOT / "examples" / "external-scheduler-worker.launchd.plist"
+    template = plistlib.loads(template_path.read_bytes())
+
+    def replace_placeholders(value: str) -> str:
+        for placeholder, replacement in replacements.items():
+            value = value.replace(placeholder, replacement)
+        return value
+
+    template["Label"] = replace_placeholders(template["Label"])
+    template["StandardOutPath"] = replace_placeholders(template["StandardOutPath"])
+    template["StandardErrorPath"] = replace_placeholders(template["StandardErrorPath"])
+    program_arguments = [
+        replace_placeholders(argument) for argument in template["ProgramArguments"]
+    ]
+    template["ProgramArguments"] = program_arguments
+
+    assert b"__" not in plistlib.dumps(template)
+    assert program_arguments[:3] == [
+        "/usr/bin/env",
+        "python3",
+        replacements["__WORKER__"],
+    ]
+    assert template["KeepAlive"] == {"SuccessfulExit": False}
+    assert worker.main(program_arguments[3:]) == 0
+
+
 def test_end_to_end_loop_stops_after_limit(tmp_path: Path) -> None:
     """Drives run_worker with a fake CLI; proves CLI call, state file, and stop."""
 
@@ -244,7 +293,7 @@ def test_end_to_end_token_change_resets_count(tmp_path: Path) -> None:
     finally:
         worker.time.sleep = original_sleep  # type: ignore[assignment]
 
-    # Tick1 token=a -> 10; tick2 token=b reset -> 10; tick3 token=b -> 20; tick4 -> 20.
+    # Tick1 marker a -> 10; tick2 marker b resets -> 10; later ticks -> 20.
     assert slept == [10 * 60, 10 * 60, 20 * 60, 20 * 60]
 
 
@@ -386,6 +435,7 @@ def main() -> int:
         test_missing_detail_fails_closed,
     ]
     e2e_tests = [
+        test_launchd_program_arguments_match_worker_entrypoint,
         test_end_to_end_loop_stops_after_limit,
         test_end_to_end_token_change_resets_count,
         test_end_to_end_terminal_stops_immediately,
