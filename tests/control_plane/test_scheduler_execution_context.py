@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from itertools import product
@@ -975,9 +976,40 @@ def test_codex_profile_does_not_admit_children_without_observed_spawn() -> None:
     assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
 
 
-def test_persisted_child_capabilities_do_not_admit_ephemeral_children() -> None:
+def _generated_runtime_capabilities(payload: dict) -> set[str]:
+    capabilities: set[str] = set()
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                visit(child)
+            return
+        if isinstance(value, list):
+            if all(isinstance(token, str) for token in value):
+                capabilities.update(
+                    value[index + 1]
+                    for index, token in enumerate(value[:-1])
+                    if token == "--available-capability"
+                )
+            for child in value:
+                visit(child)
+            return
+        if not isinstance(value, str) or "--available-capability" not in value:
+            return
+        tokens = shlex.split(value)
+        capabilities.update(
+            tokens[index + 1]
+            for index, token in enumerate(tokens[:-1])
+            if token == "--available-capability"
+        )
+
+    visit(payload)
+    return capabilities
+
+
+def test_persisted_child_capabilities_do_not_launder_through_runtime_replay() -> None:
     context = scheduler_execution_context_for_runtime_profile(
-        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
     )
     status = quota_status_payload(
         goal_id="persisted-capabilities-no-spawn-fixture",
@@ -1018,23 +1050,34 @@ def test_persisted_child_capabilities_do_not_admit_ephemeral_children() -> None:
         },
     )
 
-    quota = build_quota_should_run(
+    first_quota = build_quota_should_run(
         status,
         goal_id="persisted-capabilities-no-spawn-fixture",
         agent_id="codex-fixture",
         scheduler_execution_context=context,
     )
 
-    assert quota.get("task_orchestration_contract") is None
-    assert quota["goal_boundary"]["available_capabilities"] == [
+    replayed_capabilities = _generated_runtime_capabilities(first_quota)
+    replayed_quota = build_quota_should_run(
+        status,
+        goal_id="persisted-capabilities-no-spawn-fixture",
+        agent_id="codex-fixture",
+        available_capabilities=sorted(replayed_capabilities),
+        scheduler_execution_context=context,
+    )
+
+    assert first_quota.get("task_orchestration_contract") is None
+    assert first_quota["goal_boundary"]["available_capabilities"] == [
         "subagent_spawn",
         "subagent_resume",
     ]
+    assert replayed_capabilities == set()
+    assert replayed_quota.get("task_orchestration_contract") is None
 
 
-def test_observed_spawn_admits_children_with_codex_profile() -> None:
+def test_observed_spawn_propagates_and_admits_children_after_runtime_replay() -> None:
     context = scheduler_execution_context_for_runtime_profile(
-        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
     )
     status = quota_status_payload(
         goal_id="observed-spawn-fixture",
@@ -1069,7 +1112,7 @@ def test_observed_spawn_admits_children_with_codex_profile() -> None:
         },
     )
 
-    quota = build_quota_should_run(
+    first_quota = build_quota_should_run(
         status,
         goal_id="observed-spawn-fixture",
         agent_id="codex-fixture",
@@ -1077,11 +1120,22 @@ def test_observed_spawn_admits_children_with_codex_profile() -> None:
         scheduler_execution_context=context,
     )
 
-    contract = quota["task_orchestration_contract"]
-    assert contract["mode"] == "adaptive"
-    assert contract["primary_todo_id"] == "todo_primary"
-    assert contract["eligible_child_lanes"][0]["todo_id"] == "todo_child"
-    assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
+    replayed_capabilities = _generated_runtime_capabilities(first_quota)
+    replayed_quota = build_quota_should_run(
+        status,
+        goal_id="observed-spawn-fixture",
+        agent_id="codex-fixture",
+        available_capabilities=sorted(replayed_capabilities),
+        scheduler_execution_context=context,
+    )
+
+    assert replayed_capabilities == {"subagent_spawn"}
+    for quota in (first_quota, replayed_quota):
+        contract = quota["task_orchestration_contract"]
+        assert contract["mode"] == "adaptive"
+        assert contract["primary_todo_id"] == "todo_primary"
+        assert contract["eligible_child_lanes"][0]["todo_id"] == "todo_child"
+        assert quota["scheduler_hint"]["codex_app"]["applicability"] == "applicable"
 
 
 def test_advanced_scheduler_context_keeps_explicit_context_args() -> None:

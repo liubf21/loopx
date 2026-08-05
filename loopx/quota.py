@@ -1466,6 +1466,7 @@ class _QuotaDecisionPreparation:
     project_asset: dict[str, Any]
     agent_lane_recommendation: Any
     effective_available_capabilities: Any
+    runtime_available_capabilities: Any
     user_todo_summary: dict[str, Any] | None
     agent_todo_summary: dict[str, Any] | None
     agent_scoped_user_todo_override: dict[str, Any] | None
@@ -1805,6 +1806,7 @@ def _prepare_quota_should_run_item(
         project_asset=project_asset,
         agent_lane_recommendation=agent_lane_recommendation,
         effective_available_capabilities=effective_available_capabilities,
+        runtime_available_capabilities=available_capabilities,
         user_todo_summary=user_todo_summary,
         agent_todo_summary=agent_todo_summary,
         agent_scoped_user_todo_override=agent_scoped_user_todo_override,
@@ -2412,13 +2414,13 @@ def _build_quota_should_run_payload(
     payload["automation_liveness"] = build_automation_liveness(payload)
     payload["interaction_contract"] = build_interaction_contract(
         payload,
-        available_capabilities=prepared.effective_available_capabilities,
+        available_capabilities=prepared.runtime_available_capabilities,
         scheduler_execution_context=prepared.resolved_scheduler_context,
     )
     payload["scheduler_hint"] = _scheduler_hint(
         payload,
         include_detail=prepared.include_scheduler_detail,
-        available_capabilities=prepared.effective_available_capabilities,
+        available_capabilities=prepared.runtime_available_capabilities,
         codex_app_scheduler_state=(
             _load_codex_app_scheduler_state(
                 prepared.status_payload,
@@ -2436,7 +2438,7 @@ def _build_quota_should_run_payload(
     )
     finalize_user_gate_notification_cooldown(
         payload,
-        available_capabilities=prepared.effective_available_capabilities,
+        available_capabilities=prepared.runtime_available_capabilities,
         scheduler_execution_context=prepared.resolved_scheduler_context,
     )
     payload["protocol_action_packet"] = build_protocol_action_packet(payload)
