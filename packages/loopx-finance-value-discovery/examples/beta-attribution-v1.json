@@ -4,7 +4,7 @@
   "attribution_model_id": "frozen-public-observation-model-v1",
   "component_order_frozen": true,
   "unit": "return_fraction",
-  "total_move": -0.12,
+  "total_move": -0.1,
   "components": [
     {
       "component_id": "market",
@@ -159,7 +159,7 @@
       {
         "gate_id": "de_beta_residual",
         "observation_state": "observed",
-        "value": 0.18,
+        "value": 0.01,
         "evidence_refs": [
           "peer-control-panel"
         ],

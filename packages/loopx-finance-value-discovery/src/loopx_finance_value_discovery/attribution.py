@@ -138,7 +138,11 @@ def _case_reference(value: object) -> dict[str, Any]:
             "case_reference.observation_window.start must not be after end"
         )
     return {
-        "case_id": _text(value.get("case_id"), field="case_reference.case_id", limit=96),
+        "case_id": _text(
+            value.get("case_id"),
+            field="case_reference.case_id",
+            limit=96,
+        ),
         "subject_ref": _text(
             value.get("subject_ref"), field="case_reference.subject_ref", limit=96
         ),
@@ -206,9 +210,8 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
             "case_reference.observation_window.end must not exceed "
             "contract.evaluation_as_of"
         )
-    gate_eligible = (
-        gate_evaluation["disposition"] == "eligible_for_research_successor"
-    )
+    gate_disposition = gate_evaluation["disposition"]
+    gate_eligible = gate_disposition == "eligible_for_research_successor"
     total_move = _decimal(value.get("total_move"), field="total_move")
     raw_components = value.get("components")
     if not isinstance(raw_components, Sequence) or isinstance(
@@ -235,7 +238,7 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         for item in components
         if item["observation_state"] == "conflict"
     ]
-    complete = not missing and not conflicts and gate_eligible
+    components_complete = not missing and not conflicts
     explained = (
         sum(
             (
@@ -245,10 +248,38 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
             ),
             Decimal(0),
         )
-        if complete
+        if components_complete
         else None
     )
     residual = total_move - explained if explained is not None else None
+    residual_gate = next(
+        (
+            item
+            for item in gate_evaluation["gate_results"]
+            if item["gate_id"] == "de_beta_residual"
+        ),
+        None,
+    )
+    if residual_gate is None:
+        raise ValueError("gate_evaluation_input must include the de_beta_residual gate")
+    if residual_gate["observation_state"] == "observed":
+        if residual is None:
+            raise ValueError(
+                "de_beta_residual cannot be observed while components are incomplete"
+            )
+        observed_residual = _decimal(
+            residual_gate["value"],
+            field="de_beta_residual observation",
+        )
+        if observed_residual != residual:
+            raise ValueError(
+                "de_beta_residual observation must match the computed residual"
+            )
+    completeness = (
+        "complete"
+        if components_complete and gate_disposition != "insufficient_evidence"
+        else "insufficient_evidence"
+    )
     attribution = {
         "ok": True,
         "schema_version": FINANCE_BETA_ATTRIBUTION_SCHEMA_VERSION,
@@ -275,24 +306,27 @@ def build_finance_beta_attribution(value: object) -> dict[str, Any]:
         + [
             {
                 "component_id": "residual",
-                "observation_state": "computed" if complete else "not_computable",
+                "observation_state": (
+                    "computed" if components_complete else "not_computable"
+                ),
                 "contribution": _decimal_text(residual)
                 if residual is not None
                 else None,
                 "evidence_refs": [],
                 "reason": (
                     "Computed as total_move minus all six explained components."
-                    if complete
+                    if components_complete
                     else (
                         "Residual is unavailable while an explained component "
-                        "is missing/conflicting or the bound gate did not clear."
+                        "is missing or conflicting."
                     )
                 ),
             }
         ],
         "explained_sum": _decimal_text(explained) if explained is not None else None,
         "residual": _decimal_text(residual) if residual is not None else None,
-        "disposition": "complete" if complete else "insufficient_evidence",
+        "disposition": gate_disposition,
+        "completeness": completeness,
         "gate_eligible": gate_eligible,
         "missing_component_ids": missing,
         "conflicting_component_ids": conflicts,

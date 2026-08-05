@@ -27,10 +27,14 @@ comparisons. Providers cannot declare their own pass or fail result.
 Layered beta attribution is deterministic arithmetic over caller-supplied,
 point-in-time observations. The explained order is frozen as market, rate,
 sector, narrow peer, cycle, and event. Residual is computed as total move minus
-all six explained components only when every component is observed. Attribution
-does not estimate a factor or select a source. It does execute the bound gate
-input and requires the observation window to satisfy the contract cutoff before
-it can report a complete result.
+all six explained components only when every component is observed. The
+`de_beta_residual` gate must use that computed value; an independent or
+contradictory residual observation is rejected. Attribution does not estimate a
+factor or select a source. It does execute the bound gate input and requires the
+observation window to satisfy the contract cutoff before it can report a
+complete result. Top-level `disposition` preserves the gate decision, including
+`rejected`, while `completeness` independently reports whether the gate evidence
+and all six components are complete.
 
 An attribution is bound to one gated case identity. The gate input carries the
 `case_id` and `subject_ref` of the case it evaluates, and the attribution's
@@ -43,7 +47,10 @@ malformed or future window cannot be presented as complete.
 Industry metric packs are semantic overlays on the same case contract. A pack
 may require metric ids, value types, and allowed operator directions. It cannot
 provide a threshold, reorder common source or cutoff gates, reinterpret missing
-or conflicting evidence, or alter promotion authority. Thresholds remain
+or conflicting evidence, or alter promotion authority. The required
+`source_lineage` and `point_in_time` gates are provider-neutral
+`boolean eq true` authority gates; a pack input cannot preserve their ids while
+changing their type, operator, or reference semantics. Metric thresholds remain
 inside the frozen case contract, and observations still pass through the common
 gate engine.
 

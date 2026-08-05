@@ -35,9 +35,10 @@ def test_complete_beta_attribution_computes_residual_and_replays() -> None:
     attribution = build_finance_beta_attribution(payload)
 
     assert attribution["schema_version"] == "finance_beta_attribution_v1"
-    assert attribution["disposition"] == "complete"
+    assert attribution["disposition"] == "eligible_for_research_successor"
+    assert attribution["completeness"] == "complete"
     assert attribution["explained_sum"] == "-0.11"
-    assert attribution["residual"] == "-0.01"
+    assert attribution["residual"] == "0.01"
     assert [item["component_id"] for item in attribution["components"]] == [
         "market",
         "rate",
@@ -65,10 +66,36 @@ def test_incomplete_beta_components_never_fabricate_a_residual(state: str) -> No
         [] if state == "missing" else ["peer-source-a", "peer-source-b"]
     )
     component["reason"] = "The narrow-peer contribution is not resolved."
+    blocked = False
+    for observation in payload["gate_evaluation_input"]["observations"]:
+        if observation["gate_id"] == "de_beta_residual":
+            observation.update(
+                {
+                    "observation_state": state,
+                    "value": None,
+                    "evidence_refs": (
+                        []
+                        if state == "missing"
+                        else ["residual-source-a", "residual-source-b"]
+                    ),
+                    "reason": "The residual is not resolved.",
+                }
+            )
+            blocked = True
+        elif blocked:
+            observation.update(
+                {
+                    "observation_state": "not_run",
+                    "value": None,
+                    "evidence_refs": [],
+                    "reason": "Not run after the unresolved residual gate.",
+                }
+            )
 
     attribution = build_finance_beta_attribution(payload)
 
     assert attribution["disposition"] == "insufficient_evidence"
+    assert attribution["completeness"] == "insufficient_evidence"
     assert attribution["explained_sum"] is None
     assert attribution["residual"] is None
     assert attribution["components"][-1]["observation_state"] == "not_computable"
@@ -92,6 +119,12 @@ def test_beta_component_order_and_replay_input_are_frozen() -> None:
 
     mutated = deepcopy(payload)
     mutated["components"][0]["contribution"] = -0.05
+    residual_observation = next(
+        observation
+        for observation in mutated["gate_evaluation_input"]["observations"]
+        if observation["gate_id"] == "de_beta_residual"
+    )
+    residual_observation["value"] = 0.02
     with pytest.raises(ValueError, match="replay"):
         replay_finance_beta_attribution(mutated, expected)
 
@@ -181,6 +214,56 @@ def test_metric_pack_requires_frozen_source_and_cutoff_prefix() -> None:
     )
     with pytest.raises(ValueError, match="must begin with source_lineage"):
         build_finance_metric_pack_evaluation(reordered)
+
+
+@pytest.mark.parametrize(
+    ("gate_id", "rule", "observed_value"),
+    [
+        (
+            "source_lineage",
+            {
+                "value_type": "string",
+                "operator": "eq",
+                "reference_value": "provider-verified",
+            },
+            "provider-verified",
+        ),
+        (
+            "point_in_time",
+            {
+                "value_type": "number",
+                "operator": "gte",
+                "reference_value": 1,
+            },
+            1,
+        ),
+        (
+            "point_in_time",
+            {
+                "value_type": "boolean",
+                "operator": "eq",
+                "reference_value": False,
+            },
+            False,
+        ),
+    ],
+)
+def test_metric_pack_common_gates_reject_provider_semantic_drift(
+    gate_id: str,
+    rule: dict[str, object],
+    observed_value: object,
+) -> None:
+    payload = _json(PACK_EXAMPLE)
+    gate_index = next(
+        index
+        for index, gate in enumerate(payload["case_input"]["contract"]["gates"])
+        if gate["gate_id"] == gate_id
+    )
+    payload["case_input"]["contract"]["gates"][gate_index].update(rule)
+    payload["case_input"]["observations"][gate_index]["value"] = observed_value
+
+    with pytest.raises(ValueError, match="provider-neutral semantics"):
+        build_finance_metric_pack_evaluation(payload)
 
 
 def test_cyclical_industrials_pack_uses_the_common_gate_engine() -> None:
@@ -359,17 +442,59 @@ def test_gate_input_requires_subject_ref() -> None:
         build_finance_beta_attribution(payload)
 
 
-def test_failed_gate_cannot_be_presented_as_research_complete() -> None:
+def test_attribution_rejects_residual_gate_value_that_disagrees_with_arithmetic() -> (
+    None
+):
+    payload = _json(BETA_EXAMPLE)
+    payload["total_move"] = -0.1
+    residual_observation = next(
+        observation
+        for observation in payload["gate_evaluation_input"]["observations"]
+        if observation["gate_id"] == "de_beta_residual"
+    )
+    residual_observation["value"] = 0.18
+
+    with pytest.raises(ValueError, match="must match the computed residual"):
+        build_finance_beta_attribution(payload)
+
+
+def test_failed_gate_preserves_rejection_separate_from_component_completeness() -> None:
+    payload = _json(BETA_EXAMPLE)
+    blocked = False
+    for observation in payload["gate_evaluation_input"]["observations"]:
+        if observation["gate_id"] == "evidence_quality":
+            observation["value"] = 1
+            observation["reason"] = "Observed evidence fails the frozen threshold."
+            blocked = True
+        elif blocked:
+            observation.update(
+                {
+                    "observation_state": "not_run",
+                    "value": None,
+                    "evidence_refs": [],
+                    "reason": "Not run after the failed evidence-quality gate.",
+                }
+            )
+
+    attribution = build_finance_beta_attribution(payload)
+
+    assert attribution["disposition"] == "rejected"
+    assert attribution["completeness"] == "complete"
+    assert attribution["residual"] == "0.01"
+
+
+def test_missing_gate_cannot_be_presented_as_research_complete() -> None:
     payload = _fail_gate_evaluation_input(_json(BETA_EXAMPLE))
     attribution = build_finance_beta_attribution(payload)
 
-    # even with all six components observed, a non-eligible gate forces
-    # insufficient_evidence and refuses to fabricate a residual
+    # Even with all six components observed, missing gate evidence keeps the
+    # attribution incomplete without hiding the deterministic arithmetic.
     assert attribution["gate_eligible"] is False
     assert attribution["disposition"] == "insufficient_evidence"
-    assert attribution["residual"] is None
-    assert attribution["gate_evaluation_receipt"]["disposition"] != (
-        "eligible_for_research_successor"
+    assert attribution["completeness"] == "insufficient_evidence"
+    assert attribution["residual"] == "0.01"
+    assert (
+        attribution["gate_evaluation_receipt"]["disposition"] == "insufficient_evidence"
     )
 
 
@@ -377,8 +502,9 @@ def test_attribution_binds_case_reference_and_gate_receipt() -> None:
     payload = _json(BETA_EXAMPLE)
     attribution = build_finance_beta_attribution(payload)
 
-    assert attribution["case_reference"]["case_id"] == (
-        payload["gate_evaluation_input"]["case_id"]
+    assert (
+        attribution["case_reference"]["case_id"]
+        == (payload["gate_evaluation_input"]["case_id"])
     )
     assert attribution["gate_evaluation_receipt"]["gate_eligible"] is True
     assert attribution["gate_evaluation_receipt"]["evaluation_sha256"]

@@ -24,7 +24,20 @@ COMMON_GATE_IDS = {
     "valuation",
     "terminal_risk",
 }
-REQUIRED_COMMON_GATE_PREFIX = ("source_lineage", "point_in_time")
+REQUIRED_COMMON_GATE_RULES = (
+    {
+        "gate_id": "source_lineage",
+        "value_type": "boolean",
+        "operator": "eq",
+        "reference_value": True,
+    },
+    {
+        "gate_id": "point_in_time",
+        "value_type": "boolean",
+        "operator": "eq",
+        "reference_value": True,
+    },
+)
 
 _METRIC_PACKS: dict[str, dict[str, Any]] = {
     "software_platforms_v1": {
@@ -115,11 +128,15 @@ def _validate_pack_contract(
     }
     gates = case_input["contract"]["gates"]
     gate_order = [str(item["gate_id"]) for item in gates]
-    if gate_order[: len(REQUIRED_COMMON_GATE_PREFIX)] != list(
-        REQUIRED_COMMON_GATE_PREFIX
-    ):
+    required_gate_order = [str(item["gate_id"]) for item in REQUIRED_COMMON_GATE_RULES]
+    if gate_order[: len(required_gate_order)] != required_gate_order:
         raise ValueError(
             "metric pack contract must begin with source_lineage then point_in_time"
+        )
+    if tuple(gates[: len(REQUIRED_COMMON_GATE_RULES)]) != REQUIRED_COMMON_GATE_RULES:
+        raise ValueError(
+            "metric pack source_lineage and point_in_time gates must use "
+            "provider-neutral semantics"
         )
     gate_ids = {str(item["gate_id"]) for item in gates}
     unknown = gate_ids - COMMON_GATE_IDS - set(metrics)
