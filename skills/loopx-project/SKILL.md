@@ -61,12 +61,21 @@ loopx start-goal --guided --project . --goal-text "<GOAL_TEXT>"
 Append `--capability-route issue-fix` only when the caller supplied that exact
 explicit route switch.
 
-Include `--goal-id <STABLE_GOAL_ID>` and `--agent-id <REGISTERED_AGENT_ID>` when
-they are known. If `start-goal --guided` is not available, refresh the local
-LoopX CLI or use the checked-out LoopX repository CLI for validation; do not
-silently downgrade `/loopx <goal text>` into a bare `/loopx` read-only command.
-Use `loopx bootstrap-command-pack --project . --goal-text "<GOAL_TEXT>"` only
-when implementing or debugging the lower-level host handoff packet.
+Include `--goal-id <STABLE_GOAL_ID>` when known. Include
+`--agent-id <REGISTERED_AGENT_ID>` only when the current session already owns
+that identity or the user explicitly asks to take over that exact agent's work.
+Otherwise treat this as a new agent connection: follow the returned identity
+gate, choose a fresh public-safe id, preview then execute `register-agent`, and
+require the `--require-new --execute` result to report `ok=true`, `changed=true`,
+`written=true`, successful global sync, and verified registration readback
+before rerunning `start-goal` with that new id. A preview is advisory and never
+authorizes continuation. Never infer takeover from registry order or from there
+being only one registered agent. If
+`start-goal --guided` is not available, refresh the local LoopX CLI or use the
+checked-out LoopX repository CLI for validation; do not silently downgrade
+`/loopx <goal text>` into a bare `/loopx` read-only command. Use
+`loopx bootstrap-command-pack --project . --goal-text "<GOAL_TEXT>"` only when
+implementing or debugging the lower-level host handoff packet.
 
 If the connected goal later needs a wider or corrected write boundary, do not
 rerun `loopx bootstrap --force` just to change scope. Use the incremental
