@@ -6,7 +6,6 @@ from typing import Any
 
 from ..scheduler.execution_context import (
     scheduler_execution_context_for_turn,
-    scheduler_host_capabilities,
 )
 from .transaction import build_loopx_turn_transaction_plan
 
@@ -48,18 +47,6 @@ class LoopXTurnRoute(str, Enum):
     WAIT = "wait"
     BLOCKED = "blocked"
     CONTRACT_ERROR = "contract_error"
-
-
-def child_host_capabilities(host: str) -> list[str]:
-    execution_mode = (
-        "isolated-headless" if host == "generic-cli" else "interactive-visible"
-    )
-    return scheduler_host_capabilities(
-        scheduler_execution_context_for_turn(
-            host=host,
-            execution_mode=execution_mode,
-        )
-    )
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -106,11 +93,9 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
     return LoopXTurnRoute.BLOCKED
 
 
-def _selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
-    action = _mapping(envelope.get("action"))
-    selected_todo = _mapping(action.get("selected_todo"))
-    if selected_todo:
-        return selected_todo
+def selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve the todo that owns one Turn across adaptive bundle execution."""
+
     orchestration = _mapping(envelope.get("task_orchestration_contract"))
     primary_todo_id = str(orchestration.get("primary_todo_id") or "").strip()
     if (
@@ -122,11 +107,15 @@ def _selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
             "todo_id": primary_todo_id,
             "source": "task_orchestration_contract.primary_todo_id",
         }
-    return {}
+    action = _mapping(envelope.get("action"))
+    return _mapping(action.get("selected_todo"))
 
 
-def _turn_lineage(envelope: Mapping[str, Any]) -> dict[str, str]:
-    selected_todo = _selected_turn_todo(envelope)
+def _turn_lineage(
+    envelope: Mapping[str, Any],
+    *,
+    selected_todo: Mapping[str, Any],
+) -> dict[str, str]:
     signature = _mapping(envelope.get("action_signature"))
     return {
         "goal_id": str(envelope.get("goal_id") or ""),
@@ -279,7 +268,8 @@ def build_loopx_turn_plan(
         if execution_context.ok
         else LoopXTurnRoute.CONTRACT_ERROR
     )
-    lineage = _turn_lineage(envelope)
+    selected_todo = selected_turn_todo(envelope)
+    lineage = _turn_lineage(envelope, selected_todo=selected_todo)
     session, session_error = _session_plan(
         route=route,
         lineage=lineage,
@@ -287,7 +277,6 @@ def build_loopx_turn_plan(
     )
     if session_error:
         route = LoopXTurnRoute.CONTRACT_ERROR
-    selected_todo = _selected_turn_todo(envelope)
     would_invoke_host = route in {
         LoopXTurnRoute.READY_FOR_HOST,
         LoopXTurnRoute.REPAIR_REQUIRED,

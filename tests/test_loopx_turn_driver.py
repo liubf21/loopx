@@ -15,10 +15,11 @@ from loopx.control_plane.turn_driver import (
     LoopXTurnRoute,
     build_loopx_turn_host_request,
     build_loopx_turn_plan,
-    child_host_capabilities,
+    codex_cli_session_binding,
     loopx_turn_execution_committed,
     run_loopx_turn_once,
 )
+from loopx.control_plane.turn_driver.codex_cli import _store_codex_cli_session
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
 
 
@@ -180,7 +181,10 @@ def test_turn_plan_maps_admitted_child_to_codex_native_operation() -> None:
 
 def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
     envelope = _adaptive_envelope()
-    envelope["action"]["selected_todo"] = None
+    envelope["action"]["selected_todo"] = {
+        "todo_id": "todo_stale_selection",
+        "text": "A stale pre-orchestration selection",
+    }
     envelope["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
     payload = build_loopx_turn_plan(
         envelope,
@@ -194,6 +198,18 @@ def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
         "todo_id": "todo_primary",
         "source": "task_orchestration_contract.primary_todo_id",
     }
+    same_primary = _adaptive_envelope()
+    same_primary["action"]["selected_todo"]["todo_id"] = "todo_another_stale_selection"
+    same_primary["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
+    same_primary_plan = build_loopx_turn_plan(
+        same_primary,
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+    assert (
+        payload["transaction"]["turn_key"]
+        == same_primary_plan["transaction"]["turn_key"]
+    )
 
 
 def test_turn_plan_exposes_only_qualified_claude_child_contexts() -> None:
@@ -234,13 +250,30 @@ def test_turn_plan_exposes_only_qualified_claude_child_contexts() -> None:
     }
 
 
-def test_child_host_capabilities_open_only_qualified_default_contracts() -> None:
-    assert child_host_capabilities("codex-cli") == [
-        "subagent_spawn",
-        "subagent_resume",
-    ]
-    assert child_host_capabilities("claude-code") == ["subagent_spawn"]
-    assert child_host_capabilities("generic-cli") == []
+def test_codex_session_binding_uses_adaptive_primary_todo(
+    tmp_path: Path,
+) -> None:
+    envelope = _adaptive_envelope()
+    envelope["action"]["selected_todo"] = {
+        "todo_id": "todo_stale_selection",
+        "text": "A stale pre-orchestration selection",
+    }
+    envelope["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
+    lineage = {
+        "goal_id": "fixture-goal",
+        "agent_id": "codex-fixture",
+        "todo_id": "todo_primary",
+    }
+    _store_codex_cli_session(
+        tmp_path,
+        lineage=lineage,
+        session_id="session-primary",
+    )
+
+    assert codex_cli_session_binding(tmp_path, envelope) == {
+        "schema_version": LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
+        **lineage,
+    }
 
 
 def test_generic_host_does_not_project_unqualified_child_operations() -> None:
@@ -1185,8 +1218,10 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     result_kind: str,
 ) -> None:
     from loopx.cli_commands.turn import (
+        build_turn_envelope as real_build_turn_envelope,
         refresh_state_run as real_refresh_state_run,
         spend_quota_slot as real_spend_quota_slot,
+        update_goal_todo as real_update_goal_todo,
     )
 
     project, runtime, registry = _write_live_fixture(tmp_path)
@@ -1226,6 +1261,21 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     )
     refresh_workspace_paths: list[Path | None] = []
     spend_workspace_paths: list[Path | None] = []
+    updated_todo_ids: list[str] = []
+
+    def adaptive_turn_envelope(*args: object, **kwargs: object) -> dict[str, object]:
+        envelope = real_build_turn_envelope(*args, **kwargs)
+        envelope["action"]["selected_todo"] = {
+            "todo_id": "todo_stale_selection",
+            "text": "A stale pre-orchestration selection",
+        }
+        envelope["task_orchestration_contract"] = {
+            "schema_version": "task_orchestration_contract_v2",
+            "mode": "adaptive",
+            "primary_todo_id": "todo_fixture0001",
+            "eligible_child_lanes": [],
+        }
+        return envelope
 
     def recording_refresh_state_run(*args: object, **kwargs: object) -> dict[str, object]:
         refresh_workspace_paths.append(kwargs.get("delivery_workspace_path"))
@@ -1234,6 +1284,10 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     def recording_spend_quota_slot(*args: object, **kwargs: object) -> dict[str, object]:
         spend_workspace_paths.append(kwargs.get("workspace_path"))
         return real_spend_quota_slot(*args, **kwargs)
+
+    def recording_update_goal_todo(*args: object, **kwargs: object) -> dict[str, object]:
+        updated_todo_ids.append(str(kwargs.get("todo_id") or ""))
+        return real_update_goal_todo(*args, **kwargs)
 
     def fake_codex_host(request: dict[str, object], **_kwargs: object) -> dict[str, object]:
         return {
@@ -1252,12 +1306,20 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
 
     monkeypatch.setattr("loopx.cli_commands.turn.run_codex_cli_host", fake_codex_host)
     monkeypatch.setattr(
+        "loopx.cli_commands.turn.build_turn_envelope",
+        adaptive_turn_envelope,
+    )
+    monkeypatch.setattr(
         "loopx.cli_commands.turn.refresh_state_run",
         recording_refresh_state_run,
     )
     monkeypatch.setattr(
         "loopx.cli_commands.turn.spend_quota_slot",
         recording_spend_quota_slot,
+    )
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.update_goal_todo",
+        recording_update_goal_todo,
     )
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
@@ -1301,6 +1363,9 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     assert payload["effects"]["quota_spent"] is True
     assert refresh_workspace_paths == [project]
     assert spend_workspace_paths == [project]
+    assert updated_todo_ids == (
+        [] if result_kind == "validated_progress" else ["todo_fixture0001"]
+    )
     state = (
         project
         / ".codex"
