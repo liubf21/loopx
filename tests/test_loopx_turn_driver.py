@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from loopx.cli import main as cli_main
+from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
@@ -135,6 +136,48 @@ def _adaptive_envelope() -> dict[str, object]:
     return envelope
 
 
+def _signed_adaptive_envelope(
+    *,
+    stale_selected_todo_id: str,
+    recommended_action: str = "Advance one public fixture",
+) -> dict[str, object]:
+    decision = {
+        "ok": True,
+        "goal_id": "fixture-goal",
+        "agent_identity": {"agent_id": "codex-fixture"},
+        "decision": "run",
+        "should_run": True,
+        "effective_action": "normal_run",
+        "state": "eligible",
+        "recommended_action": recommended_action,
+        "selected_todo": {
+            "todo_id": stale_selected_todo_id,
+            "text": "A stale pre-orchestration selection",
+        },
+        "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
+            "mode": "normal_run",
+            "user_channel": {
+                "action_required": False,
+                "notify": "DONT_NOTIFY",
+            },
+            "agent_channel": {
+                "must_attempt": True,
+                "delivery_allowed": True,
+                "quiet_noop_allowed": False,
+            },
+            "cli_channel": {
+                "spend_after_validation": True,
+            },
+        },
+        "task_orchestration_contract": {
+            **_adaptive_envelope()["task_orchestration_contract"],
+            "primary_todo_id": "todo_primary",
+        },
+    }
+    return build_turn_envelope(decision)
+
+
 def test_turn_plan_maps_admitted_child_to_codex_native_operation() -> None:
     payload = build_loopx_turn_plan(
         _adaptive_envelope(),
@@ -180,14 +223,29 @@ def test_turn_plan_maps_admitted_child_to_codex_native_operation() -> None:
 
 
 def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
-    envelope = _adaptive_envelope()
-    envelope["action"]["selected_todo"] = {
-        "todo_id": "todo_stale_selection",
-        "text": "A stale pre-orchestration selection",
-    }
-    envelope["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
+    first_envelope = _signed_adaptive_envelope(
+        stale_selected_todo_id="todo_stale_selection",
+    )
+    second_envelope = _signed_adaptive_envelope(
+        stale_selected_todo_id="todo_another_stale_selection",
+    )
+    assert first_envelope["action_signature"]["matches"] is True
+    assert (
+        first_envelope["action_signature"]["source_hash"]
+        == first_envelope["action_signature"]["envelope_hash"]
+    )
+    assert second_envelope["action_signature"]["matches"] is True
+    assert (
+        second_envelope["action_signature"]["source_hash"]
+        == second_envelope["action_signature"]["envelope_hash"]
+    )
+    assert (
+        first_envelope["action_signature"]["source_hash"]
+        != second_envelope["action_signature"]["source_hash"]
+    )
+
     payload = build_loopx_turn_plan(
-        envelope,
+        first_envelope,
         host="codex-cli",
         execution_mode="interactive-visible",
     )
@@ -198,17 +256,26 @@ def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
         "todo_id": "todo_primary",
         "source": "task_orchestration_contract.primary_todo_id",
     }
-    same_primary = _adaptive_envelope()
-    same_primary["action"]["selected_todo"]["todo_id"] = "todo_another_stale_selection"
-    same_primary["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
     same_primary_plan = build_loopx_turn_plan(
-        same_primary,
+        second_envelope,
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+    changed_action_plan = build_loopx_turn_plan(
+        _signed_adaptive_envelope(
+            stale_selected_todo_id="todo_stale_selection",
+            recommended_action="Advance a different public fixture",
+        ),
         host="codex-cli",
         execution_mode="interactive-visible",
     )
     assert (
         payload["transaction"]["turn_key"]
         == same_primary_plan["transaction"]["turn_key"]
+    )
+    assert (
+        payload["transaction"]["turn_key"]
+        != changed_action_plan["transaction"]["turn_key"]
     )
 
 

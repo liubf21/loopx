@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from enum import Enum
+from hashlib import sha256
 from typing import Any
 
+from ..quota.turn_envelope import turn_envelope_action_signature_document
 from ..scheduler.execution_context import (
     scheduler_execution_context_for_turn,
 )
@@ -116,12 +119,25 @@ def _turn_lineage(
     *,
     selected_todo: Mapping[str, Any],
 ) -> dict[str, str]:
-    signature = _mapping(envelope.get("action_signature"))
+    signature_document = turn_envelope_action_signature_document(envelope)
+    action = _mapping(signature_document.get("action"))
+    signature_document["action"] = {
+        **action,
+        "selected_todo": dict(selected_todo),
+    }
+    action_hash = "sha256:" + sha256(
+        json.dumps(
+            signature_document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     return {
         "goal_id": str(envelope.get("goal_id") or ""),
         "agent_id": str(envelope.get("agent_id") or ""),
         "todo_id": str(selected_todo.get("todo_id") or ""),
-        "action_hash": str(signature.get("source_hash") or ""),
+        "action_hash": action_hash,
     }
 
 
