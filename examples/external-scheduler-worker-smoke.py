@@ -54,6 +54,14 @@ def _hint_payload(
                     "example_progression_minutes": progression,
                     "unchanged_poll_limit": limit,
                     "after_limit": after_limit,
+                    "final_quota_replan_check": {
+                        "enabled": limit is not None,
+                        "trigger": "before_unchanged_poll_after_limit",
+                        "action": "rerun_quota_should_run_once",
+                        "if_changed": "follow_new_scheduler_hint",
+                        "if_run_now": "execute_new_quota_contract",
+                        "if_unchanged": "apply_after_limit_without_spend",
+                    },
                 }
             },
         },
@@ -128,6 +136,24 @@ def test_missing_detail_fails_closed() -> None:
         assert "include-detail scheduler" in str(exc)
     else:  # pragma: no cover - defensive
         raise AssertionError("parse_tick must fail closed without scheduler detail")
+
+
+def test_stop_limit_without_final_probe_fails_closed() -> None:
+    payload = _hint_payload(
+        action="backoff",
+        initial=10,
+        progression=[10, 20],
+        limit=2,
+    )
+    del payload["scheduler_hint"]["cold_path_detail"]["local_scheduler"][
+        "final_quota_replan_check"
+    ]
+    try:
+        parse_tick(payload)
+    except ValueError as exc:
+        assert "final_quota_replan_check" in str(exc)
+    else:  # pragma: no cover - defensive
+        raise AssertionError("stop limit must require its final quota/replan probe")
 
 
 def _write_fake_cli(path: Path, payloads: list[dict]) -> None:
@@ -433,6 +459,7 @@ def main() -> int:
         test_new_reset_token_resets_progression,
         test_terminal_action_is_terminal,
         test_missing_detail_fails_closed,
+        test_stop_limit_without_final_probe_fails_closed,
     ]
     e2e_tests = [
         test_launchd_program_arguments_match_worker_entrypoint,

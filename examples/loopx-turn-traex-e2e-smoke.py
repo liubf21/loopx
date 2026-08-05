@@ -8,8 +8,8 @@ This exercises the full governed chain without a model call:
     loopx turn run-once -> adapter -> fake traex -> independent validator
     -> writeback -> one quota spend -> idempotent replay
 
-The fake host writes the public marker file and emits the TraeX-style noisy
-stdout plus the final JSON result block the adapter parses. Pass
+The fake host writes the public marker file and the native structured result
+file while emitting unrelated TraeX-style stdout noise. Pass
 ``--real-traex`` to invoke the installed ``traex`` binary for one real model
 turn instead of the fake.
 """
@@ -131,14 +131,14 @@ def _write_fake_traex(root: Path, workspace: Path) -> Path:
     executable.write_text(
         "#!/usr/bin/env python3\n"
         "import pathlib, sys\n"
+        "args = sys.argv[1:]\n"
         f"pathlib.Path({str(workspace)!r}).joinpath({MARKER_NAME!r}).write_text("
         f"{MARKER_VALUE!r}, encoding='utf-8')\n"
+        "output_path = pathlib.Path(args[args.index('--output-last-message') + 1])\n"
+        f"output_path.write_text({block!r}, encoding='utf-8')\n"
         "print('hook: pre-tool')\n"
         "print('INFO transport')\n"
         "print('wrote the marker')\n"
-        "print('```json')\n"
-        f"print({block!r})\n"
-        "print('```')\n"
         "sys.exit(0)\n",
         encoding="utf-8",
     )

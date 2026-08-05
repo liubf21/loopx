@@ -2,18 +2,21 @@
 """Smoke for the thin TraeX Turn host adapter.
 
 Guards the reusable request/result translation without calling the model or
-network: action-text extraction from the bounded Turn envelope, noise-stripping
-and final-block parsing of TraeX stdout, result shaping, and acceptance by the
-real LoopX host-result validator.
+network: signed authority extraction from the bounded Turn envelope, native
+structured-result file parsing, result shaping, process-group timeout cleanup,
+and acceptance by the real LoopX host-result validator.
 """
 
 from __future__ import annotations
 
+from hashlib import sha256
 import json
+import os
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -27,6 +30,9 @@ import traex_turn_host_adapter as adapter  # noqa: E402
 from loopx.control_plane.turn_driver.executor import (  # noqa: E402
     validate_loopx_turn_host_result,
 )
+from loopx.control_plane.quota.turn_envelope import (  # noqa: E402
+    turn_envelope_action_signature_document,
+)
 
 
 TURN_KEY = (
@@ -34,19 +40,43 @@ TURN_KEY = (
 )
 
 
-def _request(*, recommended_action: str = "Do the small thing.") -> dict:
-    return {
+def _request(
+    *,
+    recommended_action: str = "Do the small thing.",
+    primary_action: str = "Do the signed thing.",
+) -> dict:
+    request = {
         "schema_version": adapter.LOOPX_TURN_HOST_REQUEST_SCHEMA,
         "turn_key": TURN_KEY,
         "route": "primary_delivery",
         "session": {"goal_id": "g", "agent_id": "a"},
         "turn_envelope": {
+            "schema_version": "loopx_turn_envelope_v0",
             "goal_id": "g",
             "agent_id": "a",
             "action": {
                 "recommended_action": recommended_action,
-                "primary_action": None,
+                "primary_action": primary_action,
                 "must_attempt": True,
+            },
+            "required_reads": [
+                {
+                    "kind": "command",
+                    "command": "git status --short",
+                    "reason": "establish the workspace baseline",
+                }
+            ],
+            "boundary": {
+                "write_scope": ["docs/**", "tests/**"],
+                "workspace_guard": {
+                    "schema_version": "workspace_guard_v0",
+                    "status": "ready",
+                    "action": "continue",
+                },
+            },
+            "action_signature": {
+                "schema_version": "loopx_action_signature_v0",
+                "matches": True,
             },
         },
         "result_contract": {
@@ -54,6 +84,22 @@ def _request(*, recommended_action: str = "Do the small thing.") -> dict:
             "completed_phases": list(adapter.COMPLETED_PHASES),
         },
     }
+    signature = turn_envelope_action_signature_document(request["turn_envelope"])
+    signature_hash = "sha256:" + sha256(
+        json.dumps(
+            signature,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    request["turn_envelope"]["action_signature"].update(
+        {
+            "source_hash": signature_hash,
+            "envelope_hash": signature_hash,
+        }
+    )
+    return request
 
 
 def _plan(request: dict) -> dict:
@@ -68,65 +114,93 @@ def _assert(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def test_action_text_prefers_recommended_action() -> None:
-    request = _request(recommended_action="the real task body")
-    request["turn_envelope"]["action"]["primary_action"] = "ignored"
+def test_action_text_uses_signed_primary_action() -> None:
+    request = _request(
+        recommended_action="legacy action must not win",
+        primary_action="signed primary action",
+    )
     _assert(
-        adapter.extract_action_text(request) == "the real task body",
-        "recommended_action must be the bounded task body",
+        adapter.extract_action_text(request) == "signed primary action",
+        "signed primary_action must be the bounded task body",
     )
 
 
-def test_action_text_falls_back_to_selected_todo() -> None:
+def test_unsigned_action_is_rejected() -> None:
     request = _request()
-    request["turn_envelope"]["action"]["recommended_action"] = None
-    request["turn_envelope"]["action"]["primary_action"] = None
-    request["turn_envelope"]["action"]["selected_todo"] = {"text": "todo body"}
+    request["turn_envelope"]["action_signature"]["matches"] = False
+    try:
+        adapter.extract_action_text(request)
+    except ValueError as exc:
+        _assert("action signature" in str(exc), "signature error must be actionable")
+    else:  # pragma: no cover - defensive
+        raise AssertionError("unsigned TurnEnvelope action must fail closed")
+
+
+def test_action_tampering_after_signature_is_rejected() -> None:
+    request = _request()
+    request["turn_envelope"]["action"]["primary_action"] = "tampered action"
+    try:
+        adapter.extract_action_text(request)
+    except ValueError as exc:
+        _assert("action signature" in str(exc), "tamper error must be actionable")
+    else:  # pragma: no cover - defensive
+        raise AssertionError("post-signature TurnEnvelope tampering must fail closed")
+
+
+def test_prompt_preserves_structured_turn_authority() -> None:
+    request = _request(recommended_action="legacy action must not appear")
+    authority = adapter.extract_turn_authority(request)
+    prompt = adapter.render_prompt(authority)
     _assert(
-        adapter.extract_action_text(request) == "todo body",
-        "selected_todo.text is the fallback task body",
+        authority["primary_action"] == "Do the signed thing.",
+        "primary_action must be preserved",
     )
+    _assert(
+        authority["required_reads"] == request["turn_envelope"]["required_reads"],
+        "required_reads must be preserved without prose reconstruction",
+    )
+    _assert(
+        authority["write_scope"] == ["docs/**", "tests/**"],
+        "the complete write scope must be preserved",
+    )
+    _assert(
+        authority["workspace_guard"]
+        == request["turn_envelope"]["boundary"]["workspace_guard"],
+        "the complete workspace guard must be preserved",
+    )
+    _assert("legacy action must not appear" not in prompt, "legacy action must not leak")
+    for expected in (
+        '"primary_action":"Do the signed thing."',
+        '"command":"git status --short"',
+        '"write_scope":["docs/**","tests/**"]',
+        '"workspace_guard":{"action":"continue"',
+        "- recommended_action:",
+        "- vision_unchanged_reason:",
+    ):
+        _assert(expected in prompt, f"prompt must contain structured authority: {expected}")
 
 
-def test_parse_strips_hook_noise_and_reads_last_block() -> None:
-    stdout = (
-        "hook: pre-tool started\n"
-        "INFO some transport line\n"
-        "Here is my thinking.\n"
-        "```json\n"
-        + json.dumps(
-            {
-                "result_kind": "validated_progress",
-                "classification": "updated config",
-                "summary": "changed one field",
-                "next_action": "run the smoke",
-            }
+def test_structured_result_file_is_the_only_candidate_channel() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "result.json"
+        candidate = {
+            "result_kind": "validated_progress",
+            "classification": "updated config",
+            "recommended_action": "review",
+            "next_action": "run the smoke",
+            "vision_unchanged_reason": "the objective is unchanged",
+            "summary": "changed one field",
+        }
+        path.write_text(json.dumps(candidate), encoding="utf-8")
+        _assert(
+            adapter.read_structured_result(path) == candidate,
+            "the native structured result file must parse",
         )
-        + "\n```\n"
-        "hook: post-tool done\n"
-    )
-    parsed = adapter.parse_result_block(stdout)
-    _assert(parsed is not None, "final fenced block must parse")
-    assert parsed is not None
-    _assert(parsed["result_kind"] == "validated_progress", "kind preserved")
-
-
-def test_parse_ignores_invalid_earlier_blocks() -> None:
-    stdout = (
-        "```json\n{not json}\n```\n"
-        "trailing answer\n"
-        "```json\n"
-        + json.dumps(
-            {
-                "result_kind": "wait",
-                "classification": "throttled",
-                "summary": "no work due",
-            }
+        path.write_text("{not json}", encoding="utf-8")
+        _assert(
+            adapter.read_structured_result(path) is None,
+            "invalid structured output must fail closed",
         )
-        + "\n```\n"
-    )
-    parsed = adapter.parse_result_block(stdout)
-    _assert(parsed is not None and parsed["result_kind"] == "wait", "valid block wins")
 
 
 def test_material_progress_result_validates() -> None:
@@ -183,25 +257,30 @@ def test_text_fields_are_bounded() -> None:
 
 
 def test_subprocess_adapter_roundtrip_with_fake_host() -> None:
-    """End-to-end: request JSON on stdin -> adapter -> valid result on stdout."""
+    """End-to-end: request -> native TraeX structured output -> Turn result."""
 
     with tempfile.TemporaryDirectory() as tmp:
         fake = Path(tmp) / "fake-traex"
+        argv_file = Path(tmp) / "argv.json"
         block = json.dumps(
             {
                 "result_kind": "validated_progress",
                 "classification": "did it",
+                "recommended_action": "review",
                 "summary": "one change",
                 "next_action": "review",
+                "vision_unchanged_reason": "the objective is unchanged",
             }
         )
         script = (
-            "#!/bin/sh\n"
-            'echo "hook: pre-tool"\n'
-            'echo "INFO transport"\n'
-            'echo "```json"\n'
-            f"echo '{block}'\n"
-            'echo "```"\n'
+            "#!/usr/bin/env python3\n"
+            "import json, pathlib, sys\n"
+            f"pathlib.Path({str(argv_file)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+            "output_path = pathlib.Path(sys.argv[sys.argv.index('--output-last-message') + 1])\n"
+            f"output_path.write_text({block!r}, encoding='utf-8')\n"
+            "print('hook: pre-tool')\n"
+            "print('INFO transport')\n"
+            "print('unstructured stdout must not be the result channel')\n"
         )
         fake.write_text(script)
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
@@ -227,19 +306,83 @@ def test_subprocess_adapter_roundtrip_with_fake_host() -> None:
             verdict["ok"],
             "roundtrip result must validate: " + "; ".join(verdict["errors"]),
         )
+        _assert(
+            result["result_kind"] == "validated_progress",
+            "native structured output must carry the material result",
+        )
+        argv = json.loads(argv_file.read_text())
+        _assert("--output-schema" in argv, "adapter must request native output schema")
+        _assert(
+            "--output-last-message" in argv,
+            "adapter must read the native structured result file",
+        )
+        permission_index = argv.index("--permission-mode")
+        _assert(
+            argv[permission_index + 1] == "default",
+            "default adapter invocation must not bypass permissions",
+        )
+
+
+def test_timeout_terminates_traex_descendants() -> None:
+    if os.name != "posix":
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        marker = root / "late-descendant-write"
+        child_code = (
+            "from pathlib import Path; import time; "
+            "time.sleep(1.2); "
+            f"Path({str(marker)!r}).write_text('late', encoding='utf-8')"
+        )
+        fake = root / "fake-traex"
+        fake.write_text(
+            "#!/usr/bin/env python3\n"
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+            "time.sleep(10)\n",
+            encoding="utf-8",
+        )
+        fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+        started = time.monotonic()
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "traex_turn_host_adapter.py"),
+                "--traex-bin",
+                str(fake),
+                "--workspace",
+                str(root),
+                "--timeout-seconds",
+                "1",
+            ],
+            input=json.dumps(_request()),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=5,
+        )
+        elapsed = time.monotonic() - started
+        _assert(completed.returncode != 0, "timed out TraeX must fail the adapter")
+        _assert(elapsed < 4, "adapter timeout must return promptly")
+        time.sleep(1.5)
+        _assert(not marker.exists(), "timed out TraeX descendants must not write later")
 
 
 def main() -> int:
     tests = [
-        test_action_text_prefers_recommended_action,
-        test_action_text_falls_back_to_selected_todo,
-        test_parse_strips_hook_noise_and_reads_last_block,
-        test_parse_ignores_invalid_earlier_blocks,
+        test_action_text_uses_signed_primary_action,
+        test_unsigned_action_is_rejected,
+        test_action_tampering_after_signature_is_rejected,
+        test_prompt_preserves_structured_turn_authority,
+        test_structured_result_file_is_the_only_candidate_channel,
         test_material_progress_result_validates,
         test_wait_result_validates_without_material_fields,
         test_missing_result_block_fails_closed_to_wait,
         test_text_fields_are_bounded,
         test_subprocess_adapter_roundtrip_with_fake_host,
+        test_timeout_terminates_traex_descendants,
     ]
     for test in tests:
         test()

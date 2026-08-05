@@ -6,7 +6,7 @@ stdin. The adapter:
 
 1. extracts the bounded action text from the Turn envelope,
 2. invokes one headless ``traex exec`` in the governed workspace,
-3. asks the model to end with a compact public-safe result block,
+3. asks TraeX for one schema-constrained public-safe result file,
 4. emits exactly one ``loopx_turn_result_v0`` JSON object on stdout.
 
 It does not read goal/todo state, build prompts from todo ids, write LoopX
@@ -17,18 +17,31 @@ stay in ``loopx turn run-once``; this is a dumb translation layer.
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 import os
-import re
-import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.extensions.process_runtime import (  # noqa: E402
+    CappedProcessResult,
+    run_capped_process,
+)
+from loopx.control_plane.quota.turn_envelope import (  # noqa: E402
+    turn_envelope_action_signature_document,
+)
+
 LOOPX_TURN_HOST_REQUEST_SCHEMA = "loopx_turn_host_request_v0"
 LOOPX_TURN_RESULT_SCHEMA = "loopx_turn_result_v0"
 COMPLETED_PHASES = ["host_execute", "typed_result"]
+TRAEX_OUTPUT_LIMIT_BYTES = 1_000_000
 
 ACCEPTED_RESULT_KINDS = {
     "validated_progress",
@@ -47,14 +60,6 @@ TEXT_LIMITS = {
     "summary": 400,
 }
 
-# Lines emitted by the TraeX CLI transport/hooks that are not model output.
-_NOISE_PREFIXES = ("hook:", "INFO", "WARNING", "ERROR: Reconnecting")
-_RESULT_BLOCK_RE = re.compile(
-    r"```(?:json)?\s*(\{.*?\})\s*```",
-    re.DOTALL,
-)
-
-
 def _bounded(value: Any, *, limit: int) -> str:
     text = str(value or "").strip()
     if len(text) > limit:
@@ -62,49 +67,91 @@ def _bounded(value: Any, *, limit: int) -> str:
     return text
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _canonical_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + sha256(encoded).hexdigest()
+
+
+def extract_turn_authority(request: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the signed action and safety boundary exactly as projected."""
+
+    envelope = _mapping(request.get("turn_envelope"))
+    signature = _mapping(envelope.get("action_signature"))
+    source_hash = str(signature.get("source_hash") or "")
+    envelope_hash = str(signature.get("envelope_hash") or "")
+    computed_envelope_hash = _canonical_hash(
+        turn_envelope_action_signature_document(envelope)
+    )
+    if (
+        signature.get("matches") is not True
+        or not source_hash
+        or source_hash != envelope_hash
+        or envelope_hash != computed_envelope_hash
+    ):
+        raise ValueError("TurnEnvelope action signature is missing or does not match")
+
+    action = _mapping(envelope.get("action"))
+    primary_action = _bounded(
+        action.get("primary_action"),
+        limit=TEXT_LIMITS["recommended_action"],
+    )
+    if not primary_action:
+        raise ValueError("signed TurnEnvelope has no primary_action")
+
+    boundary = _mapping(envelope.get("boundary"))
+    required_reads = envelope.get("required_reads")
+    write_scope = boundary.get("write_scope")
+    return {
+        "primary_action": primary_action,
+        "required_reads": list(required_reads) if isinstance(required_reads, list) else [],
+        "write_scope": list(write_scope) if isinstance(write_scope, list) else [],
+        "workspace_guard": _mapping(boundary.get("workspace_guard")),
+    }
+
+
 def extract_action_text(request: Mapping[str, Any]) -> str:
     """Return the bounded, control-plane-authored task body for the host."""
 
-    envelope = request.get("turn_envelope")
-    if not isinstance(envelope, Mapping):
-        return ""
-    action = envelope.get("action") if isinstance(envelope.get("action"), Mapping) else {}
-
-    for candidate in (
-        action.get("recommended_action"),
-        action.get("primary_action"),
-    ):
-        text = _bounded(candidate, limit=TEXT_LIMITS["recommended_action"])
-        if text:
-            return text
-
-    selected = action.get("selected_todo")
-    if isinstance(selected, Mapping):
-        text = _bounded(selected.get("text"), limit=TEXT_LIMITS["recommended_action"])
-        if text:
-            return text
-    return ""
+    return str(extract_turn_authority(request)["primary_action"])
 
 
-def render_prompt(action_text: str) -> str:
-    """Wrap one bounded action in the TraeX result-block framing.
+def render_prompt(authority: Mapping[str, Any]) -> str:
+    """Wrap one signed Turn authority packet in the result-block framing.
 
     The model owns execution; the trailing block is the only channel the adapter
     reads back as a typed candidate. It stays public-safe and bounded.
     """
 
+    authority_json = json.dumps(
+        dict(authority),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return (
         "You are executing one bounded LoopX-governed work segment.\n"
-        "Perform exactly the task below in the current workspace. Do not read or "
-        "modify anything outside it.\n\n"
-        f"Task:\n{action_text}\n\n"
-        "When finished, output ONLY a final JSON code block "
-        "(```json ... ```) with these public-safe fields:\n"
+        "The JSON below is the complete host authority for this Turn. Execute "
+        "primary_action only after required_reads, write only inside write_scope, "
+        "and obey workspace_guard. Do not infer authority from other prose.\n\n"
+        f"Turn authority JSON:\n{authority_json}\n\n"
+        "When finished, return only the schema-constrained result with these "
+        "public-safe fields:\n"
         "- result_kind: one of validated_progress | repair_required | "
         "replan_required | user_action_required | wait\n"
         "- classification: short label (<=120 chars)\n"
         "- summary: what changed or why stopped (<=400 chars)\n"
+        "- recommended_action: the bounded follow-up recommendation (<=1200 chars)\n"
         "- next_action: the concrete next step (<=1200 chars)\n"
+        "- vision_unchanged_reason: why the goal path is unchanged (<=240 chars)\n"
         "Use repair_required when the task is sound but a recoverable defect "
         "blocks it, replan_required when this route is exhausted, and "
         "wait/user_action_required when no material write is safe. "
@@ -112,35 +159,36 @@ def render_prompt(action_text: str) -> str:
     )
 
 
-def _strip_noise(stdout: str) -> str:
-    kept = [
-        line
-        for line in stdout.splitlines()
-        if not any(line.startswith(prefix) for prefix in _NOISE_PREFIXES)
-    ]
-    return "\n".join(kept).strip()
+def traex_result_schema() -> dict[str, Any]:
+    properties = {
+        "result_kind": {
+            "type": "string",
+            "enum": sorted(ACCEPTED_RESULT_KINDS),
+        },
+        **{
+            field: {"type": "string", "maxLength": limit}
+            for field, limit in TEXT_LIMITS.items()
+        },
+    }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
 
 
-def parse_result_block(stdout: str) -> dict[str, Any] | None:
-    """Extract the model's final JSON result block from TraeX output."""
-
-    cleaned = _strip_noise(stdout)
-    candidates: list[str] = []
-    for match in _RESULT_BLOCK_RE.finditer(cleaned):
-        candidates.append(match.group(1))
-    # Fallback: the last {...} object in output, if no fenced block was found.
-    if not candidates:
-        last = cleaned.rfind("{")
-        if last != -1:
-            candidates.append(cleaned[last:])
-    for raw in reversed(candidates):
-        try:
-            value = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(value, dict) and str(value.get("result_kind") or "") in ACCEPTED_RESULT_KINDS:
-            return value
-    return None
+def read_structured_result(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(value, dict)
+        or str(value.get("result_kind") or "") not in ACCEPTED_RESULT_KINDS
+    ):
+        return None
+    return value
 
 
 def build_result(
@@ -225,27 +273,28 @@ def run_traex(
     *,
     traex_bin: str,
     workspace: Path,
+    schema_path: Path,
+    output_path: Path,
     permission_mode: str,
     model: str | None,
     timeout_seconds: float,
     skip_git_repo_check: bool,
-) -> subprocess.CompletedProcess[str]:
+) -> CappedProcessResult:
     argv: list[str] = [traex_bin, "exec"]
     if skip_git_repo_check:
         argv.append("--skip-git-repo-check")
     argv.extend(["--permission-mode", permission_mode])
+    argv.extend(["--output-schema", str(schema_path)])
+    argv.extend(["--output-last-message", str(output_path)])
     if model:
         argv.extend(["-m", model])
     argv.append(prompt)
-    return subprocess.run(
+    return run_capped_process(
         argv,
+        stdin=b"",
         cwd=workspace,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=max(1.0, timeout_seconds),
-        check=False,
+        timeout_seconds=max(1.0, timeout_seconds),
+        output_limit_bytes=TRAEX_OUTPUT_LIMIT_BYTES,
     )
 
 
@@ -255,9 +304,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--workspace", default=os.getcwd())
     parser.add_argument(
         "--permission-mode",
-        default="bypass_permissions",
-        choices=("bypass_permissions", "custom"),
-        help="exec cannot prompt for approvals, so default/copy-on-write are rejected",
+        default="default",
+        choices=("default", "auto", "bypass_permissions", "custom"),
+        help="TraeX exec permission mode; defaults to workspace-safe agent permissions",
     )
     parser.add_argument("-m", "--model", default=None)
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
@@ -277,35 +326,55 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("adapter: stdin is not a loopx_turn_host_request_v0 object", file=sys.stderr)
         return 2
 
-    action_text = extract_action_text(request)
-    if not action_text:
-        print(json.dumps(build_result(request, None)), flush=True)
-        return 0
-
     try:
-        completed = run_traex(
-            render_prompt(action_text),
-            traex_bin=args.traex_bin,
-            workspace=Path(args.workspace),
-            permission_mode=args.permission_mode,
-            model=args.model,
-            timeout_seconds=args.timeout_seconds,
-            skip_git_repo_check=args.skip_git_repo_check,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        # Non-zero / non-JSON stdout makes the driver classify host_failure.
-        print(f"adapter: traex exec failed: {type(exc).__name__}", file=sys.stderr)
-        return 1
+        authority = extract_turn_authority(request)
+    except ValueError as exc:
+        print(f"adapter: invalid TurnEnvelope authority: {exc}", file=sys.stderr)
+        return 2
 
-    if completed.returncode != 0:
-        print(
-            f"adapter: traex exited {completed.returncode}: "
-            f"{completed.stderr.strip()[:400]}",
-            file=sys.stderr,
+    with tempfile.TemporaryDirectory(prefix="loopx-turn-traex-") as directory:
+        temporary = Path(directory)
+        schema_path = temporary / "result-schema.json"
+        output_path = temporary / "last-message.json"
+        schema_path.write_text(
+            json.dumps(
+                traex_result_schema(),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
         )
-        return completed.returncode if completed.returncode > 0 else 1
+        try:
+            completed = run_traex(
+                render_prompt(authority),
+                traex_bin=args.traex_bin,
+                workspace=Path(args.workspace),
+                schema_path=schema_path,
+                output_path=output_path,
+                permission_mode=args.permission_mode,
+                model=args.model,
+                timeout_seconds=args.timeout_seconds,
+                skip_git_repo_check=args.skip_git_repo_check,
+            )
+        except OSError as exc:
+            print(f"adapter: traex exec failed: {type(exc).__name__}", file=sys.stderr)
+            return 1
 
-    candidate = parse_result_block(completed.stdout or "")
+        if completed.failure_kind is not None:
+            print(
+                f"adapter: traex exec failed: {completed.failure_kind}",
+                file=sys.stderr,
+            )
+            return 1
+        if completed.returncode != 0:
+            print(
+                f"adapter: traex exited {completed.returncode}",
+                file=sys.stderr,
+            )
+            return completed.returncode if completed.returncode > 0 else 1
+
+        candidate = read_structured_result(output_path)
     result = build_result(request, candidate)
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")), flush=True)
     return 0

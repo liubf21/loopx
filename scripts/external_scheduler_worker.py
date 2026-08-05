@@ -21,18 +21,29 @@ emitted. The status line is the liveness signal.
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 import os
 import shlex
-import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.extensions.process_runtime import (  # noqa: E402
+    CappedProcessResult,
+    run_capped_process,
+)
+
 SCHEDULER_DETAIL_KEY = "local_scheduler"
 TERMINAL_ACTIONS = frozenset({"stop_until_explicit_resume"})
+PROCESS_OUTPUT_LIMIT_BYTES = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -45,6 +56,8 @@ class TickDecision:
     progression: tuple[int, ...]
     unchanged_limit: int | None
     after_limit: str
+    final_probe_enabled: bool
+    final_probe_action: str
     reset_token: str
     terminal: bool
 
@@ -98,6 +111,19 @@ def parse_tick(payload: dict[str, Any]) -> TickDecision:
         else None
     )
     after_limit = str(local.get("after_limit") or "continue").strip() or "continue"
+    final_probe = _mapping(local.get("final_quota_replan_check"))
+    if (
+        unchanged_limit is not None
+        and after_limit == "stop_tick_loop"
+        and (
+            final_probe.get("enabled") is not True
+            or final_probe.get("action") != "rerun_quota_should_run_once"
+        )
+    ):
+        raise ValueError(
+            "stop_tick_loop requires final_quota_replan_check "
+            "action rerun_quota_should_run_once"
+        )
 
     cadence_class = str(hint.get("cadence_class") or "").strip()
     reason = str(hint.get("reason") or payload.get("state") or "").strip()
@@ -112,24 +138,31 @@ def parse_tick(payload: dict[str, Any]) -> TickDecision:
         progression=progression,
         unchanged_limit=unchanged_limit,
         after_limit=after_limit,
+        final_probe_enabled=bool(final_probe.get("enabled")),
+        final_probe_action=str(final_probe.get("action") or "").strip(),
         reset_token=_extract_reset_token(payload),
         terminal=action in TERMINAL_ACTIONS,
     )
 
 
-def run_quota_should_run(command_prefix: Sequence[str]) -> dict[str, Any]:
-    completed = subprocess.run(
+def run_quota_should_run(
+    command_prefix: Sequence[str],
+    *,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    completed = run_capped_process(
         list(command_prefix),
-        check=False,
-        capture_output=True,
-        text=True,
+        stdin=b"",
+        timeout_seconds=max(0.01, timeout_seconds),
+        output_limit_bytes=PROCESS_OUTPUT_LIMIT_BYTES,
     )
+    if completed.failure_kind is not None:
+        raise RuntimeError(f"quota should-run failed: {completed.failure_kind}")
     if completed.returncode != 0:
-        error = (completed.stderr or completed.stdout or "").strip()
-        raise RuntimeError(f"quota should-run exited {completed.returncode}: {error[:500]}")
+        raise RuntimeError(f"quota should-run exited {completed.returncode}")
     try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
+        payload = json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"quota should-run returned invalid JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise RuntimeError("quota should-run returned a non-object payload")
@@ -146,12 +179,41 @@ def _load_state(path: Path | None) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _default_state_path(args: argparse.Namespace) -> Path:
+    configured_root = str(os.environ.get("XDG_STATE_HOME") or "").strip()
+    state_root = (
+        Path(configured_root).expanduser()
+        if configured_root
+        else Path.home() / ".local" / "state"
+    )
+    if not state_root.is_absolute():
+        state_root = Path.home() / ".local" / "state"
+    identity = json.dumps(
+        {
+            "registry": str(args.registry),
+            "goal_id": str(args.goal_id),
+            "agent_id": str(args.agent_id),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    filename = sha256(identity).hexdigest()[:24] + ".json"
+    return state_root / "loopx" / "external-worker" / filename
+
+
+def resolve_state_path(args: argparse.Namespace) -> Path:
+    if args.state_file:
+        return Path(args.state_file).expanduser()
+    return _default_state_path(args)
+
+
 def _save_state(path: Path | None, state: dict[str, Any]) -> None:
     if path is None:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    tmp.chmod(0o600)
     os.replace(tmp, path)
 
 
@@ -171,9 +233,19 @@ def _log(line: str) -> None:
     print(f"{stamp} {line}", flush=True)
 
 
-def _run_wake(command: str) -> int:
-    completed = subprocess.run(command, shell=True, check=False)
-    return completed.returncode
+def _shell_argv(command: str) -> list[str]:
+    if os.name == "nt":  # pragma: no cover - exercised on Windows hosts.
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
+    return ["/bin/sh", "-c", command]
+
+
+def _run_wake(command: str, *, timeout_seconds: float) -> CappedProcessResult:
+    return run_capped_process(
+        _shell_argv(command),
+        stdin=b"",
+        timeout_seconds=max(0.01, timeout_seconds),
+        output_limit_bytes=PROCESS_OUTPUT_LIMIT_BYTES,
+    )
 
 
 def build_should_run_command(args: argparse.Namespace) -> list[str]:
@@ -203,9 +275,24 @@ def build_should_run_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
+def _scheduler_contract_identity(
+    payload: dict[str, Any],
+    decision: TickDecision,
+) -> tuple[Any, ...]:
+    selected = _mapping(payload.get("selected_todo"))
+    return (
+        decision.should_run,
+        decision.action,
+        decision.cadence_class,
+        decision.reset_token,
+        str(payload.get("effective_action") or "").strip(),
+        str(selected.get("todo_id") or "").strip(),
+    )
+
+
 def run_worker(args: argparse.Namespace) -> int:
     should_run_command = build_should_run_command(args)
-    state_path = Path(args.state_file).expanduser() if args.state_file else None
+    state_path = resolve_state_path(args)
     once = bool(args.once)
 
     while True:
@@ -214,7 +301,10 @@ def run_worker(args: argparse.Namespace) -> int:
         unchanged_count = int(state.get("unchanged_count") or 0)
 
         try:
-            payload = run_quota_should_run(should_run_command)
+            payload = run_quota_should_run(
+                should_run_command,
+                timeout_seconds=float(getattr(args, "quota_timeout_seconds", 30.0)),
+            )
             decision = parse_tick(payload)
         except (RuntimeError, ValueError) as exc:
             _log(f"status=tick_error error={shlex.quote(str(exc))}")
@@ -223,68 +313,82 @@ def run_worker(args: argparse.Namespace) -> int:
             time.sleep(max(5, args.error_backoff_seconds))
             continue
 
-        if decision.reset_token and decision.reset_token != previous_token:
-            unchanged_count = 0
+        retry_after_error = False
+        while True:
+            if decision.reset_token and decision.reset_token != previous_token:
+                unchanged_count = 0
 
-        interval_minutes, phase = select_interval(
-            decision, unchanged_count=unchanged_count
-        )
-
-        effective_action = str(payload.get("effective_action") or "").strip()
-        selected = _mapping(payload.get("selected_todo"))
-        selected_id = str(selected.get("todo_id") or "").strip()
-
-        if decision.terminal:
-            _log(
-                "status=terminal "
-                f"action={decision.action} class={decision.cadence_class} "
-                f"reason={shlex.quote(decision.reason)}"
+            interval_minutes, phase = select_interval(
+                decision, unchanged_count=unchanged_count
             )
-            _save_state(
-                state_path,
-                {"reset_token": decision.reset_token, "unchanged_count": 0},
-            )
-            return 0
 
-        if decision.should_run:
-            wake_status = "would_wake"
-            wake_rc = None
-            wake_failed = False
-            if args.wake_cmd:
-                wake_rc = _run_wake(args.wake_cmd)
-                wake_status = "wake_ok" if wake_rc == 0 else "wake_failed"
-                wake_failed = wake_rc != 0
-            _log(
-                f"status=should_run {wake_status} "
-                f"action={decision.action} class={decision.cadence_class} "
-                f"effective_action={effective_action or '-'} "
-                f"todo={selected_id or '-'} "
-                f"reason={shlex.quote(decision.reason)}"
-                + (f" wake_rc={wake_rc}" if wake_rc is not None else "")
-            )
-            if wake_failed:
-                # A non-zero wake is a failed delivery, not a successful tick.
-                # Do not reset the unchanged-poll progression, and persist the
-                # failure so launchd/systemd and operators can see it.
+            effective_action = str(payload.get("effective_action") or "").strip()
+            selected = _mapping(payload.get("selected_todo"))
+            selected_id = str(selected.get("todo_id") or "").strip()
+
+            if decision.terminal:
+                _log(
+                    "status=terminal "
+                    f"action={decision.action} class={decision.cadence_class} "
+                    f"reason={shlex.quote(decision.reason)}"
+                )
                 _save_state(
                     state_path,
-                    {
-                        "reset_token": decision.reset_token,
-                        "unchanged_count": unchanged_count,
-                        "last_wake_rc": wake_rc,
-                        "last_wake_status": "wake_failed",
-                    },
+                    {"reset_token": decision.reset_token, "unchanged_count": 0},
                 )
-                if once:
-                    return int(wake_rc) if wake_rc else 1
+                return 0
+
+            if decision.should_run:
+                wake_status = "would_wake"
+                wake_rc = None
+                wake_failure_kind = None
+                wake_failed = False
+                if args.wake_cmd:
+                    wake_result = _run_wake(
+                        args.wake_cmd,
+                        timeout_seconds=float(
+                            getattr(args, "wake_timeout_seconds", 600.0)
+                        ),
+                    )
+                    wake_rc = wake_result.returncode
+                    wake_failure_kind = wake_result.failure_kind
+                    wake_failed = wake_failure_kind is not None or wake_rc != 0
+                    wake_status = "wake_failed" if wake_failed else "wake_ok"
                 _log(
-                    "status=wake_failed_backoff "
-                    f"backoff_seconds={max(5, int(args.error_backoff_seconds))}"
+                    f"status=should_run {wake_status} "
+                    f"action={decision.action} class={decision.cadence_class} "
+                    f"effective_action={effective_action or '-'} "
+                    f"todo={selected_id or '-'} "
+                    f"reason={shlex.quote(decision.reason)}"
+                    + (f" wake_rc={wake_rc}" if wake_rc is not None else "")
                 )
-                time.sleep(max(5, args.error_backoff_seconds))
-                continue
-            unchanged_count = 0
-        else:
+                if wake_failed:
+                    _save_state(
+                        state_path,
+                        {
+                            "reset_token": decision.reset_token,
+                            "unchanged_count": unchanged_count,
+                            "last_wake_rc": wake_rc,
+                            "last_wake_status": "wake_failed",
+                            "last_wake_failure_kind": wake_failure_kind,
+                        },
+                    )
+                    if once:
+                        return (
+                            int(wake_rc)
+                            if wake_failure_kind is None and wake_rc
+                            else 2
+                        )
+                    _log(
+                        "status=wake_failed_backoff "
+                        f"backoff_seconds={max(5, int(args.error_backoff_seconds))}"
+                    )
+                    time.sleep(max(5, args.error_backoff_seconds))
+                    retry_after_error = True
+                else:
+                    unchanged_count = 0
+                break
+
             _log(
                 "status=waiting "
                 f"phase={phase} class={decision.cadence_class} "
@@ -303,20 +407,59 @@ def run_worker(args: argparse.Namespace) -> int:
                 decision.unchanged_limit is not None
                 and unchanged_count >= decision.unchanged_limit
             )
-            if at_limit and decision.after_limit == "stop_tick_loop":
-                _save_state(
-                    state_path,
-                    {
-                        "reset_token": decision.reset_token,
-                        "unchanged_count": unchanged_count,
-                    },
-                )
+            if not (at_limit and decision.after_limit == "stop_tick_loop"):
+                break
+
+            if (
+                decision.final_probe_enabled
+                and decision.final_probe_action == "rerun_quota_should_run_once"
+            ):
+                try:
+                    final_payload = run_quota_should_run(
+                        should_run_command,
+                        timeout_seconds=float(
+                            getattr(args, "quota_timeout_seconds", 30.0)
+                        ),
+                    )
+                    final_decision = parse_tick(final_payload)
+                except (RuntimeError, ValueError) as exc:
+                    _log(f"status=tick_error error={shlex.quote(str(exc))}")
+                    if once:
+                        return 2
+                    time.sleep(max(5, args.error_backoff_seconds))
+                    retry_after_error = True
+                    break
+                changed = _scheduler_contract_identity(
+                    final_payload, final_decision
+                ) != _scheduler_contract_identity(payload, decision)
                 _log(
-                    "status=stop_after_unchanged_limit "
-                    f"unchanged_limit={decision.unchanged_limit} "
-                    "next=explicit_resume_or_fresh_evidence"
+                    "status=final_quota_replan_probe "
+                    f"changed={str(changed).lower()} "
+                    f"action={final_decision.action or '-'} "
+                    f"should_run={str(final_decision.should_run).lower()}"
                 )
-                return 0
+                if changed:
+                    previous_token = decision.reset_token
+                    payload = final_payload
+                    decision = final_decision
+                    continue
+
+            _save_state(
+                state_path,
+                {
+                    "reset_token": decision.reset_token,
+                    "unchanged_count": unchanged_count,
+                },
+            )
+            _log(
+                "status=stop_after_unchanged_limit "
+                f"unchanged_limit={decision.unchanged_limit} "
+                "next=explicit_resume_or_fresh_evidence"
+            )
+            return 0
+
+        if retry_after_error:
+            continue
 
         _save_state(
             state_path,
@@ -353,7 +496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--state-file",
         help="Where to persist the unchanged-poll progression index "
-        "(e.g. ~/.loopx/external-worker/<goal>-<agent>.json).",
+        "(defaults to a private hashed file under XDG_STATE_HOME or ~/.local/state).",
     )
     parser.add_argument(
         "--wake-cmd",
@@ -370,6 +513,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=float,
         default=60.0,
         help="Sleep between failed quota should-run invocations when looping.",
+    )
+    parser.add_argument(
+        "--quota-timeout-seconds",
+        type=float,
+        default=30.0,
+        help="Maximum duration of one quota should-run probe.",
+    )
+    parser.add_argument(
+        "--wake-timeout-seconds",
+        type=float,
+        default=600.0,
+        help="Maximum duration of one configured wake command.",
     )
     args = parser.parse_args(argv)
     return run_worker(args)
