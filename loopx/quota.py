@@ -172,6 +172,7 @@ from .control_plane.todos.quota_summary import (
     compact_quota_todo_summary_for_payload,
     select_quota_todo_source_items,
     select_quota_todo_summary,
+    select_task_orchestration_authority_items,
 )
 from .control_plane.todos.user_gate import (
     apply_scoped_user_gate_fallback_projection as _apply_scoped_user_gate_fallback_projection,
@@ -1184,6 +1185,8 @@ def _build_agent_work_lane(
     goal_boundary: Mapping[str, Any],
     agent_identity: Mapping[str, Any] | None,
     agent_todo_summary: Mapping[str, Any],
+    agent_todo_source_items: list[dict[str, Any]],
+    user_todo_source_items: list[dict[str, Any]],
     available_capabilities: Any,
     monitor_debt_arbitration: Mapping[str, Any] | None,
 ) -> tuple[bool, dict[str, Any], dict[str, Any] | None]:
@@ -1219,6 +1222,8 @@ def _build_agent_work_lane(
             if isinstance(project_asset.get("user_todos"), dict)
             else None
         ),
+        agent_todo_source_items=agent_todo_source_items,
+        user_todo_source_items=user_todo_source_items,
         available_capabilities=available_capabilities,
         parent_goal_id=goal_id,
     )
@@ -1581,6 +1586,16 @@ def _prepare_quota_should_run_item(
         item.get("agent_todos"),
         project_asset.get("agent_todos") if project_asset else None,
     )
+    task_orchestration_agent_items = select_task_orchestration_authority_items(
+        item.get("agent_todos"),
+        project_asset.get("agent_todos") if project_asset else None,
+        role="agent",
+    )
+    task_orchestration_user_blockers = select_task_orchestration_authority_items(
+        item.get("user_todos"),
+        project_asset.get("user_todos") if project_asset else None,
+        role="user",
+    )
     agent_scoped_user_todo_override = _agent_scoped_user_todo_override(
         state=state,
         item=item,
@@ -1680,6 +1695,8 @@ def _prepare_quota_should_run_item(
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
+            agent_todo_source_items=task_orchestration_agent_items,
+            user_todo_source_items=task_orchestration_user_blockers,
             available_capabilities=available_capabilities,
             monitor_debt_arbitration=monitor_debt_arbitration,
         )

@@ -87,6 +87,8 @@ def apply_task_orchestration_contract(
     agent_todo_summary: dict[str, Any],
     raw_agent_todo_summary: dict[str, Any] | None = None,
     raw_user_todo_summary: dict[str, Any] | None = None,
+    agent_todo_source_items: list[dict[str, Any]] | None = None,
+    user_todo_source_items: list[dict[str, Any]] | None = None,
     available_capabilities: Any = None,
     parent_goal_id: str | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -96,6 +98,8 @@ def apply_task_orchestration_contract(
         agent_identity=agent_identity,
         raw_agent_todo_summary=raw_agent_todo_summary,
         raw_user_todo_summary=raw_user_todo_summary,
+        agent_todo_source_items=agent_todo_source_items,
+        user_todo_source_items=user_todo_source_items,
         available_capabilities=available_capabilities,
         parent_goal_id=parent_goal_id,
     )
@@ -192,6 +196,8 @@ def _task_orchestration_contract(
     agent_identity: dict[str, Any] | None,
     raw_agent_todo_summary: dict[str, Any] | None,
     raw_user_todo_summary: dict[str, Any] | None,
+    agent_todo_source_items: list[dict[str, Any]] | None,
+    user_todo_source_items: list[dict[str, Any]] | None,
     available_capabilities: Any,
     parent_goal_id: str | None,
 ) -> dict[str, Any] | None:
@@ -233,6 +239,8 @@ def _task_orchestration_contract(
             orchestration=orchestration,
             raw_agent_todo_summary=raw_agent_todo_summary,
             raw_user_todo_summary=raw_user_todo_summary,
+            agent_todo_source_items=agent_todo_source_items,
+            user_todo_source_items=user_todo_source_items,
             available_capabilities=available,
             parent_goal_id=parent_goal_id,
             max_children=max_peers,

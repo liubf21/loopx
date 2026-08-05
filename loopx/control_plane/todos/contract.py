@@ -1275,11 +1275,9 @@ def metadata_line_for_todo_block(
             else:
                 metadata.pop(key, None)
         elif key == "task_domain":
-            normalized = normalize_todo_task_domain(value)
-            if normalized:
-                metadata[key] = normalized
-            else:
-                metadata.pop(key, None)
+            metadata[key] = _TODO_METADATA_FIELD_BY_TOKEN[
+                key
+            ].normalize_for_write(value)
         elif key == "task_repository":
             normalized = normalize_todo_task_repository(value)
             if normalized:

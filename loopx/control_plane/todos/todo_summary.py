@@ -74,6 +74,7 @@ TODO_SUCCESSION_WARNING_SCHEMA_VERSION = "todo_succession_warning_v0"
 TODO_SOURCE_PROOF_SCHEMA_VERSION = "todo_source_proof_v0"
 TODO_CLOSURE_INTENT_SCHEMA_VERSION = "todo_closure_intent_v0"
 TODO_TERMINAL_CLOSURE_PROOF_SCHEMA_VERSION = "todo_terminal_closure_proof_v0"
+TASK_ORCHESTRATION_AUTHORITY_SCHEMA_VERSION = "task_orchestration_authority_v0"
 TODO_ARCHIVE_STATE_ACTIVE = "active"
 AttentionItemBuilder = Callable[..., dict[str, Any]]
 GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[str, Any]]
@@ -118,6 +119,32 @@ PR_MERGED_EVENT_KINDS = {
     "pull_request_merge",
     "pull_request_merged",
 }
+TASK_ORCHESTRATION_CANDIDATE_FIELDS = (
+    "todo_id",
+    "status",
+    "done",
+    "task_class",
+    "action_kind",
+    "task_domain",
+    "task_repository",
+    "required_write_scopes",
+    "required_capabilities",
+    "claimed_by",
+    "excluded_agents",
+    "resume_when",
+    "resume_ready",
+    "continuation_policy",
+    "target_key",
+    "title",
+    "text",
+)
+TASK_ORCHESTRATION_USER_BLOCKER_FIELDS = (
+    "todo_id",
+    "status",
+    "done",
+    "task_class",
+    "unblocks_todo_id",
+)
 
 
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
@@ -458,6 +485,47 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
             compact[key] = item.get(key)
     attach_todo_handoff_note(compact)
     return compact
+
+
+def _task_orchestration_authority(
+    lanes: _TodoGroupLanes,
+    *,
+    role: str | None,
+) -> dict[str, Any]:
+    candidate_items = (
+        [
+            {
+                key: compact[key]
+                for key in TASK_ORCHESTRATION_CANDIDATE_FIELDS
+                if key in compact
+            }
+            for item in lanes.projected_open_items
+            if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+            for compact in [compact_todo_item(item)]
+        ]
+        if role == "agent"
+        else []
+    )
+    user_blocker_items = (
+        [
+            {
+                key: compact[key]
+                for key in TASK_ORCHESTRATION_USER_BLOCKER_FIELDS
+                if key in compact
+            }
+            for item in lanes.projected_open_items
+            if normalize_todo_id(item.get("unblocks_todo_id"))
+            for compact in [compact_todo_item(item)]
+        ]
+        if role == "user"
+        else []
+    )
+    return {
+        "schema_version": TASK_ORCHESTRATION_AUTHORITY_SCHEMA_VERSION,
+        "role": role,
+        "candidate_items": candidate_items,
+        "user_blocker_items": user_blocker_items,
+    }
 
 
 def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -1136,6 +1204,7 @@ def compact_todo_group(
     resume_source_items: list[dict[str, Any]] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
     item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
+    include_task_orchestration_authority: bool = False,
 ) -> dict[str, Any] | None:
     if not items and not include_empty_source:
         return None
@@ -1239,6 +1308,11 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": lanes.budgeted_items if item_limit is None else lanes.budgeted_items[:item_limit],
     }
+    if include_task_orchestration_authority:
+        summary["task_orchestration_authority"] = _task_orchestration_authority(
+            lanes,
+            role=role,
+        )
     if lanes.blocker_items:
         summary["blocker_open_count"] = len(lanes.blocker_items)
         summary["blocker_items"] = [

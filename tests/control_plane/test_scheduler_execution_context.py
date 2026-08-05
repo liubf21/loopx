@@ -23,6 +23,7 @@ from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
+    quota_todo_summary,
 )
 from loopx.control_plane.todos.quota_summary import (
     compact_quota_todo_summary_for_payload,
@@ -975,6 +976,89 @@ def test_codex_profile_does_not_admit_children_without_observed_spawn() -> None:
 
     assert quota.get("task_orchestration_contract") is None
     assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
+
+
+def test_adaptive_admission_uses_todo_authority_beyond_display_items() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+    )
+    agent_items = [
+        quota_todo_item(
+            todo_id=f"todo_agent_{index}",
+            index=index,
+            title=f"Inspect agent fixture {index}.",
+            claimed_by="codex-fixture" if index == 1 else None,
+            action_kind="inspect",
+            task_domain="code",
+        )
+        for index in range(1, 19)
+    ]
+    agent_items[-1]["todo_id"] = "todo_blocked_child"
+    agent_todos = quota_todo_summary(
+        agent_items,
+        role="agent",
+        item_limit=12,
+        include_task_orchestration_authority=True,
+    )
+    user_items = [
+        quota_todo_item(
+            todo_id=f"todo_user_{index}",
+            index=index,
+            role="user",
+            title=f"Review user fixture {index}.",
+            task_class="user_action",
+        )
+        for index in range(1, 18)
+    ]
+    user_items.append(
+        quota_todo_item(
+            todo_id="todo_owner_gate",
+            index=18,
+            role="user",
+            title="Approve the blocked child fixture.",
+            task_class="user_gate",
+            unblocks_todo_id="todo_blocked_child",
+        )
+    )
+    user_todos = quota_todo_summary(
+        user_items,
+        role="user",
+        item_limit=12,
+        include_task_orchestration_authority=True,
+    )
+    status = quota_status_payload(
+        goal_id="untruncated-admission-authority-fixture",
+        status="active",
+        recommended_action="Coordinate the public fixture bundle.",
+        agent_todos=agent_todos,
+        user_todos=user_todos,
+        coordination={
+            "registered_agents": ["codex-fixture"],
+            "write_scope": ["loopx/**"],
+        },
+        claim_scope_agent_id="codex-fixture",
+        goal_extra={
+            "spawn_policy": {
+                "mode": "multi_subagent",
+                "allowed": True,
+                "max_children": 2,
+            }
+        },
+    )
+
+    quota = build_quota_should_run(
+        status,
+        goal_id="untruncated-admission-authority-fixture",
+        agent_id="codex-fixture",
+        available_capabilities=["subagent_spawn"],
+        scheduler_execution_context=context,
+    )
+
+    contract = quota["task_orchestration_contract"]
+    blocked_by_id = {
+        lane["todo_id"]: lane["reason_codes"] for lane in contract["blocked_lanes"]
+    }
+    assert blocked_by_id["todo_blocked_child"] == ["dependency_not_ready"]
 
 
 def _runtime_capabilities_from_cli_args(cli_args: list[str]) -> list[str]:

@@ -15,6 +15,7 @@ def _todo(
     *,
     task_domain: str = "code",
     action_kind: str = "inspect",
+    task_repository: str | None = None,
     required_capabilities: list[str] | None = None,
     required_write_scopes: list[str] | None = None,
     resume_ready: bool | None = None,
@@ -33,6 +34,8 @@ def _todo(
         item["required_capabilities"] = required_capabilities
     if required_write_scopes:
         item["required_write_scopes"] = required_write_scopes
+    if task_repository:
+        item["task_repository"] = task_repository
     if resume_ready is not None:
         item["resume_when"] = "todo_done:todo_dependency"
         item["resume_ready"] = resume_ready
@@ -191,6 +194,74 @@ def test_admission_serializes_overlapping_write_scopes() -> None:
     ]
 
 
+def test_admission_serializes_implicit_and_explicit_goal_repository_scopes() -> None:
+    summary = {
+        "items": [
+            _todo(
+                "todo_primary",
+                action_kind="implement",
+                required_write_scopes=["loopx/control_plane/**"],
+            ),
+            _todo(
+                "todo_same_repository",
+                action_kind="implement",
+                task_repository="git:github.com/owner/loopx",
+                required_write_scopes=["loopx/control_plane/quota/**"],
+            ),
+            _todo(
+                "todo_independent",
+                action_kind="implement",
+                task_repository="git:github.com/owner/loopx",
+                required_write_scopes=["tests/**"],
+            ),
+        ]
+    }
+
+    contract, _work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract={"lane": "advancement_task"},
+        goal_boundary={
+            "task_repository": "git:github.com/owner/loopx",
+            "write_scope": ["loopx/**", "tests/**"],
+            "orchestration": {
+                "mode": "multi_subagent",
+                "spawn_allowed": True,
+                "max_children": 2,
+            },
+        },
+        agent_identity={
+            "agent_id": AGENT_ID,
+            "registered_agents": [AGENT_ID],
+        },
+        agent_todo_summary=summary,
+        raw_agent_todo_summary=summary,
+        raw_user_todo_summary={"items": []},
+        available_capabilities=["subagent_spawn"],
+    )
+
+    assert contract is not None
+    assert [lane["todo_id"] for lane in contract["eligible_child_lanes"]] == [
+        "todo_independent"
+    ]
+    assert contract["blocked_lanes"] == [
+        {
+            "todo_id": "todo_same_repository",
+            "task_domain": "code",
+            "reason_codes": ["write_scope_conflict"],
+            "conflicts_with_todo_id": "todo_primary",
+        }
+    ]
+
+
+def test_admission_fails_closed_when_configured_domains_are_all_invalid() -> None:
+    contract = _contract(
+        [_todo("todo_primary"), _todo("todo_child")],
+        available_capabilities=["subagent_spawn"],
+        allowed_domains=["../private", "CODE/../../private"],
+    )
+
+    assert contract is None
+
+
 def test_admission_fails_closed_when_write_scope_is_not_goal_authorized() -> None:
     summary = {
         "items": [
@@ -248,6 +319,59 @@ def test_admission_blocks_excluded_coordinator_and_open_agent_dependency() -> No
     }
     assert blocked["todo_excluded"] == ["coordinator_excluded"]
     assert blocked["todo_dependent"] == ["dependency_not_ready"]
+
+
+def test_admission_uses_untruncated_todo_and_user_blocker_authority() -> None:
+    primary = _todo("todo_primary")
+    blocked_child = _todo("todo_blocked_child")
+    independent_child = _todo("todo_independent_child")
+    display_summary = {"items": [primary, independent_child]}
+
+    contract, _work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract={"lane": "advancement_task"},
+        goal_boundary={
+            "write_scope": ["loopx/**"],
+            "orchestration": {
+                "mode": "multi_subagent",
+                "spawn_allowed": True,
+                "max_children": 2,
+            },
+        },
+        agent_identity={
+            "agent_id": AGENT_ID,
+            "registered_agents": [AGENT_ID],
+        },
+        agent_todo_summary=display_summary,
+        raw_agent_todo_summary=display_summary,
+        raw_user_todo_summary={"items": []},
+        agent_todo_source_items=[
+            primary,
+            blocked_child,
+            independent_child,
+        ],
+        user_todo_source_items=[
+            {
+                "todo_id": "todo_owner_gate",
+                "status": "open",
+                "task_class": "user_gate",
+                "unblocks_todo_id": "todo_blocked_child",
+                "text": "Approve the blocked child lane.",
+            }
+        ],
+        available_capabilities=["subagent_spawn"],
+    )
+
+    assert contract is not None
+    assert [lane["todo_id"] for lane in contract["eligible_child_lanes"]] == [
+        "todo_independent_child"
+    ]
+    assert contract["blocked_lanes"] == [
+        {
+            "todo_id": "todo_blocked_child",
+            "task_domain": "code",
+            "reason_codes": ["dependency_not_ready"],
+        }
+    ]
 
 
 def test_admission_reports_ready_lanes_deferred_by_capacity() -> None:

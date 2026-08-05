@@ -421,6 +421,60 @@ def test_task_domain_event_update_is_normalized_and_invalid_values_fail() -> Non
         )
 
 
+def test_duplicate_todo_add_rejects_invalid_task_domain_atomically(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="agent",
+        text="Validate one adaptive lane.",
+        task_class="advancement_task",
+        task_domain="validation",
+    )
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="task_domain"):
+        add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text="Validate one adaptive lane.",
+            task_class="advancement_task",
+            task_domain="../private",
+        )
+
+    assert state.read_text(encoding="utf-8") == before
+    assert _agent_todo(state, todo["todo_id"])["task_domain"] == "validation"
+
+
+def test_todo_update_rejects_invalid_task_domain_atomically(tmp_path: Path) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="agent",
+        text="Validate one adaptive lane.",
+        task_class="advancement_task",
+        task_domain="validation",
+        claimed_by=AUTHOR_AGENT,
+    )
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="task_domain"):
+        update_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            task_domain="../private",
+            agent_id=AUTHOR_AGENT,
+        )
+
+    assert state.read_text(encoding="utf-8") == before
+    assert _agent_todo(state, todo["todo_id"])["task_domain"] == "validation"
+
+
 def test_monitor_schedule_fields_remain_monitor_only(tmp_path: Path) -> None:
     registry, _state = _write_fixture(tmp_path)
 

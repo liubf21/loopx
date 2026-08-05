@@ -176,7 +176,7 @@ def apply_todo_update_to_lines(
         ("reason", reason),
         ("task_class", task_class),
         ("action_kind", action_kind),
-        ("task_domain", normalize_todo_task_domain(task_domain)),
+        ("task_domain", task_domain),
         ("task_repository", task_repository),
         ("continuation_policy", continuation_policy),
     ):
