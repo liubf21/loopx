@@ -46,9 +46,12 @@ quota, user gates, write scope, or repository policy.
 
 ### Adaptive Admission
 
-`task_orchestration_contract_v2` admits ephemeral child work only when the host
-reports `subagent_spawn` and at least two coordinator-owned or unclaimed ready
-advancement todos remain. Each candidate is checked against:
+`task_orchestration_contract_v2` admits ephemeral child work only when the
+current runtime explicitly reports `subagent_spawn` through observed
+capabilities and at least two coordinator-owned or unclaimed ready advancement
+todos remain. A host name or scheduler runtime profile is metadata and never
+supplies `subagent_spawn` or `subagent_resume`. Each candidate is checked
+against:
 
 - `task_domain` and the goal's `allowed_domains`;
 - todo status, `resume_ready`, and open user dependencies;
@@ -125,8 +128,10 @@ validation: cite files and residual risk; do not edit
 continuation_policy: independent_handoff
 ```
 
-The signed Turn host request exposes only context operations qualified by the
-active host. The task coordinator chooses from that catalog:
+After explicit capability admission, the signed Turn host request uses
+legitimate host metadata only to map supported native context operations. The
+host name does not admit child work. The task coordinator chooses from that
+catalog:
 
 - Codex exposes `fresh` and `resume`;
 - Claude Code exposes `fresh` through its native Task surface;

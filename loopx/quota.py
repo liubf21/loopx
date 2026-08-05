@@ -132,7 +132,6 @@ from .control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from .control_plane.scheduler.execution_context import (
     SchedulerExecutionContextResolution,
     resolve_scheduler_execution_context,
-    scheduler_host_capabilities,
 )
 from .control_plane.scheduler.external_evidence_observation import build_external_evidence_observation_obligation
 from .control_plane.scheduler.automation_liveness import build_automation_liveness
@@ -1560,14 +1559,6 @@ def _prepare_quota_should_run_item(
         item=item,
         project_asset=project_asset,
     )
-    orchestration_capabilities = list(
-        dict.fromkeys(
-            [
-                *effective_available_capabilities,
-                *scheduler_host_capabilities(resolved_scheduler_context),
-            ]
-        )
-    )
     user_todo_summary = select_quota_todo_summary(
         item.get("user_todos"),
         project_asset.get("user_todos") if project_asset else None,
@@ -1688,7 +1679,7 @@ def _prepare_quota_should_run_item(
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
-            available_capabilities=orchestration_capabilities,
+            available_capabilities=effective_available_capabilities,
             monitor_debt_arbitration=monitor_debt_arbitration,
         )
     )

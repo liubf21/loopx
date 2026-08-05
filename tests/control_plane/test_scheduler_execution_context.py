@@ -16,7 +16,6 @@ from loopx.control_plane.scheduler.execution_context import (
     render_scheduler_execution_args,
     resolve_scheduler_execution_context,
     scheduler_execution_context_for_runtime_profile,
-    scheduler_host_capabilities,
     scheduler_runtime_profile_for_execution_context,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
@@ -928,33 +927,104 @@ def test_first_class_runtime_profiles_round_trip_to_compact_args(
     )
 
 
-@pytest.mark.parametrize(
-    ("profile", "expected"),
-    (
-        (
-            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
-            ["subagent_spawn", "subagent_resume"],
-        ),
-        (
-            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
-            ["subagent_spawn", "subagent_resume"],
-        ),
-        (
-            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
-            ["subagent_spawn", "subagent_resume"],
-        ),
-        (SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE, ["subagent_spawn"]),
-        (SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP, []),
-        (SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL, []),
-    ),
-)
-def test_scheduler_host_capabilities_are_derived_not_persisted(
-    profile: SchedulerRuntimeProfile,
-    expected: list[str],
-) -> None:
-    context = scheduler_execution_context_for_runtime_profile(profile)
+def test_codex_profile_does_not_admit_children_without_observed_spawn() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+    )
+    status = quota_status_payload(
+        goal_id="host-profile-no-spawn-fixture",
+        status="active",
+        recommended_action="Coordinate the public fixture bundle.",
+        agent_todo_items=[
+            quota_todo_item(
+                todo_id="todo_primary",
+                title="Inspect the primary fixture.",
+                claimed_by="codex-fixture",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+            quota_todo_item(
+                todo_id="todo_child",
+                title="Inspect the child fixture.",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+        ],
+        coordination={
+            "registered_agents": ["codex-fixture"],
+            "write_scope": ["loopx/**"],
+        },
+        claim_scope_agent_id="codex-fixture",
+        goal_extra={
+            "spawn_policy": {
+                "mode": "multi_subagent",
+                "allowed": True,
+                "max_children": 1,
+            }
+        },
+    )
 
-    assert scheduler_host_capabilities(context) == expected
+    quota = build_quota_should_run(
+        status,
+        goal_id="host-profile-no-spawn-fixture",
+        agent_id="codex-fixture",
+        scheduler_execution_context=context,
+    )
+
+    assert quota.get("task_orchestration_contract") is None
+    assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
+
+
+def test_observed_spawn_admits_children_with_codex_profile() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+    )
+    status = quota_status_payload(
+        goal_id="observed-spawn-fixture",
+        status="active",
+        recommended_action="Coordinate the public fixture bundle.",
+        agent_todo_items=[
+            quota_todo_item(
+                todo_id="todo_primary",
+                title="Inspect the primary fixture.",
+                claimed_by="codex-fixture",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+            quota_todo_item(
+                todo_id="todo_child",
+                title="Inspect the child fixture.",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+        ],
+        coordination={
+            "registered_agents": ["codex-fixture"],
+            "write_scope": ["loopx/**"],
+        },
+        claim_scope_agent_id="codex-fixture",
+        goal_extra={
+            "spawn_policy": {
+                "mode": "multi_subagent",
+                "allowed": True,
+                "max_children": 1,
+            }
+        },
+    )
+
+    quota = build_quota_should_run(
+        status,
+        goal_id="observed-spawn-fixture",
+        agent_id="codex-fixture",
+        available_capabilities=["subagent_spawn"],
+        scheduler_execution_context=context,
+    )
+
+    contract = quota["task_orchestration_contract"]
+    assert contract["mode"] == "adaptive"
+    assert contract["primary_todo_id"] == "todo_primary"
+    assert contract["eligible_child_lanes"][0]["todo_id"] == "todo_child"
+    assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
 
 
 def test_advanced_scheduler_context_keeps_explicit_context_args() -> None:

@@ -230,6 +230,7 @@ def main() -> int:
         adaptive_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-alpha",
+        available_capabilities=["subagent_spawn", "subagent_resume"],
         scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
             SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
         ),
@@ -263,6 +264,7 @@ def main() -> int:
         adaptive_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-alpha",
+        available_capabilities=["subagent_spawn"],
         scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
             SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE
         ),
