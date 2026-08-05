@@ -975,6 +975,63 @@ def test_codex_profile_does_not_admit_children_without_observed_spawn() -> None:
     assert quota["scheduler_hint"]["execution_phase"]["host_surface"] == "codex_cli"
 
 
+def test_persisted_child_capabilities_do_not_admit_ephemeral_children() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE
+    )
+    status = quota_status_payload(
+        goal_id="persisted-capabilities-no-spawn-fixture",
+        status="active",
+        recommended_action="Coordinate the public fixture bundle.",
+        agent_todo_items=[
+            quota_todo_item(
+                todo_id="todo_primary",
+                title="Inspect the primary fixture.",
+                claimed_by="codex-fixture",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+            quota_todo_item(
+                todo_id="todo_child",
+                title="Inspect the child fixture.",
+                action_kind="inspect",
+                task_domain="code",
+            ),
+        ],
+        coordination={
+            "registered_agents": ["codex-fixture"],
+            "write_scope": ["loopx/**"],
+        },
+        claim_scope_agent_id="codex-fixture",
+        goal_extra={
+            "spawn_policy": {
+                "mode": "multi_subagent",
+                "allowed": True,
+                "max_children": 1,
+            }
+        },
+        project_asset_extra={
+            "available_capabilities": [
+                "subagent_spawn",
+                "subagent_resume",
+            ],
+        },
+    )
+
+    quota = build_quota_should_run(
+        status,
+        goal_id="persisted-capabilities-no-spawn-fixture",
+        agent_id="codex-fixture",
+        scheduler_execution_context=context,
+    )
+
+    assert quota.get("task_orchestration_contract") is None
+    assert quota["goal_boundary"]["available_capabilities"] == [
+        "subagent_spawn",
+        "subagent_resume",
+    ]
+
+
 def test_observed_spawn_admits_children_with_codex_profile() -> None:
     context = scheduler_execution_context_for_runtime_profile(
         SchedulerRuntimeProfile.CODEX_CLI_VISIBLE

@@ -319,7 +319,7 @@ def test_explicit_registered_peer_bundle_precedes_ephemeral_host_capacity() -> N
             },
             agent_todo_summary=summary,
             raw_agent_todo_summary=summary,
-            available_capabilities=["subagent_spawn", "subagent_resume"],
+            available_capabilities=[],
         )
         if contract:
             contracts.append(contract)

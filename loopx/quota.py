@@ -1679,7 +1679,7 @@ def _prepare_quota_should_run_item(
             goal_boundary=goal_boundary,
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
-            available_capabilities=effective_available_capabilities,
+            available_capabilities=available_capabilities,
             monitor_debt_arbitration=monitor_debt_arbitration,
         )
     )
