@@ -554,6 +554,213 @@ def _case_export_cleans_backup_when_live_is_valid(
     assert not backup.exists()
 
 
+def _case_export_defers_until_verified_backup_cleanup(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "recover-live-cleanup-retry"
+    result = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out, manifest_path, prior_manifest, prior_documents = _corpus_snapshot(
+        result
+    )
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    history_export.shutil.copytree(corpus_out, backup)
+    original_rmtree = history_export.shutil.rmtree
+
+    def _leave_backup(path, *args, **kwargs) -> None:
+        if Path(path) == backup:
+            return
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(history_export.shutil, "rmtree", _leave_backup)
+    try:
+        _export_runs(
+            tmp_path,
+            monkeypatch,
+            goal_id=goal,
+            runs=[
+                {
+                    "classification": "replacement",
+                    "generated_at": "2026-08-04T04:05:06Z",
+                    "recommended_action": "must wait for backup cleanup",
+                }
+            ],
+        )
+    except RuntimeError as exc:
+        assert "backup cleanup is incomplete" in str(exc)
+    else:
+        raise AssertionError("incomplete backup cleanup must defer publication")
+
+    _assert_corpus_unchanged(
+        corpus_out, manifest_path, prior_manifest, prior_documents
+    )
+    assert backup.is_dir()
+
+    monkeypatch.setattr(history_export.shutil, "rmtree", original_rmtree)
+    result2 = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "replacement",
+                "generated_at": "2026-08-04T04:05:06Z",
+                "recommended_action": "retry after cleanup succeeds",
+            }
+        ],
+    )
+    assert Path(result2["local_receipt"]["manifest_path"]).is_file()
+    assert not backup.exists()
+
+
+def _case_export_reports_post_publish_backup_cleanup_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "post-publish-cleanup-retry"
+    _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out = tmp_path / "out" / goal / "history-conclusions"
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    original_rmtree = history_export.shutil.rmtree
+
+    def _leave_backup(path, *args, **kwargs) -> None:
+        if Path(path) == backup:
+            return
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(history_export.shutil, "rmtree", _leave_backup)
+    try:
+        _export_runs(
+            tmp_path,
+            monkeypatch,
+            goal_id=goal,
+            runs=[
+                {
+                    "classification": "replacement",
+                    "generated_at": "2026-08-04T04:05:06Z",
+                    "recommended_action": "must report cleanup failure",
+                }
+            ],
+        )
+    except RuntimeError as exc:
+        assert "backup cleanup is incomplete" in str(exc)
+    else:
+        raise AssertionError("post-publish cleanup failure must be reported")
+
+    assert backup.is_dir()
+    assert "must report cleanup failure" in next(corpus_out.glob("*.md")).read_text(
+        encoding="utf-8"
+    )
+
+
+def _case_export_refuses_unowned_backup_when_live_is_valid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "recover-live-unowned-backup"
+    result = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out = Path(result["local_receipt"]["out_dir"])
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    foreign = backup / "foreign.md"
+    backup.mkdir()
+    foreign.write_text("# maintained by another publisher", encoding="utf-8")
+
+    try:
+        _export_runs(
+            tmp_path,
+            monkeypatch,
+            goal_id=goal,
+            runs=[
+                {
+                    "classification": "replacement",
+                    "generated_at": "2026-08-04T04:05:06Z",
+                    "recommended_action": "must preserve the foreign backup",
+                }
+            ],
+        )
+    except RuntimeError as exc:
+        assert "unverified backup" in str(exc)
+    else:
+        raise AssertionError("unowned backup must block recovery")
+
+    assert foreign.read_text(encoding="utf-8").startswith("# maintained")
+    assert (corpus_out / ".loopx-history-conclusion-export.json").is_file()
+
+
+def _case_export_recovers_valid_backup_and_preserves_unverified_live(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "recover-invalid-live"
+    result = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out = Path(result["local_receipt"]["out_dir"])
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    unverified_live = corpus_out.parent / f".{corpus_out.name}.loopx-unverified-live"
+    history_export.shutil.copytree(corpus_out, backup)
+    foreign = corpus_out / "foreign.md"
+    foreign.write_text("# maintained by another publisher", encoding="utf-8")
+
+    result2 = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "replacement",
+                "generated_at": "2026-08-04T04:05:06Z",
+                "recommended_action": "recover from verified backup",
+            }
+        ],
+    )
+
+    assert Path(result2["local_receipt"]["manifest_path"]).is_file()
+    assert not backup.exists()
+    assert foreign.exists() is False
+    assert (unverified_live / "foreign.md").read_text(
+        encoding="utf-8"
+    ).startswith("# maintained")
+
+
 def _case_export_fails_closed_when_neither_live_nor_backup_is_valid(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -590,7 +797,7 @@ def _case_export_fails_closed_when_neither_live_nor_backup_is_valid(
         )
         raise AssertionError("should have raised")
     except RuntimeError as exc:
-        assert "neither could be verified" in str(exc)
+        assert "unverified backup" in str(exc)
 
 
 def _case_active_provider_rejects_exit_zero_unsuccessful_openviking_envelope(

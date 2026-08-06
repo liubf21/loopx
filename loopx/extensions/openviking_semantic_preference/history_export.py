@@ -220,6 +220,15 @@ def _validate_staged_generation(
         raise RuntimeError("staged history export manifest failed readback")
 
 
+def _remove_verified_backup(backup: Path) -> None:
+    shutil.rmtree(backup, ignore_errors=True)
+    if backup.exists():
+        raise RuntimeError(
+            "history export backup cleanup is incomplete; retry publication "
+            "after the verified backup can be removed"
+        )
+
+
 def _publish_generation(
     *,
     corpus_out: Path,
@@ -231,22 +240,42 @@ def _publish_generation(
     if backup.exists() and corpus_out.exists():
         try:
             _validated_owned_generation(
+                backup,
+                goal_id=str(manifest["goal_id"]),
+            )
+        except Exception:
+            raise RuntimeError(
+                "history export has both live and backup generations "
+                "and includes an unverified backup; manual inspection is required"
+            ) from None
+        try:
+            _validated_owned_generation(
                 corpus_out,
                 goal_id=str(manifest["goal_id"]),
             )
-            shutil.rmtree(backup, ignore_errors=True)
         except Exception:
+            unverified_live = (
+                corpus_out.parent / f".{corpus_out.name}.loopx-unverified-live"
+            )
+            if unverified_live.exists():
+                raise RuntimeError(
+                    "history export has an unverified live generation and "
+                    "its recovery quarantine already exists; manual inspection is required"
+                ) from None
+            os.replace(corpus_out, unverified_live)
             try:
-                _validated_owned_generation(
-                    backup,
-                    goal_id=str(manifest["goal_id"]),
-                )
                 os.replace(backup, corpus_out)
             except Exception:
-                raise RuntimeError(
-                    "history export has both live and backup generations "
-                    "and neither could be verified; manual inspection is required"
-                ) from None
+                try:
+                    os.replace(unverified_live, corpus_out)
+                except Exception:
+                    raise RuntimeError(
+                        "history export could not restore the unverified live "
+                        "generation after backup recovery failed; manual inspection is required"
+                    ) from None
+                raise
+        else:
+            _remove_verified_backup(backup)
     elif backup.exists():
         _validated_owned_generation(
             backup,
@@ -283,7 +312,7 @@ def _publish_generation(
                 os.replace(backup, corpus_out)
             raise
         if backup.exists():
-            shutil.rmtree(backup, ignore_errors=True)
+            _remove_verified_backup(backup)
     return len(prior_owned)
 
 
