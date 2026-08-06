@@ -228,12 +228,26 @@ def _publish_generation(
 ) -> int:
     corpus_out.parent.mkdir(parents=True, exist_ok=True)
     backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
-    if backup.exists():
-        if corpus_out.exists():
-            raise RuntimeError(
-                "history export has both live and backup generations; "
-                "manual inspection is required"
+    if backup.exists() and corpus_out.exists():
+        try:
+            _validated_owned_generation(
+                corpus_out,
+                goal_id=str(manifest["goal_id"]),
             )
+            shutil.rmtree(backup, ignore_errors=True)
+        except Exception:
+            try:
+                _validated_owned_generation(
+                    backup,
+                    goal_id=str(manifest["goal_id"]),
+                )
+                os.replace(backup, corpus_out)
+            except Exception:
+                raise RuntimeError(
+                    "history export has both live and backup generations "
+                    "and neither could be verified; manual inspection is required"
+                ) from None
+    elif backup.exists():
         _validated_owned_generation(
             backup,
             goal_id=str(manifest["goal_id"]),
@@ -269,7 +283,7 @@ def _publish_generation(
                 os.replace(backup, corpus_out)
             raise
         if backup.exists():
-            shutil.rmtree(backup)
+            shutil.rmtree(backup, ignore_errors=True)
     return len(prior_owned)
 
 

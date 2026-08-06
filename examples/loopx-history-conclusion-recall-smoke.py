@@ -518,6 +518,81 @@ def _case_export_recovers_backup_only_interrupted_publication(
     assert result["public_projection"]["retired_prior_generation"] == 1
 
 
+def _case_export_cleans_backup_when_live_is_valid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "recover-live-backup"
+    result = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out = Path(result["local_receipt"]["out_dir"])
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    history_export.shutil.copytree(corpus_out, str(backup))
+
+    result2 = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "replacement",
+                "generated_at": "2026-08-04T04:05:06Z",
+                "recommended_action": "publish after live+backup recovery",
+            }
+        ],
+    )
+    assert Path(result2["local_receipt"]["manifest_path"]).is_file()
+    assert not backup.exists()
+
+
+def _case_export_fails_closed_when_neither_live_nor_backup_is_valid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    goal = "recover-neither-valid"
+    result = _export_runs(
+        tmp_path,
+        monkeypatch,
+        goal_id=goal,
+        runs=[
+            {
+                "classification": "prior",
+                "generated_at": "2026-08-04T01:02:03Z",
+                "recommended_action": "published prior conclusion",
+            }
+        ],
+    )
+    corpus_out = Path(result["local_receipt"]["out_dir"])
+    backup = corpus_out.parent / f".{corpus_out.name}.loopx-backup"
+    manifest = corpus_out / ".loopx-history-conclusion-export.json"
+    manifest.unlink()
+    backup.mkdir()
+    try:
+        _export_runs(
+            tmp_path,
+            monkeypatch,
+            goal_id=goal,
+            runs=[
+                {
+                    "classification": "replacement",
+                    "generated_at": "2026-08-04T04:05:06Z",
+                    "recommended_action": "fails closed",
+                }
+            ],
+        )
+        raise AssertionError("should have raised")
+    except RuntimeError as exc:
+        assert "neither could be verified" in str(exc)
+
+
 def _case_active_provider_rejects_exit_zero_unsuccessful_openviking_envelope(
     monkeypatch,
 ) -> None:
