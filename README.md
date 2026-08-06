@@ -507,6 +507,10 @@ runtime adapters, stronger terminal acceptance across repeated public loops,
 independent adoption and outcome evidence, and a more polished management
 surface.
 
+## Star History
+
+[![LoopX Star History](https://star-history.dera.page/svg?repos=huangruiteng/loopx&type=date&legend=top-left)](https://star-history.dera.page/#huangruiteng/loopx&type=date&legend=top-left)
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

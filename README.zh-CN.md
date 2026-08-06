@@ -459,6 +459,10 @@ integration 和进阶路径仍是 optional、default-off 或 experimental。Loop
 下一阶段会继续改善安装与 host packaging、扩展 typed runtime adapter、加强重复公开
 Loop 的 terminal acceptance、补足独立采用与 outcome evidence，并打磨管理面。
 
+## Star 趋势
+
+[![LoopX Star 趋势](https://star-history.dera.page/svg?repos=huangruiteng/loopx&type=date&legend=top-left)](https://star-history.dera.page/#huangruiteng/loopx&type=date&legend=top-left)
+
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
