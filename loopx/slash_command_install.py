@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -117,7 +120,7 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "argument_hint": "[--capability-route issue-fix] [task text]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
-                "Before start-goal, identify the exact current host: use `codex-app` for the desktop app with automation tools, `codex-app-ssh` for the desktop app over SSH without automation tools, `codex-ide-plugin` only for the IDE plugin, `codex-cli-tui` for the terminal TUI, `opencode` for OpenCode, `traex-cli` for the TraeX terminal TUI, `pi` for Pi, or `ark-managed-agent` for Ark Managed Agent.",
+                "Before start-goal, identify the exact current host: use `codex-app` for the desktop app with automation tools, `codex-app-ssh` for the desktop app over SSH without automation tools, `codex-ide-plugin` only for the IDE plugin, `codex-cli-tui` for the terminal TUI, `opencode` for OpenCode, `traex-cli` for the TraeX terminal TUI, `pi` for Pi, `gemini-cli` for the Gemini CLI, `cursor-agent` for the Cursor agent CLI, or `ark-managed-agent` for Ark Managed Agent.",
                 f"If arguments are present, parse only an optional leading `--capability-route issue-fix` as an explicit product-route switch, remove that prefix from the task text, and pass it to `{cli_bin} start-goal --guided --project . --goal-text \"<remaining exact arguments>\" --host-surface <exact-current-host>`. Without that switch, preserve all arguments as task text and do not add a capability route. Never infer a route from issue/PR wording or URLs. If the host is unclear, omit the host flag once and follow the returned host-surface selection gate.",
                 f"Treat the returned `ordered_steps` as a required transaction. On first connection, run its bootstrap command, resolve the fresh-agent identity gate before planning, then plan and execute at least one business `{cli_bin} todo add` derived from `$ARGUMENTS` before substantive task work. Encode priority in the todo text such as `[P0]`; `{cli_bin} todo add` has no `--priority` flag. Do not continue until LoopX status shows that business Agent Todo.",
                 f"If `selected_capability_route` is present, run its entry and admission commands before substantive implementation, and treat `{cli_bin} capability show <capability-id> --format json` as the authoritative later-transition command surface. Use capability-owned commands for listed external transitions instead of substituting provider CLIs. Keep capability facts in capability-owned state; generic Todos remain scheduling records.",
@@ -532,6 +535,8 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
 
 
 CURSOR_MCP_KEY = "loopx"
+CURSOR_MCP_MARKER_NAME = ".loopx-managed-mcp.json"
+CURSOR_MCP_MARKER_SCHEMA_VERSION = "loopx_managed_cursor_mcp_v0"
 
 
 def _loopx_mcp_command() -> tuple[str, str] | None:
@@ -548,7 +553,11 @@ def _loopx_mcp_command() -> tuple[str, str] | None:
         return None
     try:
         script = claude_install._p("mcp", "loopx_mcp.py")
-        interpreter = claude_install.provision_mcp_python(dry=False)
+        # Provisioning narrates to stdout ("[deps] creating mcp venv …"), which
+        # would land in the middle of `--format json` and make the whole install
+        # result unparseable. The narration is still worth keeping — on stderr.
+        with contextlib.redirect_stdout(sys.stderr):
+            interpreter = claude_install.provision_mcp_python(dry=False)
     except (OSError, ValueError):
         # Provisioning shells out to venv and pip; a failure there means the
         # surface is skipped, never that the whole install run dies.
@@ -560,44 +569,114 @@ def _loopx_mcp_command() -> tuple[str, str] | None:
     return str(interpreter), str(script)
 
 
+def _cursor_mcp_marker_path(cursor_root: Path) -> Path:
+    """Sidecar recording the exact `mcp.json` entry LoopX last wrote.
+
+    Markdown surfaces carry `MANAGED_MARKER_PREFIX` inside the file, but
+    `mcp.json` belongs to Cursor's schema, so provenance is kept beside it
+    rather than smuggled into an entry the host has to parse.
+    """
+    return cursor_root / CURSOR_MCP_MARKER_NAME
+
+
+def _read_cursor_mcp_marker(cursor_root: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(
+            _cursor_mcp_marker_path(cursor_root).read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    servers = payload.get("servers")
+    return servers if isinstance(servers, dict) else {}
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    """Replace `path` in one step, so an interrupted run cannot truncate it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = path.stat().st_mode if path.exists() else None
+    handle, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps(payload, indent=2) + "\n")
+        if mode is not None:
+            os.chmod(tmp, mode & 0o7777)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def _merge_cursor_mcp(cursor_root: Path, *, uninstall: bool, execute: bool) -> str:
-    """Add or remove only our `loopx` entry in CURSOR_HOME/mcp.json."""
+    """Add or remove the `loopx` entry in CURSOR_HOME/mcp.json — and nothing else.
+
+    `mcp.json` is a user-owned file that LoopX did not create, so every path
+    here fails closed: an unexpected shape is reported instead of normalized, a
+    same-name entry LoopX cannot prove it wrote is left alone, and uninstall
+    removes only an entry that still matches what LoopX recorded. Sharing the
+    `loopx` name with a user's own server is unlikely but cheap to survive;
+    silently replacing that server, or dropping their `mcpServers` list while
+    "merging", is not.
+    """
     path = cursor_root / "mcp.json"
     try:
         raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except (OSError, json.JSONDecodeError):
-        return "blocked_cursor_mcp_unreadable"
+        return "blocked_invalid_cursor_mcp_json"
     if not isinstance(raw, dict):
-        return "blocked_cursor_mcp_unreadable"
+        return "blocked_invalid_cursor_mcp_json"
     servers = raw.get("mcpServers")
-    if not isinstance(servers, dict):
+    if servers is None:
         servers = {}
+    if not isinstance(servers, dict):
+        # A list-valued or scalar `mcpServers` is not something to overwrite:
+        # either the file follows a shape LoopX does not understand, or it is
+        # damaged. Both are the user's to resolve.
+        return "blocked_invalid_cursor_mcp_json"
+
+    existing = servers.get(CURSOR_MCP_KEY)
+    recorded = _read_cursor_mcp_marker(cursor_root).get(CURSOR_MCP_KEY)
+    # Ownership is only demonstrable when the entry still matches what LoopX
+    # recorded writing. A hand-edited entry counts as the user's from then on.
+    loopx_owned = existing is not None and existing == recorded
 
     if uninstall:
-        if CURSOR_MCP_KEY not in servers:
+        if existing is None:
             return "absent"
+        if not loopx_owned:
+            return "skipped_user_owned_mcp_entry"
         if not execute:
             return "would_retire"
         servers.pop(CURSOR_MCP_KEY, None)
         raw["mcpServers"] = servers
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+        _write_json_atomic(path, raw)
+        _cursor_mcp_marker_path(cursor_root).unlink(missing_ok=True)
         return "retired"
 
+    if existing is not None and not loopx_owned:
+        return "skipped_user_owned_mcp_entry"
     if not execute:
         # A dry run must not touch anything: provisioning `mcp` would create a
         # venv on disk during a run whose only job is to report what would happen.
-        return "unchanged" if CURSOR_MCP_KEY in servers else "would_write"
+        return "unchanged" if existing is not None else "would_write"
     command = _loopx_mcp_command()
     if command is None:
         return "skipped_mcp_dependency_missing"
     entry = {"command": command[0], "args": [command[1]]}
-    if servers.get(CURSOR_MCP_KEY) == entry:
+    if existing == entry:
         return "unchanged"
     servers[CURSOR_MCP_KEY] = entry
     raw["mcpServers"] = servers
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    _write_json_atomic(path, raw)
+    _write_json_atomic(
+        _cursor_mcp_marker_path(cursor_root),
+        {
+            "schema_version": CURSOR_MCP_MARKER_SCHEMA_VERSION,
+            "servers": {CURSOR_MCP_KEY: entry},
+        },
+    )
     return "written"
 
 
@@ -873,8 +952,11 @@ def install_slash_commands(
 
     if "gemini" in effective_surfaces:
         # Gemini CLI discovers user skills from GEMINI_HOME/skills. Files are
-        # written directly because `gemini skills install` asks for interactive
-        # confirmation and cannot be driven from an installer.
+        # written directly, not through `gemini skills install --consent`: that
+        # command copies from a git URL or an existing local path and the host
+        # owns the copy, so LoopX would lose the managed marker, the per-file
+        # status and the dry run that every other surface reports — and it would
+        # need the `gemini` binary on PATH to install a file it already has.
         _install_skill_facade(
             skills_dir=gemini_root / "skills",
             surface="gemini",
@@ -1215,7 +1297,7 @@ def install_slash_commands(
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
-            "Gemini CLI discovers user skills from GEMINI_HOME/skills with the same SKILL.md front matter; files are written directly because `gemini skills install` requires interactive confirmation.",
+            "Gemini CLI discovers user skills from GEMINI_HOME/skills with the same SKILL.md front matter; files are written directly because `gemini skills install` copies from a git URL or an existing local path and hands the copy to the host, which would lose the managed marker, per-file status and dry-run reporting every other surface has.",
             "Cursor discovers skills from CURSOR_HOME/skills and has no user-defined slash commands, so the cursor surface installs the skill facade and registers the LoopX MCP server in CURSOR_HOME/mcp.json; run `cursor-agent mcp enable loopx` once to approve it.",
             "OpenCode discovers global skills from OPENCODE_CONFIG_DIR/skills in addition to the static command facade; a command is typed by the user, a skill can be reached by the model itself.",
             "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
