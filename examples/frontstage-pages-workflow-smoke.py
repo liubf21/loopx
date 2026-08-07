@@ -45,9 +45,15 @@ def main() -> int:
         "examples/readme-star-history-smoke.py",
         "python3 examples/readme-star-history-smoke.py",
         "scripts/render-star-history.py",
-        "application/vnd.github.star+json",
-        "X-GitHub-Api-Version: 2026-03-10",
-        'jq \'[.[][]] | length\'',
+        "secrets.STAR_HISTORY_READ_TOKEN",
+        "Missing star-history credential",
+        "fine-grained PAT limited to this repository with Metadata: read",
+        "gh api graphql --paginate --slurp",
+        "stargazerCount",
+        "edges { starredAt }",
+        "pageInfo { hasNextPage endCursor }",
+        "{starred_at: .starredAt}",
+        'jq \'length\'',
         "--expected-count",
         "output/frontstage-pages/site/site-assets/star-history.svg",
         "npm run smoke:frontstage-share-bundle",
@@ -70,6 +76,8 @@ def main() -> int:
         "enable-reward-write-api",
         "npm run dev",
         "npm run preview",
+        "GH_TOKEN: ${{ github.token }}",
+        '"/stargazers?per_page=100"',
     ]:
         assert_absent(text, forbidden)
 
