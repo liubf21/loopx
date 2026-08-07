@@ -319,6 +319,18 @@ def _claude_home(value: str | None = None) -> Path:
     return Path(raw).expanduser()
 
 
+def _gemini_home(value: str | None = None) -> Path:
+    """Gemini CLI reads user skills from GEMINI_HOME/skills (default ~/.gemini)."""
+    raw = value or os.environ.get("GEMINI_HOME") or str(Path.home() / ".gemini")
+    return Path(raw).expanduser()
+
+
+def _cursor_home(value: str | None = None) -> Path:
+    """Cursor CLI reads MCP servers from CURSOR_HOME/mcp.json (default ~/.cursor)."""
+    raw = value or os.environ.get("CURSOR_HOME") or str(Path.home() / ".cursor")
+    return Path(raw).expanduser()
+
+
 def _opencode_home(value: str | None = None) -> Path:
     raw = value or os.environ.get("OPENCODE_CONFIG_DIR")
     if not raw:
@@ -507,12 +519,86 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
             candidates = ["codex"]
         elif surface in {"codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-ide", "codex-cli"}:
             candidates = ["codex"]
+        elif surface in {"gemini-cli", "gemini-code"}:
+            candidates = ["gemini"]
+        elif surface in {"cursor-agent", "cursor-cli"}:
+            candidates = ["cursor"]
         else:
             candidates = [surface]
         for candidate in candidates:
             if candidate not in normalized:
                 normalized.append(candidate)
     return normalized
+
+
+CURSOR_MCP_KEY = "loopx"
+
+
+def _loopx_mcp_command() -> tuple[str, str] | None:
+    """Interpreter and script for the LoopX stdio MCP server, or None.
+
+    Reuses the Claude adapter's provisioning so all surfaces share one server
+    and one `mcp` dependency. Returns None when `mcp` cannot be provisioned —
+    the caller records that instead of writing a config that would fail to
+    start.
+    """
+    try:
+        from loopx.claude_goal_mode.scripts import install as claude_install
+    except ImportError:
+        return None
+    try:
+        script = claude_install._p("mcp", "loopx_mcp.py")
+        interpreter = claude_install.provision_mcp_python(dry=False)
+    except (OSError, ValueError):
+        # Provisioning shells out to venv and pip; a failure there means the
+        # surface is skipped, never that the whole install run dies.
+        return None
+    if not interpreter or not Path(script).exists():
+        return None
+    if not claude_install._has_mcp(interpreter):
+        return None
+    return str(interpreter), str(script)
+
+
+def _merge_cursor_mcp(cursor_root: Path, *, uninstall: bool, execute: bool) -> str:
+    """Add or remove only our `loopx` entry in CURSOR_HOME/mcp.json."""
+    path = cursor_root / "mcp.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return "blocked_cursor_mcp_unreadable"
+    if not isinstance(raw, dict):
+        return "blocked_cursor_mcp_unreadable"
+    servers = raw.get("mcpServers")
+    if not isinstance(servers, dict):
+        servers = {}
+
+    if uninstall:
+        if CURSOR_MCP_KEY not in servers:
+            return "absent"
+        if not execute:
+            return "would_retire"
+        servers.pop(CURSOR_MCP_KEY, None)
+        raw["mcpServers"] = servers
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+        return "retired"
+
+    if not execute:
+        # A dry run must not touch anything: provisioning `mcp` would create a
+        # venv on disk during a run whose only job is to report what would happen.
+        return "unchanged" if CURSOR_MCP_KEY in servers else "would_write"
+    command = _loopx_mcp_command()
+    if command is None:
+        return "skipped_mcp_dependency_missing"
+    entry = {"command": command[0], "args": [command[1]]}
+    if servers.get(CURSOR_MCP_KEY) == entry:
+        return "unchanged"
+    servers[CURSOR_MCP_KEY] = entry
+    raw["mcpServers"] = servers
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+    return "written"
 
 
 def _pi_extension_path(project_root: Path) -> Path:
@@ -534,6 +620,8 @@ def install_slash_commands(
     codex_home: str | None = None,
     claude_home: str | None = None,
     opencode_home: str | None = None,
+    gemini_home: str | None = None,
+    cursor_home: str | None = None,
     pi_project: str | None = None,
 ) -> dict[str, Any]:
     specs = _command_prompt_specs(cli_bin=cli_bin, include_legacy_aliases=include_legacy_aliases)
@@ -541,6 +629,8 @@ def install_slash_commands(
     codex_root = _codex_home(codex_home)
     claude_root = _claude_home(claude_home)
     opencode_root = _opencode_home(opencode_home)
+    gemini_root = _gemini_home(gemini_home)
+    cursor_root = _cursor_home(cursor_home)
     pi_project_root = Path(pi_project or ".").expanduser().resolve()
     installed: list[dict[str, Any]] = []
 
@@ -731,7 +821,103 @@ def install_slash_commands(
                 }
             )
 
+    def _install_skill_facade(
+        *,
+        skills_dir: Path,
+        surface: str,
+        host_surfaces: list[str],
+        mechanism: str,
+        invoke_prefix: str = "",
+    ) -> None:
+        """Write the command facade as SKILL.md files under `skills_dir`.
+
+        Claude Code, Gemini CLI and Cursor all discover user skills the same
+        way — a directory per skill with SKILL.md front matter — so the body is
+        identical and only the root differs.
+        """
+        for spec in specs:
+            path = skills_dir / str(spec["name"]) / "SKILL.md"
+            if uninstall:
+                installed.append(
+                    {
+                        "surface": surface,
+                        "host_surfaces": list(host_surfaces),
+                        "mechanism": mechanism,
+                        "command": spec["command"],
+                        "path": str(path),
+                        "status": _retire_status(path, execute=execute),
+                        "invoke_as": [],
+                    }
+                )
+                continue
+            content = _skill_body(
+                command=str(spec["command"]),
+                title=f"LoopX {spec['command']}",
+                description=str(spec["description"]),
+                argument_hint=str(spec["argument_hint"]),
+                instructions=list(spec["instructions"]),
+                surface="claude-skills",
+                front_matter_name=str(spec["name"]),
+            )
+            installed.append(
+                {
+                    "surface": surface,
+                    "host_surfaces": list(host_surfaces),
+                    "mechanism": mechanism,
+                    "command": spec["command"],
+                    "path": str(path),
+                    "status": _target_status(path, content, execute=execute),
+                    "invoke_as": [f"{invoke_prefix}{spec['name']}"],
+                }
+            )
+
+    if "gemini" in effective_surfaces:
+        # Gemini CLI discovers user skills from GEMINI_HOME/skills. Files are
+        # written directly because `gemini skills install` asks for interactive
+        # confirmation and cannot be driven from an installer.
+        _install_skill_facade(
+            skills_dir=gemini_root / "skills",
+            surface="gemini",
+            host_surfaces=["gemini-cli"],
+            mechanism="gemini_cli_skills",
+        )
+
+    if "cursor" in effective_surfaces:
+        # Cursor reads SKILL.md from CURSOR_HOME/skills (its skill roots also
+        # include .claude/skills and .codex/skills, but relying on another
+        # host's directory would break the moment that host is uninstalled).
+        _install_skill_facade(
+            skills_dir=cursor_root / "skills",
+            surface="cursor",
+            host_surfaces=["cursor-agent"],
+            mechanism="cursor_skills",
+        )
+        # `cursor-agent mcp` can list and enable servers but not add them, so
+        # the entry is merged into CURSOR_HOME/mcp.json. Only our own `loopx`
+        # key is touched — a user's other servers are left exactly as they are.
+        status = _merge_cursor_mcp(cursor_root, uninstall=uninstall, execute=execute)
+        installed.append(
+            {
+                "surface": "cursor",
+                "host_surfaces": ["cursor-agent"],
+                "mechanism": "cursor_mcp_server",
+                "command": "loopx",
+                "path": str(cursor_root / "mcp.json"),
+                "status": status,
+                "invoke_as": [],
+            }
+        )
+
     if "opencode" in effective_surfaces:
+        # OpenCode reads global skills from OPENCODE_CONFIG_DIR/skills. The
+        # static command facade below stays as it is — a command is something
+        # the user types, a skill is something the model can reach for itself.
+        _install_skill_facade(
+            skills_dir=opencode_root / "skills",
+            surface="opencode",
+            host_surfaces=["opencode"],
+            mechanism="opencode_skills",
+        )
         commands_dir = opencode_root / "commands"
         plugin_path = opencode_root / "plugins" / "loopx-goal.js"
         runtime_path = opencode_root / "loopx" / "goal-bridge-runtime.mjs"
@@ -1008,6 +1194,10 @@ def install_slash_commands(
             "codex_prompt_dir": None,
             "codex_skill_dir": str(codex_root / "skills") if "codex" in effective_surfaces else None,
             "claude_skill_dir": str(claude_root / "skills") if "claude-code" in effective_surfaces else None,
+            "gemini_skill_dir": str(gemini_root / "skills") if "gemini" in effective_surfaces else None,
+            "cursor_skill_dir": str(cursor_root / "skills") if "cursor" in effective_surfaces else None,
+            "cursor_mcp_path": str(cursor_root / "mcp.json") if "cursor" in effective_surfaces else None,
+            "opencode_skill_dir": str(opencode_root / "skills") if "opencode" in effective_surfaces else None,
             "opencode_command_dir": str(opencode_root / "commands") if "opencode" in effective_surfaces else None,
             "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces and with_goal_bridge else None,
             "opencode_package_path": str(opencode_root / "package.json") if "opencode" in effective_surfaces and with_goal_bridge else None,
@@ -1025,6 +1215,9 @@ def install_slash_commands(
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
+            "Gemini CLI discovers user skills from GEMINI_HOME/skills with the same SKILL.md front matter; files are written directly because `gemini skills install` requires interactive confirmation.",
+            "Cursor discovers skills from CURSOR_HOME/skills and has no user-defined slash commands, so the cursor surface installs the skill facade and registers the LoopX MCP server in CURSOR_HOME/mcp.json; run `cursor-agent mcp enable loopx` once to approve it.",
+            "OpenCode discovers global skills from OPENCODE_CONFIG_DIR/skills in addition to the static command facade; a command is typed by the user, a skill can be reached by the model itself.",
             "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
             "The Pi surface is opt-in and installs the self-contained goal extension and its loop runtime into the project's .pi/extensions/; it is not part of the default all surface.",
             "The OpenCode goal bridge uses Bun-managed config-directory dependencies and must replace any direct goal-plugin registration.",
