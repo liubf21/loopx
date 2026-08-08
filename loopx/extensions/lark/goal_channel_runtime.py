@@ -8,16 +8,22 @@ from typing import Any
 from .goal_channel_contracts import (
     DEFAULT_GATE_COOLDOWN_SECONDS,
     binding_for_goal,
+    clear_human_gate_auto_notify_marker,
     gate_message,
     goal_from_registry,
     goal_objective,
+    human_gate_auto_notify_enabled,
+    human_gate_auto_notify_marker_path,
     now_iso,
     operation_packet,
     parse_time,
     provider_idempotency_key,
+    quota_human_gate_identity,
+    quota_selects_human_gate,
     read_goal_channel_binding,
     save_goal_binding,
     semantic_key,
+    write_human_gate_auto_notify_marker,
 )
 from .goal_channel_transport import (
     APP_ID_PATTERN,
@@ -50,6 +56,154 @@ from .presentation.kanban import (
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def configure_lark_goal_channel_automation(
+    *,
+    registry: Mapping[str, Any],
+    goal_id: str,
+    binding_path: Path,
+    human_gate_auto_notify: bool,
+    execute: bool = False,
+) -> dict[str, Any]:
+    goal_from_registry(registry, goal_id)
+    payload = read_goal_channel_binding(binding_path)
+    binding = binding_for_goal(payload, goal_id)
+    if binding is None:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="configure",
+            execute=execute,
+            status="blocked",
+            blocker="channel_binding_missing",
+            public_summary="configure the Goal Channel before enabling automation",
+        )
+    if human_gate_auto_notify and binding.get("enabled") is not True:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="configure",
+            execute=execute,
+            status="blocked",
+            blocker="channel_binding_incomplete",
+            public_summary="complete Goal Channel setup before enabling automation",
+        )
+    current = human_gate_auto_notify_enabled(binding)
+    changed = current != human_gate_auto_notify
+    marker_path = human_gate_auto_notify_marker_path(binding_path, goal_id)
+    if execute and changed:
+        mutable_binding = dict(binding)
+        automation = _mapping(binding.get("automation"))
+        automation["human_gate_auto_notify_enabled"] = human_gate_auto_notify
+        mutable_binding["automation"] = automation
+        save_goal_binding(
+            binding_path=binding_path,
+            payload=payload,
+            goal_id=goal_id,
+            binding=mutable_binding,
+        )
+    if execute:
+        if human_gate_auto_notify:
+            write_human_gate_auto_notify_marker(marker_path)
+        else:
+            clear_human_gate_auto_notify_marker(marker_path)
+    return operation_packet(
+        ok=True,
+        goal_id=goal_id,
+        operation="configure",
+        execute=execute,
+        status="configured" if execute else "preview_ready",
+        public_summary=(
+            "enabled automatic human gate notifications for this Goal Channel"
+            if execute and human_gate_auto_notify
+            else "disabled automatic human gate notifications for this Goal Channel"
+            if execute
+            else "previewed the Goal Channel automation change"
+        ),
+        readback_verified=bool(
+            execute
+            and human_gate_auto_notify_enabled(
+                binding_for_goal(read_goal_channel_binding(binding_path), goal_id)
+            )
+            == human_gate_auto_notify
+        ),
+        details={
+            "changed": changed,
+            "human_gate_auto_notify_enabled": human_gate_auto_notify,
+        },
+    )
+
+
+def auto_notify_lark_goal_channel_gate(
+    *,
+    registry: Mapping[str, Any],
+    goal_id: str,
+    binding_path: Path,
+    quota_packet: Mapping[str, Any],
+    provider_target: Mapping[str, Any] | None = None,
+    external_sink_delivery_authorized: bool,
+    runner: CommandRunner = default_subprocess_runner,
+) -> dict[str, Any]:
+    goal_from_registry(registry, goal_id)
+    payload = read_goal_channel_binding(binding_path)
+    binding = binding_for_goal(
+        payload,
+        goal_id,
+        provider_target=provider_target,
+    )
+    enabled = human_gate_auto_notify_enabled(binding)
+    result: dict[str, Any] = {
+        "schema_version": "loopx_goal_channel_gate_auto_delivery_v0",
+        "ok": True,
+        "enabled": enabled,
+        "status": "not_configured" if binding is None else "disabled",
+        "external_write_performed": False,
+        "readback_verified": False,
+        "delivery_postcondition": {
+            "satisfied": True,
+            "blocks_delivery": False,
+        },
+    }
+    if not enabled:
+        return result
+    if not external_sink_delivery_authorized:
+        result["status"] = "external_sink_suppressed"
+        return result
+
+    notification = notify_lark_goal_channel_gate(
+        registry=registry,
+        goal_id=goal_id,
+        binding_path=binding_path,
+        quota_packet=quota_packet,
+        provider_target=provider_target,
+        execute=True,
+        runner=runner,
+    )
+    result["notification"] = notification
+    blocker = str(notification.get("blocker") or "")
+    result["status"] = (
+        "not_selected"
+        if blocker == "state_transition_rejected"
+        else "cooldown"
+        if blocker == "notification_cooldown_active"
+        else str(notification.get("status") or "failed")
+    )
+    result["external_write_performed"] = bool(
+        notification.get("external_write_performed")
+    )
+    result["readback_verified"] = bool(notification.get("readback_verified"))
+    safe_noop = blocker in {
+        "notification_cooldown_active",
+        "state_transition_rejected",
+    }
+    satisfied = bool(notification.get("ok")) or safe_noop
+    result["ok"] = satisfied
+    result["delivery_postcondition"] = {
+        "satisfied": satisfied,
+        "blocks_delivery": not satisfied,
+    }
+    return result
 
 
 def doctor_lark_goal_channel(
@@ -329,8 +483,28 @@ def notify_lark_goal_channel_gate(
             blocker="channel_binding_missing",
             public_summary="configure the Goal Channel before notifying a human gate",
         )
+    target_ref = str(raw_binding.get("target_ref") or "")
+    if target_ref and provider_target is None:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="notify_gate",
+            execute=execute,
+            status="blocked",
+            blocker="provider_target_missing",
+            public_summary="configure the referenced shared provider target first",
+        )
     binding = binding_for_goal(payload, goal_id, provider_target=provider_target)
-    assert binding is not None
+    if binding is None:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="notify_gate",
+            execute=execute,
+            status="blocked",
+            blocker="channel_binding_incomplete",
+            public_summary="complete Goal Channel setup before notifying a human gate",
+        )
     if binding.get("enabled") is not True:
         return operation_packet(
             ok=False,
@@ -341,12 +515,7 @@ def notify_lark_goal_channel_gate(
             blocker="channel_binding_incomplete",
             public_summary="complete Goal Channel setup before notifying a human gate",
         )
-    needs_notification = bool(
-        quota_packet.get("state") == "operator_gate"
-        or quota_packet.get("notify_user_on_gate") is True
-        or quota_packet.get("notify_user_on_open_todo") is True
-    )
-    if not needs_notification:
+    if not quota_selects_human_gate(quota_packet):
         return operation_packet(
             ok=False,
             goal_id=goal_id,
@@ -356,18 +525,6 @@ def notify_lark_goal_channel_gate(
             blocker="state_transition_rejected",
             public_summary="LoopX has not selected a human gate notification",
         )
-    cooldown = quota_packet.get("user_gate_notification_cooldown")
-    if isinstance(cooldown, Mapping) and cooldown.get("notification_suppressed") is True:
-        return operation_packet(
-            ok=False,
-            goal_id=goal_id,
-            operation="notify_gate",
-            execute=execute,
-            status="suppressed",
-            blocker="notification_cooldown_active",
-            public_summary="the current human gate notification is in cooldown",
-        )
-
     channel = _mapping(binding.get("channel"))
     identity_config = _mapping(binding.get("identity"))
     kanban = _mapping(binding.get("kanban"))
@@ -381,7 +538,15 @@ def notify_lark_goal_channel_gate(
         quota_packet=quota_packet,
         kanban_url=str(kanban.get("base_url") or ""),
     )
-    key = semantic_key(goal_id, "lark", "notify_gate", question, chat_id)
+    gate_identity = quota_human_gate_identity(quota_packet)
+    key = semantic_key(
+        goal_id,
+        "lark",
+        "notify_gate",
+        gate_identity,
+        question,
+        chat_id,
+    )
     receipts = _mapping(binding.get("receipts"))
     existing_receipt = _mapping(receipts.get(key))
     if existing_receipt:
@@ -415,13 +580,33 @@ def notify_lark_goal_channel_gate(
             for receipt_key, receipt in receipts.items()
             if receipt_key != key
         }
+    same_gate_receipts = [
+        receipt
+        for receipt in receipts.values()
+        if isinstance(receipt, Mapping)
+        and receipt.get("kind") == "gate_notification"
+        and str(receipt.get("gate_identity") or "") == gate_identity
+    ]
+    cooldown = quota_packet.get("user_gate_notification_cooldown")
+    if (
+        same_gate_receipts
+        and isinstance(cooldown, Mapping)
+        and cooldown.get("notification_suppressed") is True
+    ):
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="notify_gate",
+            execute=execute,
+            status="suppressed",
+            blocker="notification_cooldown_active",
+            public_summary="the current human gate notification is in cooldown",
+        )
     latest_gate_time = max(
         (
             parsed
-            for receipt in receipts.values()
-            if isinstance(receipt, Mapping)
-            and receipt.get("kind") == "gate_notification"
-            and (parsed := parse_time(receipt.get("verified_at"))) is not None
+            for receipt in same_gate_receipts
+            if (parsed := parse_time(receipt.get("verified_at"))) is not None
         ),
         default=None,
     )
@@ -557,6 +742,7 @@ def notify_lark_goal_channel_gate(
     mutable_receipts = dict(receipts)
     mutable_receipts[key] = {
         "kind": "gate_notification",
+        "gate_identity": gate_identity,
         "message_id": message_id,
         "verified_at": now_iso(),
     }

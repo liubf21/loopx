@@ -15,6 +15,10 @@ from .private_json import write_private_json_atomic
 GOAL_CHANNEL_BINDING_SCHEMA_VERSION = "loopx_goal_channel_lark_binding_v0"
 GOAL_CHANNEL_OPERATION_SCHEMA_VERSION = "loopx_goal_channel_operation_v0"
 DEFAULT_GATE_COOLDOWN_SECONDS = 3600
+HUMAN_GATE_AUTO_NOTIFY_SETTING = "human_gate_auto_notify_enabled"
+HUMAN_GATE_AUTO_NOTIFY_MARKER_SCHEMA_VERSION = (
+    "loopx_goal_channel_auto_notify_marker_v0"
+)
 PRIVATE_PACKET_KEYS = {
     "base_token",
     "chat_id",
@@ -123,6 +127,91 @@ def binding_for_goal(
     }
     resolved["identity"] = dict(target_identity)
     return resolved
+
+
+def human_gate_auto_notify_enabled(binding: Mapping[str, Any] | None) -> bool:
+    automation = (
+        binding.get("automation")
+        if isinstance(binding, Mapping)
+        and isinstance(binding.get("automation"), Mapping)
+        else {}
+    )
+    return automation.get(HUMAN_GATE_AUTO_NOTIFY_SETTING) is True
+
+
+def human_gate_auto_notify_marker_path(
+    binding_path: Path,
+    goal_id: str,
+) -> Path:
+    safe_goal_id = str(goal_id or "").strip()
+    if (
+        not safe_goal_id
+        or safe_goal_id in {".", ".."}
+        or "/" in safe_goal_id
+        or "\\" in safe_goal_id
+    ):
+        raise ValueError("Goal Channel goal id must be a single path segment")
+    return binding_path.with_name(
+        f"{binding_path.stem}.{safe_goal_id}.human-gate-auto-notify.json"
+    )
+
+
+def human_gate_auto_notify_marker_enabled(path: Path) -> bool:
+    marker_path = path.expanduser()
+    if not marker_path.exists():
+        return False
+    try:
+        payload = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    return bool(
+        isinstance(payload, Mapping)
+        and payload.get("schema_version")
+        == HUMAN_GATE_AUTO_NOTIFY_MARKER_SCHEMA_VERSION
+        and payload.get("enabled") is True
+    )
+
+
+def write_human_gate_auto_notify_marker(path: Path) -> None:
+    write_private_json_atomic(
+        path,
+        {
+            "schema_version": HUMAN_GATE_AUTO_NOTIFY_MARKER_SCHEMA_VERSION,
+            "enabled": True,
+        },
+    )
+
+
+def clear_human_gate_auto_notify_marker(path: Path) -> None:
+    path.expanduser().unlink(missing_ok=True)
+
+
+def quota_human_gate_identity(quota_packet: Mapping[str, Any]) -> str:
+    summary = quota_packet.get("user_todo_summary")
+    summary = summary if isinstance(summary, Mapping) else {}
+    for key in ("gate_open_items", "first_open_items"):
+        items = summary.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            identity = str(item.get("todo_id") or item.get("gate_id") or "").strip()
+            if identity:
+                return identity
+    return str(
+        quota_packet.get("gate_id")
+        or quota_packet.get("operator_gate_id")
+        or "unidentified_gate"
+    ).strip()
+
+
+def quota_selects_human_gate(quota_packet: Mapping[str, Any]) -> bool:
+    return bool(
+        quota_packet.get("state") == "operator_gate"
+        or quota_packet.get("notify_user_on_gate") is True
+        or quota_packet.get("notify_user_on_open_todo") is True
+    )
 
 
 def save_goal_binding(

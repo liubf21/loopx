@@ -85,6 +85,7 @@ loopx goal-channel setup --provider lark --goal-id <goal-id>
 loopx goal-channel target add --name <target> --provider lark ...
 loopx goal-channel setup --goal-id <goal-id> --target <target>
 loopx goal-channel attach --target <target> --goal-id <goal-a> --goal-id <goal-b>
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates
 loopx goal-channel doctor --goal-id <goal-id>
 loopx goal-channel sync --goal-id <goal-id>
 loopx goal-channel notify-gate --goal-id <goal-id>
@@ -269,6 +270,47 @@ The message includes:
 It excludes local paths, raw active state, private logs, credentials, message
 ids, and raw provider payloads.
 
+Automatic delivery is disabled by default. After Goal Channel setup, preview
+and then enable it explicitly:
+
+```bash
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates --execute
+```
+
+Once enabled, each successful non-dry-run `refresh-state` rebuilds quota from
+canonical LoopX state. It sends only when quota selects a human gate, and it
+reuses the same bot verification, semantic idempotency, cooldown, provider
+idempotency key, and message readback as `notify-gate`.
+
+Use `loopx refresh-state ... --suppress-external-sinks` to suppress delivery for
+one refresh without disabling the binding. Disable automatic delivery
+persistently with:
+
+```bash
+loopx goal-channel configure --goal-id <goal-id> --no-auto-notify-human-gates --execute
+```
+
+The opt-in is stored only in the project-local private Goal Channel binding.
+It does not grant repository or LoopX transition authority. Chat replies can
+provide context, but a gate changes only after LoopX validates and records the
+corresponding decision.
+
+Automatic lifecycle delivery resolves the enabled, doctor-verified Lark
+extension before reading the private binding. Enabling automatic delivery
+requires the canonical project-local binding path; custom `--binding-path`
+values are rejected because `refresh-state` has no per-invocation path input.
+The explicit local disable command is the only recovery exception: it may clear
+the opt-in while the extension or binding is incomplete, and it never enters
+provider code or performs an external write.
+
+Enabling also writes an owner-only local marker containing only the enabled
+boolean. The lifecycle may read this marker before extension activation solely
+to distinguish a never-configured project from a configured sink whose
+extension became unavailable. The latter fails closed with a retryable
+`extension_unavailable` postcondition; the marker contains no provider ids,
+credentials, channel metadata, or raw payloads.
+
 ## Command Contract
 
 Each effectful command returns a compact packet:
@@ -338,14 +380,17 @@ Rules:
 
 The smallest useful implementation should be:
 
-1. Add `loopx goal-channel` with `setup`, `doctor`, `sync`, and `notify-gate`.
+1. Add `loopx goal-channel` with `setup`, `configure`, `doctor`, `sync`, and
+   `notify-gate`.
 2. Implement only the Lark provider.
 3. Reuse existing `lark-kanban` setup/sync and `loopx-lark` extension
    activation checks.
 4. Create or reuse one Lark group for one existing goal.
 5. Send and pin one compact Goal Control message.
 6. Send a human-gate notification with idempotency and readback.
-7. Store local-private binding and receipts under `.loopx/`.
+7. Optionally send LoopX-selected human gates after authorized `refresh-state`
+   writes.
+8. Store local-private binding, automation opt-in, and receipts under `.loopx/`.
 
 This slice proves the external collaboration entry point.
 
@@ -361,6 +406,8 @@ The first slice must prove:
 - a Goal Control message is sent, pinned, and readback verified;
 - human-gate notification respects cooldown and idempotency;
 - repeated notification retries do not duplicate visible messages;
+- automatic delivery is disabled by default and can be suppressed per refresh;
+- automatic delivery reads canonical quota and does not send for non-gate state;
 - doctor reports missing bot auth, missing channel, missing Kanban, or stale
   extension activation with typed blockers;
 - local-private binding files remain ignored and untracked;

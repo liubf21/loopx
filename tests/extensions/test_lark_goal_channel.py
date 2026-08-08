@@ -8,13 +8,18 @@ from typing import Any
 import pytest
 
 from loopx.cli_commands import goal_channel as goal_channel_cli
+from loopx.extensions.lark import goal_channel_contracts
 from loopx.extensions.lark.goal_channel import (
     GOAL_CHANNEL_BINDING_SCHEMA_VERSION,
+    configure_lark_goal_channel_automation,
     doctor_lark_goal_channel,
     notify_lark_goal_channel_gate,
     read_goal_channel_binding,
     setup_lark_goal_channel,
     sync_lark_goal_channel,
+)
+from loopx.extensions.lark.goal_channel_runtime import (
+    auto_notify_lark_goal_channel_gate,
 )
 from loopx.extensions.lark.goal_channel_contracts import write_goal_channel_binding
 from loopx.extensions.lark.presentation.kanban import (
@@ -471,6 +476,188 @@ def test_setup_execute_persists_private_binding_after_verified_pin(
     _assert_public_packet(payload)
 
 
+def test_configure_auto_notify_is_preview_first_and_persists_private_opt_in(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    _write_binding(binding_path, kanban_path)
+    original_bytes = binding_path.read_bytes()
+
+    preview = configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=True,
+        execute=False,
+    )
+
+    assert preview["ok"] is True
+    assert preview["status"] == "preview_ready"
+    assert preview["details"]["human_gate_auto_notify_enabled"] is True
+    assert binding_path.read_bytes() == original_bytes
+
+    applied = configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=True,
+        execute=True,
+    )
+
+    assert applied["ok"] is True
+    assert applied["status"] == "configured"
+    assert applied["readback_verified"] is True
+    binding = read_goal_channel_binding(binding_path)["bindings"][GOAL_ID]
+    assert binding["automation"]["human_gate_auto_notify_enabled"] is True
+    marker_path = goal_channel_contracts.human_gate_auto_notify_marker_path(
+        binding_path,
+        GOAL_ID,
+    )
+    assert goal_channel_contracts.human_gate_auto_notify_marker_enabled(marker_path)
+    assert binding["channel"]["chat_id"] == CHAT_ID
+    assert binding_path.stat().st_mode & 0o777 == 0o600
+    _assert_public_packet(preview)
+    _assert_public_packet(applied)
+
+
+def test_configure_can_disable_auto_notify_for_incomplete_binding(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    _write_binding(binding_path, kanban_path)
+    binding = read_goal_channel_binding(binding_path)
+    goal_binding = binding["bindings"][GOAL_ID]
+    goal_binding["enabled"] = False
+    goal_binding["automation"] = {"human_gate_auto_notify_enabled": True}
+    write_goal_channel_binding(binding_path, binding)
+
+    payload = configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=False,
+        execute=True,
+    )
+
+    assert payload["ok"] is True
+    assert payload["readback_verified"] is True
+    persisted = read_goal_channel_binding(binding_path)["bindings"][GOAL_ID]
+    assert persisted["enabled"] is False
+    assert persisted["automation"]["human_gate_auto_notify_enabled"] is False
+    marker_path = goal_channel_contracts.human_gate_auto_notify_marker_path(
+        binding_path,
+        GOAL_ID,
+    )
+    assert marker_path.exists() is False
+    _assert_public_packet(payload)
+
+
+def test_auto_notify_gate_is_disabled_by_default_and_suppressible(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    _write_binding(binding_path, kanban_path)
+    quota_packet = {
+        "state": "operator_gate",
+        "notify_user_on_gate": True,
+        "gate_prompt": "Approve the bounded external write.",
+    }
+    calls: list[list[str]] = []
+
+    disabled = auto_notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet=quota_packet,
+        external_sink_delivery_authorized=True,
+        runner=_fake_runner(calls),
+    )
+    assert disabled["ok"] is True
+    assert disabled["enabled"] is False
+    assert disabled["status"] == "disabled"
+    assert calls == []
+
+    configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=True,
+        execute=True,
+    )
+    suppressed = auto_notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet=quota_packet,
+        external_sink_delivery_authorized=False,
+        runner=_fake_runner(calls),
+    )
+    assert suppressed["ok"] is True
+    assert suppressed["enabled"] is True
+    assert suppressed["status"] == "external_sink_suppressed"
+    assert calls == []
+
+
+def test_auto_notify_gate_sends_only_for_quota_selected_gate(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    save_lark_kanban_board_config(
+        kanban_path,
+        base_token="base_public_fixture",
+        table_id="tbl_public_fixture",
+        base_url="https://example.invalid/base/public-fixture",
+    )
+    _write_binding(binding_path, kanban_path)
+    configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=True,
+        execute=True,
+    )
+    calls: list[list[str]] = []
+    runner = _fake_runner(calls)
+
+    no_gate = auto_notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet={"state": "eligible"},
+        external_sink_delivery_authorized=True,
+        runner=runner,
+    )
+    assert no_gate["ok"] is True
+    assert no_gate["status"] == "not_selected"
+    assert not any("+messages-send" in args for args in calls)
+
+    gate = auto_notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet={
+            "state": "operator_gate",
+            "notify_user_on_gate": True,
+            "gate_prompt": "Approve the bounded external write.",
+        },
+        external_sink_delivery_authorized=True,
+        runner=runner,
+    )
+    assert gate["ok"] is True
+    assert gate["status"] == "sent_verified"
+    assert gate["external_write_performed"] is True
+    assert gate["readback_verified"] is True
+    assert sum("+messages-send" in args for args in calls) == 1
+
+
 def test_setup_inherits_existing_bot_identity_when_flags_are_omitted(
     tmp_path: Path,
 ) -> None:
@@ -755,6 +942,93 @@ def test_notify_gate_is_idempotent_after_verified_send(tmp_path: Path) -> None:
     _assert_public_packet(second)
 
 
+def test_notify_gate_distinguishes_different_gate_ids_with_same_question(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    save_lark_kanban_board_config(
+        kanban_path,
+        base_token="base_public_fixture",
+        table_id="tbl_public_fixture",
+        base_url="https://example.invalid/base/public-fixture",
+    )
+    _write_binding(binding_path, kanban_path)
+    calls: list[list[str]] = []
+    runner = _fake_runner(calls)
+
+    def quota(todo_id: str) -> dict[str, Any]:
+        return {
+            "state": "operator_gate",
+            "notify_user_on_gate": True,
+            "gate_prompt": "Approve the bounded external write.",
+            "user_todo_summary": {
+                "gate_open_items": [
+                    {
+                        "todo_id": todo_id,
+                        "task_class": "user_gate",
+                        "text": "Approve the bounded external write.",
+                    }
+                ]
+            },
+        }
+
+    first = notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet=quota("todo_gate_one"),
+        execute=True,
+        runner=runner,
+    )
+    second = notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet=quota("todo_gate_two"),
+        execute=True,
+        runner=runner,
+    )
+
+    assert first["status"] == "sent_verified"
+    assert second["status"] == "sent_verified"
+    assert first["idempotency_key"] != second["idempotency_key"]
+    assert sum("+messages-send" in args for args in calls) == 2
+
+
+def test_notify_gate_reports_missing_shared_target_for_direct_caller(
+    tmp_path: Path,
+) -> None:
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    binding_path.parent.mkdir(parents=True)
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    _write_binding(binding_path, kanban_path)
+    binding = read_goal_channel_binding(binding_path)
+    binding["bindings"][GOAL_ID]["target_ref"] = "missing-target"
+    binding["bindings"][GOAL_ID]["channel"] = {}
+    binding["bindings"][GOAL_ID]["identity"] = {}
+    write_goal_channel_binding(binding_path, binding)
+
+    payload = notify_lark_goal_channel_gate(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        quota_packet={
+            "state": "operator_gate",
+            "notify_user_on_gate": True,
+            "gate_prompt": "Approve the bounded external write.",
+        },
+        execute=True,
+        runner=_fake_runner([]),
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert payload["blocker"] == "provider_target_missing"
+    _assert_public_packet(payload)
+
+
 def test_notify_gate_resends_when_existing_receipt_readback_is_stale(
     tmp_path: Path,
 ) -> None:
@@ -823,6 +1097,16 @@ def test_notify_gate_respects_quota_cooldown_without_external_call(
     binding_path.parent.mkdir(parents=True)
     kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
     _write_binding(binding_path, kanban_path)
+    binding = read_goal_channel_binding(binding_path)
+    binding["bindings"][GOAL_ID]["receipts"] = {
+        "sha256:prior-reminder": {
+            "kind": "gate_notification",
+            "gate_identity": "todo_gate_fixture",
+            "message_id": GATE_MESSAGE_ID,
+            "verified_at": "2026-08-08T00:00:00+00:00",
+        }
+    }
+    write_goal_channel_binding(binding_path, binding)
     calls: list[list[str]] = []
 
     payload = notify_lark_goal_channel_gate(
@@ -833,6 +1117,15 @@ def test_notify_gate_respects_quota_cooldown_without_external_call(
             "state": "operator_gate",
             "notify_user_on_gate": True,
             "gate_prompt": "Approve the bounded external write.",
+            "user_todo_summary": {
+                "gate_open_items": [
+                    {
+                        "todo_id": "todo_gate_fixture",
+                        "task_class": "user_gate",
+                        "text": "Approve the bounded external write.",
+                    }
+                ]
+            },
             "user_gate_notification_cooldown": {
                 "notification_suppressed": True,
             },
@@ -1022,6 +1315,101 @@ def test_cli_checks_extension_before_reading_private_binding(
     assert result == 1
     assert captured["blocker"] == "extension_unavailable"
     assert "not-json" not in json.dumps(captured)
+
+
+def test_cli_can_disable_auto_notify_when_extension_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / ".loopx" / "registry.json"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(json.dumps(_registry(tmp_path)), encoding="utf-8")
+    binding_path = tmp_path / ".loopx" / "goal-channel.json"
+    kanban_path = tmp_path / ".loopx" / "lark-kanban.json"
+    _write_binding(binding_path, kanban_path)
+    configure_lark_goal_channel_automation(
+        registry=_registry(tmp_path),
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        human_gate_auto_notify=True,
+        execute=True,
+    )
+    captured: dict[str, Any] = {}
+
+    def unavailable(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ValueError("extension unavailable")
+
+    monkeypatch.setattr(goal_channel_cli, "resolve_extension_activation", unavailable)
+
+    result = goal_channel_cli.handle_goal_channel_command(
+        argparse.Namespace(
+            command="goal-channel",
+            goal_channel_command="configure",
+            goal_id=GOAL_ID,
+            binding_path=str(binding_path),
+            auto_notify_human_gates=False,
+            execute=True,
+            subcommand_format="json",
+            format=None,
+        ),
+        registry_path=registry_path,
+        runtime_root_arg=None,
+        print_payload=lambda payload, fmt, renderer: captured.update(payload),
+        output_format=lambda args: "json",
+    )
+
+    assert result == 0
+    assert captured["ok"] is True
+    assert captured["readback_verified"] is True
+    assert (
+        read_goal_channel_binding(binding_path)["bindings"][GOAL_ID]["automation"][
+            "human_gate_auto_notify_enabled"
+        ]
+        is False
+    )
+
+
+def test_cli_rejects_custom_binding_path_for_auto_notify(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / ".loopx" / "registry.json"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(json.dumps(_registry(tmp_path)), encoding="utf-8")
+    custom_binding = tmp_path / ".loopx" / "custom-goal-channel.json"
+    _write_binding(custom_binding, tmp_path / ".loopx" / "lark-kanban.json")
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        goal_channel_cli,
+        "resolve_extension_activation",
+        lambda *args, **kwargs: {"status": "active"},
+    )
+
+    result = goal_channel_cli.handle_goal_channel_command(
+        argparse.Namespace(
+            command="goal-channel",
+            goal_channel_command="configure",
+            goal_id=GOAL_ID,
+            binding_path=str(custom_binding),
+            auto_notify_human_gates=True,
+            execute=True,
+            subcommand_format="json",
+            format=None,
+        ),
+        registry_path=registry_path,
+        runtime_root_arg=None,
+        print_payload=lambda payload, fmt, renderer: captured.update(payload),
+        output_format=lambda args: "json",
+    )
+
+    assert result == 1
+    assert captured["blocker"] == "noncanonical_binding_path"
+    assert (
+        read_goal_channel_binding(custom_binding)["bindings"][GOAL_ID].get(
+            "automation"
+        )
+        is None
+    )
 
 
 def test_cli_global_registry_routes_binding_to_source_registry_from_any_cwd(

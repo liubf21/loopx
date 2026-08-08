@@ -76,6 +76,7 @@ loopx goal-channel setup --provider lark --goal-id <goal-id>
 loopx goal-channel target add --name <target> --provider lark ...
 loopx goal-channel setup --goal-id <goal-id> --target <target>
 loopx goal-channel attach --target <target> --goal-id <goal-a> --goal-id <goal-b>
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates
 loopx goal-channel doctor --goal-id <goal-id>
 loopx goal-channel sync --goal-id <goal-id>
 loopx goal-channel notify-gate --goal-id <goal-id>
@@ -249,6 +250,40 @@ interaction-contract surface：
 消息不包含本地路径、raw active state、私有日志、凭据、message id 或 raw provider
 payload。
 
+自动投递默认关闭。完成 Goal Channel setup 后，先预览，再显式启用：
+
+```bash
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates
+loopx goal-channel configure --goal-id <goal-id> --auto-notify-human-gates --execute
+```
+
+启用后，每次成功且非 dry-run 的 `refresh-state` 都会根据 LoopX canonical state
+重新计算 quota。只有 quota 选中 human gate 时才发送，并复用 `notify-gate`
+已有的 bot 身份校验、语义幂等、冷却、provider idempotency key 和消息回读。
+
+单次 refresh 可使用 `loopx refresh-state ... --suppress-external-sinks`
+临时抑制投递，而无需禁用 binding。持久关闭自动投递：
+
+```bash
+loopx goal-channel configure --goal-id <goal-id> --no-auto-notify-human-gates --execute
+```
+
+该 opt-in 只保存在项目本地私有的 Goal Channel binding 中，不授予仓库或 LoopX
+状态迁移权限。群聊回复可以补充 context，但只有经过 LoopX 校验并记录的 decision
+才能改变 gate 状态。
+
+自动生命周期投递会先解析已启用且 doctor 验证通过的 Lark extension，再读取私有
+binding。启用自动投递时必须使用项目本地 canonical binding 路径；由于
+`refresh-state` 没有逐次传入 binding path 的入口，自定义 `--binding-path`
+会被拒绝。唯一的恢复例外是显式本地 disable 命令：即使 extension 或 binding
+不完整，它也可以清除 opt-in；该路径不会进入 provider 代码，也不会执行外部写。
+
+启用时还会写入一个 owner-only 的本地 marker，其中只包含 enabled boolean。
+生命周期在 extension activation 前只允许读取这个 marker，用来区分“从未配置”
+和“已配置但 extension 后续不可用”。后者会通过可重试的
+`extension_unavailable` postcondition fail closed；marker 不包含 provider id、
+凭据、channel metadata 或 raw payload。
+
 ## 命令契约
 
 每个 effectful command 返回紧凑 packet：
@@ -317,13 +352,15 @@ goal_id + provider + operation + todo_id/gate_id + gate_text_hash + channel_id
 
 第一版最小可用实现应包括：
 
-1. 增加 `loopx goal-channel`，包含 `setup`、`doctor`、`sync` 和 `notify-gate`。
+1. 增加 `loopx goal-channel`，包含 `setup`、`configure`、`doctor`、`sync` 和
+   `notify-gate`。
 2. 只实现 Lark provider。
 3. 复用现有 `lark-kanban` setup/sync 和 `loopx-lark` extension activation checks。
 4. 为一个已有 goal 创建或复用一个 Lark 群。
 5. 发送并 pin 一条紧凑 Goal Control message。
 6. 发送带 idempotency 和 readback 的 human-gate notification。
-7. 将本地私有绑定和 receipt 保存到 `.loopx/`。
+7. 可选地在授权的 `refresh-state` 写回后发送 LoopX 选中的 human gate。
+8. 将本地私有绑定、automation opt-in 和 receipt 保存到 `.loopx/`。
 
 这个切片先验证外部协作入口。
 
@@ -338,6 +375,8 @@ goal_id + provider + operation + todo_id/gate_id + gate_text_hash + channel_id
 - Goal Control message 可以发送、pin，并通过 readback 验证；
 - human-gate notification 遵守 cooldown 和 idempotency；
 - 重试通知不会产生重复可见消息；
+- 自动投递默认关闭，并且可按单次 refresh 临时抑制；
+- 自动投递读取 canonical quota，非 gate 状态不发送；
 - doctor 能用类型化 blocker 报告缺 bot auth、缺 channel、缺 Kanban 或 stale
   extension activation；
 - 本地私有 binding 文件保持 ignored 且 untracked；
