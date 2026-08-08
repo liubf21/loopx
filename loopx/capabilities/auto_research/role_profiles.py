@@ -123,8 +123,16 @@ AUTO_RESEARCH_ROLE_PROFILE_ALIASES = {
 AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
     "research_curator": {
         "phase": "contract",
-        "allowed_actions": ["write_research_contract", "review_research_contract"],
-        "write_scope": ["research_contract_v0", "todo_item_v0"],
+        "allowed_actions": [
+            "write_research_contract",
+            "review_research_contract",
+            "review_terminal_decision",
+        ],
+        "write_scope": [
+            "research_contract_v0",
+            "auto_research_peer_review_v0",
+            "todo_item_v0",
+        ],
         "handoff": ["Create the first hypothesis-proposer todo."],
         "successor_todos": [
             _successor("review_research_contract", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "propose_hypothesis", AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT),
@@ -159,8 +167,13 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
             "write_evaluation_summary",
             "classify_evidence",
             "review_promotion_readiness",
+            "record_terminal_decision",
         ],
-        "write_scope": ["research_evidence_graph_v0", "todo_item_v0"],
+        "write_scope": [
+            "research_evidence_graph_v0",
+            "auto_research_terminal_decision_v0",
+            "todo_item_v0",
+        ],
         "handoff": ["Add a role-declared successor todo when evidence needs another bounded split."],
         "successor_todos": [
             _successor("summarize_evidence", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
@@ -186,6 +199,8 @@ AUTO_RESEARCH_ACTION_ROLE_IDS = {
     "summarize_evidence": "evaluator_promoter",
     "write_evaluation_summary": "evaluator_promoter",
     "review_promotion_readiness": "evaluator_promoter",
+    "record_terminal_decision": "evaluator_promoter",
+    "review_terminal_decision": "research_curator",
 }
 
 AUTO_RESEARCH_SEED_TITLES = {
@@ -199,6 +214,8 @@ AUTO_RESEARCH_SEED_TITLES = {
     "review_research_contract": "Re-check the research contract and protected scope for the next collective round.",
     "review_hypothesis_frontier": "Review the hypothesis frontier and record whether another bounded candidate is needed.",
     "review_promotion_readiness": "Review promotion readiness and record the current evidence gap.",
+    "record_terminal_decision": "Record one evidence-revision-bound promoted or retired result after the required gate.",
+    "review_terminal_decision": "Independently review one terminal decision without rewriting research evidence.",
 }
 
 KNN_DEMO_VISIBLE_FIRST_STEP_COMMON = (

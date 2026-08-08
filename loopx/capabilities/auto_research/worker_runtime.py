@@ -48,6 +48,8 @@ SUPPORTED_WORKER_ACTIONS = {
     "summarize_evidence",
     "write_evaluation_summary",
     "review_promotion_readiness",
+    "record_terminal_decision",
+    "review_terminal_decision",
 }
 AppendEvidence = Callable[[str], dict[str, object]]
 AUTO_RESEARCH_STATE_SUMMARY_MODE = "rollout_evidence_summary"
@@ -58,6 +60,8 @@ MANUAL_RESEARCH_REQUIRED_ACTIONS = {
     "run_dev_eval",
     "run_holdout_eval",
     "write_evidence",
+    "record_terminal_decision",
+    "review_terminal_decision",
 }
 SUMMARY_ACTIONS = {
     "classify_evidence",

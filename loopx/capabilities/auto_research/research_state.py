@@ -411,6 +411,8 @@ def build_research_evidence_graph_from_records(
                 "parent_hypothesis_id": item["parent_hypothesis_id"],
                 "todo_id": item["todo_id"],
                 "claimed_by": item["claimed_by"],
+                "mechanism_family": item["mechanism_family"],
+                "hypothesis": item["hypothesis"],
                 "status": item["status"],
                 "grounding_refs": item["grounding_refs"],
                 "novelty_audit_ref": item["novelty_audit_ref"],

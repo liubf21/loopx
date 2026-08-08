@@ -661,6 +661,95 @@ def _render_evidence_packet(payload: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_terminal_result(payload: dict[str, object]) -> str:
+    decision = _dict_value(payload, "decision")
+    review = _dict_value(payload, "review")
+    lines = [
+        "# LoopX Auto Research Terminal Result",
+        "",
+        f"- schema: `{payload.get('schema_version')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- appended: `{payload.get('appended')}`",
+        f"- reused: `{payload.get('reused')}`",
+    ]
+    if decision:
+        lines.extend(
+            [
+                f"- hypothesis_id: `{decision.get('hypothesis_id')}`",
+                f"- outcome: `{decision.get('outcome')}`",
+                f"- reason: `{decision.get('reason')}`",
+                f"- evidence_graph_revision: `{decision.get('evidence_graph_revision')}`",
+            ]
+        )
+    if review:
+        lines.extend(
+            [
+                f"- hypothesis_id: `{review.get('hypothesis_id')}`",
+                f"- verdict: `{review.get('verdict')}`",
+                f"- independent: `{review.get('independent')}`",
+                f"- evidence_graph_revision: `{review.get('evidence_graph_revision')}`",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _render_terminal_result_query(payload: dict[str, object]) -> str:
+    lines = [
+        "# LoopX Auto Research Results",
+        "",
+        f"- schema: `{payload.get('schema_version')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- evidence_graph_revision: `{payload.get('evidence_graph_revision')}`",
+        f"- result_count: `{payload.get('result_count')}`",
+        "",
+        "## Results",
+        "",
+    ]
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    if not results:
+        lines.append("- none")
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        decision = _dict_value(result, "terminal_decision")
+        review = _dict_value(result, "peer_review")
+        lines.extend(
+            [
+                f"- `{result.get('hypothesis_id')}`: {result.get('hypothesis')}",
+                f"  - research_status: `{result.get('research_status')}`",
+                f"  - decision_state: `{result.get('decision_state')}`",
+                f"  - terminal_outcome: `{decision.get('outcome')}`",
+                f"  - terminal_reason: `{decision.get('reason')}`",
+                f"  - finding_status: `{result.get('finding_status')}`",
+                f"  - review_state: `{review.get('state')}`",
+                f"  - review_verdict: `{review.get('verdict')}`",
+                f"  - independent_review: `{review.get('independent')}`",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _render_terminal_result_projection(payload: dict[str, object]) -> str:
+    projection = _dict_value(payload, "explore_projection")
+    counts = _dict_value(projection, "counts")
+    return "\n".join(
+        [
+            "# LoopX Auto Research Result Projection",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- dry_run: `{payload.get('dry_run')}`",
+            f"- result_count: `{payload.get('result_count')}`",
+            f"- event_count: `{payload.get('event_count')}`",
+            f"- appended_count: `{payload.get('appended_count')}`",
+            f"- reused_count: `{payload.get('reused_count')}`",
+            f"- node_count: `{counts.get('node_count')}`",
+            f"- finding_count: `{counts.get('finding_count')}`",
+        ]
+    ) + "\n"
+
+
 def _render_generic(payload: dict[str, object]) -> str:
     lines = [
         "# LoopX Auto Research",
@@ -693,4 +782,13 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
         return _render_live_evidence(payload)
     if schema == "auto_research_evidence_packet_v0":
         return _render_evidence_packet(payload)
+    if schema in {
+        "auto_research_terminal_decision_v0",
+        "auto_research_peer_review_v0",
+    }:
+        return _render_terminal_result(payload)
+    if schema == "auto_research_terminal_result_query_v0":
+        return _render_terminal_result_query(payload)
+    if schema == "auto_research_terminal_result_projection_v0":
+        return _render_terminal_result_projection(payload)
     return render_auto_research_projection_markdown(payload)
