@@ -184,6 +184,19 @@ starts with `/loopx-pr-review`, words such as `open`, `closed`, `merged`,
 skip the review. Downgrade only for explicit opt-out phrases such as `只统计`,
 `只列出`, `stats only`, `list only`, `不要 review`, or `不用分析`.
 
+The published review is a full-PR bilingual review: one complete Chinese
+five-block review covering every changed surface, key symbol, positive and
+negative path, and validation, plus one concise English machine verdict
+(`APPROVE`, `REQUEST_CHANGES`, or the author-owned `COMMENTED` fallback). The
+Chinese review carries the depth and evidence; the English verdict carries the
+machine-readable state and validation summary. A findings-only or blocker-only
+body is not a complete PR review.
+
+Each complete PR review must also include whole-PR interpretation depth:
+per-file responsibility mapping, 2-5 key symbol explanations with exact-head
+references, one positive runtime walkthrough, one negative/fail-closed
+walkthrough, per-surface validation, and an overall judgment for the entire PR.
+
 ## Source Reads
 
 Implementations may read compact public PR surfaces:

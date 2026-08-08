@@ -12,7 +12,8 @@ that already play each role.
 ## Code Lens
 
 `loopx.control_plane.effect_program.interpret_quota_should_run_packet` maps an
-existing `quota should-run` packet onto the canonical slots:
+existing `quota should-run` packet onto the canonical slots, and
+`interpret_turn_result_packet` maps an existing `loopx_turn_result_v0` packet:
 
 - `EffectRequest`
 - `EffectInterpretation`
@@ -20,9 +21,10 @@ existing `quota should-run` packet onto the canonical slots:
 - `EffectNext`
 - `EffectTurn`
 
-The function is intentionally read-only. It does not replace quota decision
-logic or add a second runtime; it gives refactor and test code one stable
-abstraction for reading the effect program shape.
+Both functions are intentionally read-only. They do not replace quota
+decision or turn-settlement logic; they give refactor and test code one
+stable abstraction for reading the effect program shape across packet
+families.
 
 ## Canonical Example
 
@@ -67,6 +69,7 @@ The observation points back into the loop:
 | Packet field | Role |
 |---|---|
 | `interaction_contract.cli_channel.next_cli_actions` | Next CLI effects |
+| `execution_mode` | Execution strategy (`serial` / `parallel` / `interleaved`) for an ordered effect program |
 | `scheduler_hint.action` | Scheduler around decision |
 | `scheduler_hint.cadence_class` | Cadence for the next host wake |
 | `scheduler_hint.codex_app.ack_hint.cli_args` | Host ACK effect |
@@ -75,7 +78,9 @@ The observation points back into the loop:
 `EffectTurn.next_effect` is the code lens for this slot. It keeps the
 data-encoded handler visible: the host invokes the CLI actions and settles
 success or failure through the ACK/failure hints instead of LoopX holding a
-callable across turns.
+callable across turns. `execution_mode` is the data-encoded strategy when the
+next effect is an ordered effect program; it defaults to `None` when the
+packet does not declare one.
 
 ## Around Semantics
 
@@ -94,6 +99,22 @@ The ordering and effect semantics are contracts. A capability gate must not be
 collapsed into a generic exception handler: `owner_missing`,
 `repair_missing`, and `decision_owner` stay visible because `ask_owner` and
 `repair_bridge` lead to different next effects.
+
+A CLI packet is a higher-density effect than a single tool call: one command
+can carry permission, budget, validation, execution, failure semantics, ACK,
+and writeback. Vendor serial or interleaved tool APIs are execution modes
+inside the interpreter, not new state machines.
+
+## Ordered Effect Program
+
+`loopx.control_plane.effect_program.effect_program_from_ordered_steps` maps an
+existing `guided_transaction.ordered_steps` value onto `EffectProgram`:
+
+- `EffectStep` keeps `step_id`, `kind`, `command`, and `purpose`;
+- `EffectProgram` keeps ordered steps and an optional `execution_mode`.
+
+This is still a read-only lens. The executor remains host-driven until a
+LoopX runtime caller owns multi-step execution.
 
 ## Relationship To State Machines
 

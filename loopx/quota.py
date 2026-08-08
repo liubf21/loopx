@@ -67,6 +67,7 @@ from .control_plane.quota.stall_repair import (
 from .control_plane.quota.decision_summary import (
     goal_status_health_ok as _goal_status_health_ok,
     quota_decision_agent_id,
+    quota_plan_items as _quota_plan_items,
     refine_quota_recommended_action,
     resolve_quota_run_decision,
 )
@@ -78,6 +79,7 @@ from .control_plane.quota.monitor_poll import (
 )
 from .control_plane.quota.recent_runs import (
     build_monitor_debt_arbitration as _build_monitor_debt_arbitration,
+    goal_latest_run as _goal_latest_run,
     goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
 )
@@ -507,13 +509,6 @@ def quota_status(
     return payload
 
 
-def _latest_run(goal: dict[str, Any]) -> dict[str, Any]:
-    latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
-    if latest_runs and isinstance(latest_runs[0], dict):
-        return latest_runs[0]
-    return {}
-
-
 def _quota_sort_key(item: dict[str, Any]) -> tuple[int, float, int, str]:
     quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
     state = str(quota.get("state") or "waiting")
@@ -910,7 +905,7 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             if isinstance(attention.get("project_asset"), dict)
             else {}
         )
-        latest = _latest_run(goal)
+        latest = _goal_latest_run(goal)
         waiting_on = attention.get("waiting_on") or "none"
         lifecycle_phase = attention.get("lifecycle_phase") or goal.get("lifecycle_phase")
         lifecycle_flags = attention.get("lifecycle_flags") or goal.get("lifecycle_flags")
@@ -1035,16 +1030,6 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
         "groups": groups,
         "health_items": health_items,
     }
-
-
-def _quota_plan_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
-    groups = plan.get("groups") if isinstance(plan.get("groups"), dict) else {}
-    items: list[dict[str, Any]] = []
-    for state_items in groups.values():
-        if not isinstance(state_items, list):
-            continue
-        items.extend(item for item in state_items if isinstance(item, dict))
-    return items
 
 
 def _recent_reward_lessons(status_payload: dict[str, Any], *, goal_id: str) -> list[dict[str, Any]]:

@@ -1,6 +1,6 @@
 ---
 name: loopx-pr-review
-description: Use for `/loopx-pr-review` or evidence-backed PR queue review. Run `loopx pr-review` first, execute the capability-owned review plan for each selected exact head, then publish a review state that matches the verified findings. Use `loopx-pr-merge` for approval or merge actions.
+description: Use for `/loopx-pr-review` or evidence-backed PR queue review. Run `loopx pr-review` first, execute the capability-owned review plan for each selected exact head, then publish full bilingual PR reviews (complete Chinese five-block review plus one concise English verdict) that match the verified findings. Use `loopx-pr-merge` for approval or merge actions.
 ---
 
 # LoopX PR Review
@@ -94,6 +94,46 @@ context, raw logs, credentials, and internal-only links. Read the published
 review back, verify its state and rendered body, and return its URL. Merge
 still routes through `loopx-pr-merge`; an `APPROVE` is not merge authority.
 Do not leave a public blocker only in chat.
+
+## Full PR Review And Bilingual Format
+
+Every review must cover the whole PR, not only the top finding. Read the full
+diff/checks, then explain motivation, architecture, changed files/symbols,
+positive and negative paths, risk across the whole diff, validation, and
+overall judgment. A findings-only or blocker-only body is incomplete.
+
+Publish two artifacts:
+
+1. **详细中文评审** - a standalone Chinese full-PR review with the exact head
+   and five sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`,
+   `我的整体评价`. Cover every changed surface and key symbols, not just the
+   main finding.
+2. **英文简短结论** - a concise English verdict (`APPROVE`,
+   `REQUEST_CHANGES`, or the author-owned `COMMENTED` fallback) with exact
+   head, verdict, key finding, and validation.
+
+Do not publish before the Chinese section covers the entire PR. Read both
+artifacts back.
+
+## Full PR Interpretation Depth
+
+A complete review is a whole-PR interpretation, not a checklist or findings
+summary. For each selected PR:
+
+1. Read every changed file and map each file to its responsibility, inputs,
+   outputs, and key symbols.
+2. Pick 2-5 behavior-bearing symbols and explain before/after behavior,
+   critical branches, callers/callees, side effects, and failure paths.
+3. Walk one positive path from user/host action to observable result.
+4. Walk one negative path (invalid input, permission, timeout, corrupt state,
+   private boundary, or rollback) and show where it fails closed.
+5. Cover all changed surfaces in the five sections: motivation, approach,
+   concrete changes, main risk, overall judgment.
+6. List validation per surface and name anything not independently verified.
+7. State overall judgment for the entire PR, not only for the top finding.
+
+A review that only repeats the PR body, only discusses one blocker, or omits
+whole files/modules is incomplete and must be reworked.
 
 ## Autonomous Queue
 
