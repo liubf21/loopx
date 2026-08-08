@@ -664,6 +664,15 @@ def _merge_cursor_mcp(cursor_root: Path, *, uninstall: bool, execute: bool) -> s
     # recorded writing. A hand-edited entry counts as the user's from then on.
     loopx_owned = existing is not None and existing == recorded
 
+    # A marker that no longer describes reality is not just useless, it is
+    # dangerous: once the user deletes or edits the entry, the stale marker
+    # would still vouch for a future same-name entry and authorize deleting
+    # something LoopX never wrote. Ownership has to expire the moment it stops
+    # being demonstrable — and only in execute mode, so a dry run stays a
+    # read-only report.
+    if execute and recorded is not None and not loopx_owned:
+        _cursor_mcp_marker_path(cursor_root).unlink(missing_ok=True)
+
     if uninstall:
         if existing is None:
             return "absent"

@@ -869,3 +869,74 @@ def test_cursor_mcp_hand_edited_entry_becomes_the_users(
     )
     assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
     assert json.loads(config.read_text(encoding="utf-8")) == edited
+
+
+# Provenance is a lifecycle, not a single check: what the marker claims has to
+# stop being true the moment the entry it describes is gone or changed. The two
+# chains below are the ones that bite — a stale marker would let a later
+# same-name entry be deleted as if LoopX had written it.
+def test_marker_retires_after_user_deletes_the_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    install_slash_commands(execute=True, surfaces=["cursor"], cursor_home=str(cursor_home))
+    marker = cursor_home / slash_command_install.CURSOR_MCP_MARKER_NAME
+    assert marker.exists()
+
+    # The user removes our server by hand and keeps their own file.
+    config = cursor_home / "mcp.json"
+    config.write_text(json.dumps({"mcpServers": {"other": {"command": "somebin"}}}), encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "absent"
+    assert not marker.exists(), "ownership must expire with the entry it described"
+
+    # Later the user writes their own server under the same name — byte for byte
+    # what LoopX used to write. Without retiring the marker we would delete it.
+    config.write_text(json.dumps({"mcpServers": {"loopx": entry}}), encoding="utf-8")
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert json.loads(config.read_text(encoding="utf-8"))["mcpServers"]["loopx"] == entry
+
+
+def test_marker_retires_after_user_edits_the_entry_and_dry_run_writes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    install_slash_commands(execute=True, surfaces=["cursor"], cursor_home=str(cursor_home))
+    marker = cursor_home / slash_command_install.CURSOR_MCP_MARKER_NAME
+    config = cursor_home / "mcp.json"
+
+    edited = json.loads(config.read_text(encoding="utf-8"))
+    edited["mcpServers"]["loopx"]["args"].append("--my-flag")
+    config.write_text(json.dumps(edited), encoding="utf-8")
+
+    # A dry run reports and touches nothing — including the marker.
+    payload = install_slash_commands(
+        execute=False, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert marker.exists(), "dry run must stay read-only"
+
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert not marker.exists()
+
+    # The user reverts their edit back to the original value. That value is no
+    # longer ours to claim — the marker is gone, so the entry stays.
+    config.write_text(json.dumps({"mcpServers": {"loopx": entry}}), encoding="utf-8")
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert json.loads(config.read_text(encoding="utf-8"))["mcpServers"]["loopx"] == entry
