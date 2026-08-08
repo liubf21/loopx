@@ -120,6 +120,43 @@ def assert_local_doc_links_resolve() -> None:
                 )
 
 
+def assert_effect_interpreter_docs_are_canonical() -> None:
+    public_lecture_url_fragments = (
+        "6a01d501000000003700c5de",
+        "6a02f388000000003502b2d6",
+        "6a057524000000003701f6aa",
+    )
+    packet_doc = compact(read("docs/reference/effect-interpreter-packet.md"))
+    for required in (
+        "EffectRequest",
+        "EffectInterpretation",
+        "EffectObservation",
+        "EffectNext",
+        "EffectTurn",
+        "Around Semantics",
+    ):
+        assert required in packet_doc, required
+
+    rfc = compact(read("docs/architecture/rfcs/agent-loop-effect-interpreter-v0.md"))
+    for required in (
+        "Composition And Around Semantics",
+        "Handler Is Data, Not a Callable",
+        "Milestone Status",
+    ):
+        assert required in rfc, required
+
+    architecture = compact(read("docs/architecture.md"))
+    assert "Control Plane As Effect Interpreter" in architecture
+
+    lecture = compact(
+        read("docs/development/control-plane-course/01-agent-loop-effectful-program.md")
+    )
+    assert "Around 是数据，不是回调" in lecture
+    for fragment in public_lecture_url_fragments:
+        assert fragment in rfc, fragment
+        assert fragment in lecture, fragment
+
+
 def main() -> int:
     docs_index = read("docs/README.md")
     root_readme = read("README.md")
@@ -287,6 +324,7 @@ def main() -> int:
     )
 
     assert_local_doc_links_resolve()
+    assert_effect_interpreter_docs_are_canonical()
 
     collaboration_rfc = read(
         "docs/architecture/rfcs/agent-im-openviking-collaboration-v0.md"
