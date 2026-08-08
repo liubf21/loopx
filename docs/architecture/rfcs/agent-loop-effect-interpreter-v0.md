@@ -9,14 +9,22 @@
 
 ## Summary
 
-LoopX should be explained, designed, and tested as **the effect interpreter
-around an agent loop**, not as a collection of disconnected state machines.
+LoopX harness should be explained, designed, and tested as **the effectful
+program around an agent loop**, not as a collection of disconnected state
+machines.
 
 The canonical shape is:
 
 ```text
 model -> effect request -> harness interprets effect -> observation -> model
 ```
+
+The agent loop is the loop. The harness is the effectful program that
+interprets each effect request and returns an observation to the next model
+step.
+
+The framing builds on the public lecture series by 齐梦星空, especially
+[主线一：Agent Loop 里的小魔法：函数的组合(3)](https://www.xiaohongshu.com/discovery/item/6a057524000000003701f6aa?source=webshare&xhsshare=pc_web&xsec_token=CBDnukhtey6qJ1aXATVJtv4edjVUnZB1_yebMpqJdNLfc=&xsec_source=pc_share).
 
 LoopX's job is the middle two steps: it receives an effect request from an
 agent or host, decides whether and how to interpret it, writes back an
@@ -78,7 +86,7 @@ A => F[B]
 `F` captures the external world: persistence, permissions, budgets, timing,
 notifications, scheduling, evidence, and failure.
 
-LoopX is best understood as that `F` around a long-running agent loop:
+LoopX harness is best understood as that `F` around a long-running agent loop:
 
 ```text
 GoalState => F[QuotaDecision]
@@ -162,7 +170,7 @@ state machine detail.
 Steps:
 
 1. Merge this RFC.
-2. Add `Lecture 0: Agent Loop Is an Effectful Program` to
+2. Add `Lecture 0: Harness Is the Effectful Program` to
    `docs/development/control-plane-course/`.
 3. Rewrite `docs/product/core-control-plane/state-machine.md` to include an
    interpretation-table section for each state family.
@@ -329,6 +337,12 @@ Large smokes remain only as thin end-to-end checks.
 
 ## Conclusion
 
-LoopX is not "a set of state machines". It is the effect interpreter around a
-long-running agent loop. This RFC makes that story explicit and gives the
-refactor and test work a stable target.
+LoopX harness is not "a set of state machines". It is the effectful program
+and effect interpreter around a long-running agent loop. This RFC makes that
+story explicit and gives the refactor and test work a stable target.
+
+## References
+
+- 齐梦星空, *主线一：Agent Loop 是 effectful program(1)*.
+- 齐梦星空, *主线一：Tool Calling 是 Kleisli arrow(2)*.
+- 齐梦星空, [*主线一：Agent Loop 里的小魔法：函数的组合(3)*](https://www.xiaohongshu.com/discovery/item/6a057524000000003701f6aa?source=webshare&xhsshare=pc_web&xsec_token=CBDnukhtey6qJ1aXATVJtv4edjVUnZB1_yebMpqJdNLfc=&xsec_source=pc_share).
