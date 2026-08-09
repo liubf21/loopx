@@ -120,6 +120,8 @@ def _registry_git_probe(path: Path) -> dict[str, Any]:
                 ["git", *args],
                 cwd=cwd,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,

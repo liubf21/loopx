@@ -229,9 +229,11 @@ the [Codex App host command registry contract](docs/reference/protocols/codex-ap
 the [Codex CLI packaged install path](docs/product/runtimes/codex-cli/codex-cli-packaged-install.md),
 or the [Claude Code adapter](loopx/claude_goal_mode/README.md).
 
-For custom runners, read
+For custom runners, start with the
+[minimal custom runtime example](docs/guides/minimal-custom-runtime-example.md)
+(`python3 examples/custom-runtime-minimal-cli-turn-smoke.py`), then the full
 [Embed LoopX in Your Agent Runner](docs/guides/custom-agent-runner-integration.md)
-and the [worker bridge install contract](docs/integrations/worker-bridge-install-contract.md).
+guide and the [worker bridge install contract](docs/integrations/worker-bridge-install-contract.md).
 The core tick is deliberately small:
 
 ```text
@@ -376,7 +378,8 @@ quota, and handoff explicit.
 - Feishu/Lark projection: [Lark Kanban adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - Generic host integration: [integration guide](docs/integration.md)
 - Custom multi-agent runner:
-  [custom runner integration](docs/guides/custom-agent-runner-integration.md)
+  [minimal custom runtime example](docs/guides/minimal-custom-runtime-example.md),
+  then [custom runner integration](docs/guides/custom-agent-runner-integration.md)
 
 Optional projections make state easier to inspect; they do not become the
 source of truth.
@@ -455,6 +458,7 @@ deeper documents and versioned protocols.
 ### Integrate and Extend
 
 - [Integration Guide](docs/integration.md)
+- [Minimal Custom Runtime Example](docs/guides/minimal-custom-runtime-example.md)
 - [Custom Agent Runner Integration](docs/guides/custom-agent-runner-integration.md)
 - [Integrations](docs/integrations/README.md): runtime, host, collaboration, and
   external-system adapters, including worker bridge and Lark.
