@@ -938,6 +938,7 @@ def test_turn_cli_consumes_live_state_without_writes(
     assert exit_code == 0
     assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
     assert payload["session"]["action"] == "start_new"
+    assert "settlement_plan" not in payload["transaction"]
     assert payload["turn_envelope"]["action_signature"]["matches"] is True
     assert payload["effects"]["state_written"] is False
     assert before == after
