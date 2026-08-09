@@ -208,7 +208,9 @@ loopx start-goal --guided --project . --goal-text "你的长程目标"
 [Codex CLI packaged install](docs/product/runtimes/codex-cli/codex-cli-packaged-install.md)和
 [Claude Code adapter](loopx/claude_goal_mode/README.md)。
 
-自有 runner 请读
+自有 runner 请先看
+[最小自定义 Runtime 示例](docs/guides/minimal-custom-runtime-example.zh-CN.md)
+（`python3 examples/custom-runtime-minimal-cli-turn-smoke.py`），再读完整的
 [把 LoopX 嵌入你的 Agent Runner](docs/guides/custom-agent-runner-integration.zh-CN.md)
 与 [Worker Bridge Install Contract](docs/integrations/worker-bridge-install-contract.md)。
 核心 tick 很小：
@@ -339,7 +341,8 @@ treatment 和 guardrail 的任务，不替代生产审批。先读
 - 飞书投影：[Lark Kanban Adapter](docs/integrations/lark-kanban-control-plane-adapter.md)
 - 通用 host 集成：[Integration Guide](docs/integration.md)
 - 自有 multi-agent runner：
-  [Custom Runner 中文指南](docs/guides/custom-agent-runner-integration.zh-CN.md)
+  [最小自定义 Runtime 示例](docs/guides/minimal-custom-runtime-example.zh-CN.md)，
+  再看 [Custom Runner 中文指南](docs/guides/custom-agent-runner-integration.zh-CN.md)
 
 可选 projection 让状态更易检查，但不会成为新的事实源。
 
@@ -412,6 +415,7 @@ loopx check \
 ### 集成与扩展
 
 - [Integration Guide](docs/integration.md)
+- [最小自定义 Runtime 示例](docs/guides/minimal-custom-runtime-example.zh-CN.md)
 - [Custom Agent Runner 中文指南](docs/guides/custom-agent-runner-integration.zh-CN.md)
 - [Integrations](docs/integrations/README.md)：runtime、host、协作和外部系统 adapter，
   包括 worker bridge 与 Lark。

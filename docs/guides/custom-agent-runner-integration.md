@@ -8,6 +8,12 @@ You do not need to replace that runtime or move domain orchestration into
 LoopX. Keep your runner, and use LoopX as the durable control-plane contract
 between turns.
 
+Want the shortest public contract first? Start with the
+[minimal custom runtime example](minimal-custom-runtime-example.md) and run
+`python3 examples/custom-runtime-minimal-cli-turn-smoke.py`. The advanced typed
+Turn path is separate:
+`python3 examples/loopx-turn-fake-host-walkthrough-smoke.py`.
+
 The shortest useful mental model has three pieces:
 
 | Piece | Owns | Does not own |
