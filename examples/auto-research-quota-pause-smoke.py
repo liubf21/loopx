@@ -13,9 +13,14 @@ semantics without needing a real quota budget change.
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.auto_research.worker_runtime import (
     run_auto_research_worker_turn,
