@@ -1192,6 +1192,77 @@ def test_doctor_requires_live_control_message_and_pin(tmp_path: Path) -> None:
     _assert_public_packet(payload)
 
 
+def test_relative_kanban_path_resolves_from_source_registry_across_worktrees(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    caller = tmp_path / "caller"
+    registry_path = source / ".loopx" / "registry.json"
+    binding_path = source / ".loopx" / "goal-channel.json"
+    kanban_path = source / ".loopx" / "lark-kanban.json"
+    binding_path.parent.mkdir(parents=True)
+    caller.mkdir()
+    save_lark_kanban_board_config(
+        kanban_path,
+        base_token="base_public_fixture",
+        table_id="tbl_public_fixture",
+    )
+    _write_binding(binding_path, kanban_path)
+    binding = read_goal_channel_binding(binding_path)
+    binding["bindings"][GOAL_ID]["kanban"]["config_path"] = ".loopx/lark-kanban.json"
+    write_goal_channel_binding(binding_path, binding)
+    observed: dict[str, object] = {}
+
+    def sync_todos(
+        config: object,
+        *,
+        config_path: Path,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        observed["config"] = config
+        observed["config_path"] = config_path
+        return {
+            "ok": True,
+            "todo_count": 0,
+            "successful_write_count": 0,
+            "external_write_performed": False,
+            "records": [],
+        }
+
+    monkeypatch.setattr(
+        "loopx.extensions.lark.goal_channel_runtime.sync_loopx_todos_to_lark_kanban",
+        sync_todos,
+    )
+    monkeypatch.chdir(caller)
+    relative_registry_path = Path("..") / registry_path.relative_to(tmp_path)
+
+    doctor = doctor_lark_goal_channel(
+        registry=_registry(source),
+        registry_path=relative_registry_path,
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        runner=_fake_runner([]),
+    )
+    sync = sync_lark_goal_channel(
+        registry=_registry(source),
+        registry_path=relative_registry_path,
+        goal_id=GOAL_ID,
+        binding_path=binding_path,
+        execute=False,
+        runner=_fake_runner([]),
+    )
+
+    assert doctor["blocker"] == "readback_mismatch"
+    assert doctor["details"]["kanban_ready"] is True
+    assert sync["ok"] is True
+    assert sync["status"] == "preview_ready"
+    assert sync["details"]["kanban_ready"] is True
+    assert observed["config_path"] == kanban_path
+    _assert_public_packet(doctor)
+    _assert_public_packet(sync)
+
+
 def test_partial_binding_blocks_doctor_sync_and_notify(tmp_path: Path) -> None:
     registry_path = tmp_path / ".loopx" / "registry.json"
     binding_path = tmp_path / ".loopx" / "goal-channel.json"
