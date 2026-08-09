@@ -58,6 +58,26 @@ def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
 
+def _resolve_kanban_config_path(
+    *,
+    registry_path: Path,
+    configured_path: Any,
+) -> Path:
+    raw_path = str(configured_path or "").strip()
+    if not raw_path:
+        return default_lark_kanban_config_path(registry_path).expanduser().resolve()
+    path = Path(raw_path).expanduser()
+    if path.is_absolute():
+        return path
+    source_registry = registry_path.expanduser().resolve()
+    project_root = (
+        source_registry.parent.parent
+        if source_registry.parent.name == ".loopx"
+        else source_registry.parent
+    )
+    return project_root / path
+
+
 def configure_lark_goal_channel_automation(
     *,
     registry: Mapping[str, Any],
@@ -286,9 +306,10 @@ def doctor_lark_goal_channel(
             message_id=pinned_message_id,
         )
     )
-    kanban_path = Path(
-        str(kanban.get("config_path") or default_lark_kanban_config_path(registry_path))
-    ).expanduser()
+    kanban_path = _resolve_kanban_config_path(
+        registry_path=registry_path,
+        configured_path=kanban.get("config_path"),
+    )
     board_payload = read_lark_kanban_local_config(kanban_path)
     board_config = lark_kanban_config_from_payload(board_payload)
     kanban_result = lark_kanban_doctor(
@@ -369,7 +390,10 @@ def sync_lark_goal_channel(
             public_summary="complete Goal Channel setup before syncing it",
         )
     kanban = _mapping(binding.get("kanban"))
-    kanban_path = Path(str(kanban.get("config_path") or "")).expanduser()
+    kanban_path = _resolve_kanban_config_path(
+        registry_path=registry_path,
+        configured_path=kanban.get("config_path"),
+    )
     board_payload = read_lark_kanban_local_config(kanban_path)
     config = lark_kanban_config_from_payload(board_payload)
     if config is None:
