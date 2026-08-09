@@ -115,7 +115,7 @@ def main() -> int:
         assert 'name: "loopx"' in codex_skill_text
         assert "surface=codex-skills" in codex_skill_text
         assert "LoopX `/loopx`" in codex_skill_text
-        assert "start-goal --guided --project . --goal-text" in codex_skill_text
+        assert "start-goal --guided --project . --slash-command-arguments=" in codex_skill_text
         codex_metadata = codex_home / "skills" / "loopx" / "agents" / "openai.yaml"
         codex_metadata_text = codex_metadata.read_text(encoding="utf-8")
         assert 'display_name: "LoopX"' in codex_metadata_text
