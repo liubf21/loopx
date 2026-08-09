@@ -519,8 +519,9 @@ def summarize_user_todos_for_quota(
         "active_next_action_executable_items": lanes.active_next_action_executable_items,
         "backlog_items": lanes.display_open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": lanes.executable_items[:TODO_BACKLOG_ITEM_LIMIT],
-        "recent_completed_advancement_items": recent_completed_advancement_items,
     }
+    if recent_completed_advancement_items:
+        summary["recent_completed_advancement_items"] = recent_completed_advancement_items
     if blocker_items:
         summary["blocker_open_count"] = len(blocker_items)
     if current_agent_blocker_items:
