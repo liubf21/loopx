@@ -17,10 +17,12 @@ from ..goals.path_resolution import (
     same_path,
 )
 from ..runtime.time import parse_timestamp
+from ..work_items.project_asset import build_project_asset
 from ..work_items.attention_item import attention_item
 from ..work_items.attention_queue import (
     merge_global_registry_findings as _merge_global_registry_findings,
 )
+from .dreaming_projection import compact_dreaming_lane_badge
 
 
 SOURCE_REGISTRY_SHADOW_FINDINGS = {
@@ -36,13 +38,20 @@ def merge_global_registry_attention_findings(
     findings: list[Any],
     goal_id_filter: str | None,
 ) -> None:
+    def _registry_attention_item(**kwargs: Any) -> dict[str, Any]:
+        return attention_item(
+            **kwargs,
+            build_project_asset=build_project_asset,
+            compact_dreaming_lane_badge=compact_dreaming_lane_badge,
+        )
+
     _merge_global_registry_findings(
         health_items=health_items,
         history_items=history_items,
         findings=findings,
         goal_id_filter=goal_id_filter,
         source_registry_shadow_findings=SOURCE_REGISTRY_SHADOW_FINDINGS,
-        attention_item=attention_item,
+        attention_item=_registry_attention_item,
         attach_global_registry_shadow_finding=attach_global_registry_shadow_finding,
     )
 
