@@ -17,6 +17,7 @@ Common environment variables:
   LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
   LOOPX_INSTALL_SKILL=0            Skip packaged workflow skills.
   LOOPX_SKILLS_DIR=/path           Install workflow skills into this host-native root.
+  LOOPX_SKILL_DEDUPE_OTHER_ROOT=1  Retire managed LoopX skill copies from the alternate well-known root.
   LOOPX_ENTRY_HOST_SURFACE=...     Bind generated $loopx to an exact host (ark-managed-agent).
   LOOPX_INSTALL_SLASH_COMMANDS=0   Skip Codex and Claude command skills.
   LOOPX_INSTALL_OPENCODE=0         Install the OpenCode goal bridge surface.
@@ -362,6 +363,7 @@ from pathlib import Path
 
 from loopx.skill_install_readback import (
     SKILL_INSTALL_READBACK_FILENAME,
+    retire_duplicate_managed_skills,
     write_skill_install_readback,
 )
 from loopx.slash_command_install import materialize_loopx_entry_skill
@@ -394,6 +396,12 @@ write_skill_install_readback(
     source_root=Path(os.environ["LOOPX_SKILL_INSTALL_SOURCE_ROOT"]),
     installed_at=os.environ["LOOPX_SKILL_INSTALLED_AT"],
 )
+if os.environ.get("LOOPX_SKILL_DEDUPE_OTHER_ROOT") == "1":
+    dedupe = retire_duplicate_managed_skills(
+        skills_dir=Path(os.environ["LOOPX_SKILL_INSTALL_DIR"]),
+        execute=True,
+    )
+    print(f"skill dedupe: {dedupe['reason']}")
 print(status)
 PY
     )"; then
