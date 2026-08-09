@@ -26,6 +26,7 @@ from .effect_program import (
     SettlementStepKind,
     build_codex_app_settlement_plan,
     settlement_binding_args,
+    settlement_result_payload,
     settlement_step_command,
 )
 from .heartbeat_receipt import find_heartbeat_receipt
@@ -313,11 +314,3 @@ def require_settlement_spend(
             ),
         ),
     )
-
-
-def settlement_result_payload(result: SettlementResult[Any]) -> dict[str, Any]:
-    return {
-        "ok": result.failure is None,
-        "receipts": [receipt.as_dict() for receipt in result.receipts],
-        "failure": result.failure.as_dict() if result.failure else None,
-    }

@@ -23,6 +23,8 @@ class SettlementFailureKind(StrEnum):
     RECEIPT_MISSING = "receipt_missing"
     IDENTITY_MISMATCH = "identity_mismatch"
     WRITEBACK_MISSING = "writeback_missing"
+    WRITEBACK_REJECTED = "writeback_rejected"
+    QUOTA_SPEND_REJECTED = "quota_spend_rejected"
     CANCELLED = "cancelled"
     PERMISSION_DENIED = "permission_denied"
     BUDGET_REJECTED = "budget_rejected"
@@ -288,3 +290,11 @@ def settlement_binding_args(plan: Mapping[str, Any] | None) -> str:
         f" --todo-id {shlex.quote(todo_id)}"
         f" --turn-instance-id {_quoted_turn_ref(turn_instance_id)}"
     )
+
+
+def settlement_result_payload(result: SettlementResult[Any]) -> dict[str, Any]:
+    return {
+        "ok": result.failure is None,
+        "receipts": [receipt.as_dict() for receipt in result.receipts],
+        "failure": result.failure.as_dict() if result.failure else None,
+    }
