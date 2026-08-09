@@ -595,6 +595,8 @@ def test_recent_completed_advancement_projection_is_agent_scoped() -> None:
         "todo_current_completed_7",
         "todo_current_completed_6",
         "todo_current_completed_5",
+        "todo_current_completed_4",
+        "todo_current_completed_3",
     ]
     gaps = acceptance_gaps_from_todo_completion_checkpoint(
         _outcome_vision(
