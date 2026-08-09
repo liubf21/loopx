@@ -69,6 +69,13 @@ TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
 LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
+VISION_FRONTIER_TODO_DELTA_ACTIONS = {
+    "activate",
+    "create",
+    "reopen",
+    "resume",
+    "retain",
+}
 
 
 def safe_non_negative_int(value: Any) -> int:
@@ -497,6 +504,16 @@ def acceptance_gaps_from_agent_vision(
     }
     if acceptance:
         gap["acceptance_summary"] = acceptance
+    vision_todo_ids = [
+        todo_id
+        for value in (agent_vision.get("todo_delta") or [])
+        if isinstance(value, str)
+        and (parts := value.strip().partition(":"))[1]
+        and parts[0].strip().lower() in VISION_FRONTIER_TODO_DELTA_ACTIONS
+        and (todo_id := _compact_projection_text(parts[2], limit=120))
+    ]
+    if vision_todo_ids:
+        gap["vision_todo_ids"] = list(dict.fromkeys(vision_todo_ids))
     advancement_policy = _compact_projection_text(
         patch.get("advancement_policy"),
         limit=32,
@@ -1292,6 +1309,16 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     "agent_id": agent_id,
                     "acceptance_summary": gap.get("acceptance_summary"),
                     "advancement_policy": gap.get("advancement_policy"),
+                    **{
+                        key: gap.get(key)
+                        for key in (
+                            "completed_todo_id",
+                            "completed_todo_count",
+                            "completed_todo_threshold",
+                            "completed_todo_ids",
+                        )
+                        if gap.get(key) is not None
+                    },
                 }
                 for gap in compact_acceptance_gaps[:3]
             ],

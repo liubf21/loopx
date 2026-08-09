@@ -123,7 +123,7 @@ QUOTA_PAYLOAD_LANE_LIMITS = {
     "current_agent_claimed_advancement_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
     "current_agent_claimed_monitor_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
     "current_agent_blocker_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
-    "recent_completed_advancement_items": 5,
+    "recent_completed_advancement_items": 3,
     "claimed_by_others_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "other_agent_scoped_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "other_agent_bound_user_action_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
