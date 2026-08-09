@@ -18,18 +18,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from loopx.cli import main as loopx_cli_main  # noqa: E402
-from loopx.control_plane.testing.canary_harness import (  # noqa: E402
-    runtime_root_from_registry,
-    write_fixture_registry,
-)
-from loopx.status import parse_active_state_todos  # noqa: E402
-
 
 GOAL_ID = "custom-runtime-min"
 AGENT_ID = "custom-host-agent"
@@ -56,6 +47,9 @@ REENTRY_INSTRUCTION = """
 
 def run_cli(registry_path: Path, *args: str) -> dict[str, Any]:
     """Drive the shipped LoopX CLI entrypoint (not a reimplemented client)."""
+    from loopx.cli import main as loopx_cli_main
+    from loopx.control_plane.testing.canary_harness import runtime_root_from_registry
+
     runtime_root = runtime_root_from_registry(registry_path)
     argv = [
         "--registry",
@@ -80,6 +74,8 @@ def run_cli(registry_path: Path, *args: str) -> dict[str, Any]:
 
 
 def write_project_fixture(root: Path) -> tuple[Path, Path, Path]:
+    from loopx.control_plane.testing.canary_harness import write_fixture_registry
+
     project = root / "project"
     runtime = root / "runtime"
     project.mkdir()
@@ -111,6 +107,8 @@ def write_project_fixture(root: Path) -> tuple[Path, Path, Path]:
 
 
 def assert_mainstream_cli_turn() -> None:
+    from loopx.status import parse_active_state_todos
+
     assert WAKE_TRIGGER, "host must own a wake trigger"
     assert "quota should-run" in REENTRY_INSTRUCTION
     assert "spend-slot" in REENTRY_INSTRUCTION
