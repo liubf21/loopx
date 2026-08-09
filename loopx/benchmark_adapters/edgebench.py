@@ -38,6 +38,10 @@ def _optional_number(value: Any) -> float | None:
 def _optional_non_negative_int(value: Any) -> int | None:
     if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, float) and (
+        not math.isfinite(value) or not value.is_integer()
+    ):
+        return None
     try:
         number = int(value)
     except (TypeError, ValueError):
@@ -240,12 +244,27 @@ def reduce_edgebench_final_result(
         if isinstance(best_round, str) and best_round.strip()
         else None
     )
+    invalid_submission_count = any(
+        raw is not None and parsed is None
+        for raw, parsed in (
+            (result.get("total_rounds"), total_rounds),
+            (result.get("agent_submissions"), agent_submissions),
+            (result.get("auto_submissions"), auto_submissions),
+        )
+    )
+    invalid_resume_count = (
+        result.get("resume_count") is not None and resume_count is None
+    )
 
     blockers: list[str] = []
     if best_score is None and best_pass_rate is None:
         blockers.append("edgebench_best_metric_missing")
     if best_pass_rate is not None and not 0.0 <= best_pass_rate <= 1.0:
         blockers.append("edgebench_pass_rate_out_of_range")
+    if invalid_submission_count:
+        blockers.append("edgebench_submission_count_invalid")
+    if invalid_resume_count:
+        blockers.append("edgebench_resume_count_invalid")
     if total_rounds is None or total_rounds <= 0:
         blockers.append("edgebench_submission_rounds_missing")
     elif (

@@ -178,6 +178,39 @@ def test_contracts() -> None:
         assert invalid["first_blocker"] == "edgebench_pass_rate_out_of_range"
         assert_boundary(invalid)
 
+    for field in ("total_rounds", "agent_submissions", "auto_submissions"):
+        invalid = reduce_edgebench_final_result(
+            task_id="ad_placement_optimization",
+            run_id=f"edgebench-smoke-fractional-{field}",
+            result={
+                "best_pass_rate": 0.5,
+                "total_rounds": 1,
+                "agent_submissions": 1,
+                "auto_submissions": 0,
+                "runtime_seconds": 60.0,
+                field: 1.5,
+            },
+        )
+        assert invalid["countable"] is False
+        assert invalid["first_blocker"] == "edgebench_submission_count_invalid"
+        assert_boundary(invalid)
+
+    invalid_resume = reduce_edgebench_final_result(
+        task_id="ad_placement_optimization",
+        run_id="edgebench-smoke-fractional-resume",
+        result={
+            "best_pass_rate": 0.5,
+            "total_rounds": 1,
+            "agent_submissions": 1,
+            "auto_submissions": 0,
+            "runtime_seconds": 60.0,
+            "resume_count": 1.5,
+        },
+    )
+    assert invalid_resume["countable"] is False
+    assert invalid_resume["first_blocker"] == "edgebench_resume_count_invalid"
+    assert_boundary(invalid_resume)
+
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
