@@ -5,11 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from loopx.control_plane.quota.settlement import (
+from loopx.control_plane import effect_program as core_effect_program
+from loopx.control_plane.effect_program import (
     SettlementFailureKind,
     SettlementReceipt,
     SettlementResult,
     SettlementStepKind,
+)
+from loopx.control_plane.quota import effect_program as quota_effect_program
+from loopx.control_plane.quota.settlement import (
     build_codex_app_settlement_plan,
     resolve_heartbeat_settlement_identity,
     settlement_step_command,
@@ -36,6 +40,12 @@ def _receipt(step: SettlementStepKind, marker: str) -> SettlementReceipt:
         effect_id="effect-1",
         source_ref=marker,
     )
+
+
+def test_quota_reexports_the_core_settlement_algebra() -> None:
+    assert quota_effect_program.SettlementIdentity is core_effect_program.SettlementIdentity
+    assert quota_effect_program.SettlementPlan is core_effect_program.SettlementPlan
+    assert quota_effect_program.SettlementResult is core_effect_program.SettlementResult
 
 
 def _append_guard_receipt(
