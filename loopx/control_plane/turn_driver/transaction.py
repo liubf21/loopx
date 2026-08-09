@@ -8,6 +8,12 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any
 
+from ..effect_program import (
+    SettlementIdentity,
+    SettlementPlan,
+    SettlementStep,
+    SettlementStepKind,
+)
 from ...turn_identity import normalize_turn_instance_id
 
 
@@ -148,6 +154,39 @@ def build_loopx_turn_transaction_plan(
     if normalized_instance_id is not None:
         identity["turn_instance_id"] = normalized_instance_id
     turn_key = _canonical_hash(identity)
+    settlement_identity = SettlementIdentity(
+        goal_id=str(lineage.get("goal_id") or ""),
+        agent_id=str(lineage.get("agent_id") or ""),
+        todo_id=str(lineage.get("todo_id") or ""),
+        turn_instance_id=normalized_instance_id or turn_key,
+    )
+    effect_ref = "$.identity.effect_id"
+    settlement_plan = SettlementPlan(
+        identity=settlement_identity,
+        steps=(
+            SettlementStep(
+                kind=SettlementStepKind.VALIDATION,
+                owner="turn_driver",
+                precondition="typed host result passed independent task validation",
+                idempotency_key_ref=effect_ref,
+                expected_receipt="validation_receipt",
+            ),
+            SettlementStep(
+                kind=SettlementStepKind.DURABLE_WRITEBACK,
+                owner="turn_driver_callback_adapter",
+                precondition="validation receipt exists",
+                idempotency_key_ref=effect_ref,
+                expected_receipt="durable_writeback_receipt",
+            ),
+            SettlementStep(
+                kind=SettlementStepKind.QUOTA_SPEND,
+                owner="turn_driver_callback_adapter",
+                precondition="matching durable writeback receipt exists",
+                idempotency_key_ref=effect_ref,
+                expected_receipt="quota_spend_receipt",
+            ),
+        ),
+    )
     plan = {
         "schema_version": LOOPX_TURN_TRANSACTION_PLAN_SCHEMA_VERSION,
         "status": "planned" if planned else "not_applicable",
@@ -160,6 +199,8 @@ def build_loopx_turn_transaction_plan(
             "next_phase": TRANSACTION_PHASES[0] if planned else None,
         },
     }
+    if planned:
+        plan["settlement_plan"] = settlement_plan.as_dict()
     if normalized_instance_id is not None:
         plan["turn_instance_id"] = normalized_instance_id
     return plan

@@ -175,6 +175,8 @@ A => F[C]
 
 runtime 合同有两个一等调用方。默认 Codex App 路径通过跨 agent/host 边界的 data-encoded CLI effects 结算普通 LoopX turn。隔离 turn driver 通过 in-process callbacks 执行同一 settlement 形状。它们应共享 plan、receipt、effect identity 和 failure algebra，但不需要共享同一个 executor，因为它们的 authority boundary 不同。在共享执行所有权被证明之前，通用 `Kleisli`、middleware stack、executor registry 或通用 `Effect` monad 仍为时过早。
 
+共享 settlement algebra 由核心 `effect_program` 模块拥有。Quota 只提供 Codex App/CLI plan builder 与兼容 re-export；各 runtime adapter 组合核心 algebra，而不是继承领域 program，也不会把自己的执行权上移到通用基类。
+
 ### Handler 是数据，不是 Callable
 
 Runtime middleware 接收一个 `handler` callable，并决定是否调用、调用一次、重试、fallback 或短路。LoopX 无法跨 context 和 session 边界接收 model 或 host callable。相反，interpreter 在 packet 中返回 `next_effect`：CLI actions、scheduler ACK 和 failure hint。host 或下一个自动化 turn 调用这个 data-encoded handler。

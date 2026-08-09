@@ -362,6 +362,10 @@ def handle_turn_command(
                 boundary = payload.get("boundary")
                 if isinstance(boundary, dict):
                     boundary.pop("opaque_session_handle_omitted", None)
+            else:
+                transaction = payload.get("transaction")
+                if isinstance(transaction, dict):
+                    transaction.pop("settlement_plan", None)
         elif args.turn_command == "run-once":
             if args.resume_turn_key:
                 if args.turn_instance_id:

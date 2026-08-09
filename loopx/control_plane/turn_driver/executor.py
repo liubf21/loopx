@@ -13,10 +13,15 @@ from typing import Any
 
 from ...authority import validate_public_safe_text
 from ...file_lock import exclusive_file_lock
-from ..effect_program import interpret_turn_result_packet
+from ..effect_program import (
+    SettlementStepKind,
+    interpret_turn_result_packet,
+    settlement_result_payload,
+)
 from ..goals.goal_vision import normalize_goal_vision_packet
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
+from .settlement import execute_turn_driver_settlement
 from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     TRANSACTION_PHASES,
@@ -729,6 +734,11 @@ def _execution_payload(
         "scheduler": journal.get("scheduler"),
         "effects": dict(effects),
         "quota_slot_spend_count": 1 if quota_spent else 0,
+        **(
+            {"settlement_result": journal["settlement_result"]}
+            if isinstance(journal.get("settlement_result"), Mapping)
+            else {}
+        ),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
     }
 
@@ -967,7 +977,7 @@ def _completion_writeback_outcome(
     return outcome
 
 
-def _transaction_closeout_stage(
+def _typed_settlement_stage(
     plan: Mapping[str, Any],
     result: dict[str, Any],
     *,
@@ -980,104 +990,111 @@ def _transaction_closeout_stage(
     spend: Spend,
     scheduler: Scheduler,
 ) -> dict[str, Any]:
-    if "durable_writeback" not in completed_phases:
+    transaction_plan = (
+        plan.get("transaction")
+        if isinstance(plan.get("transaction"), Mapping)
+        else {}
+    )
+
+    def writeback_effect() -> Mapping[str, Any]:
         if result.get("result_kind") == LoopXTurnResultKind.VALIDATED_COMPLETION.value:
             if completion_writeback is None:
                 raise ValueError("validated_completion requires a todo lifecycle adapter")
-            writeback_payload = completion_writeback(result)
+            callback_payload = completion_writeback(result)
             completion_outcome = _completion_writeback_outcome(
-                writeback_payload,
+                callback_payload,
                 plan=plan,
             )
             if completion_outcome is None:
-                writeback_payload = {
+                return {
                     "ok": False,
                     "appended": False,
                     "reason": "todo lifecycle adapter returned an invalid completion outcome",
                 }
-            else:
-                writeback_payload = {
-                    **writeback_payload,
-                    "completion": completion_outcome,
-                }
-        else:
-            writeback_payload = writeback(result)
-        if not writeback_payload.get("ok") or not writeback_payload.get("appended"):
-            failure = _host_failure(
-                plan,
-                kind=LoopXTurnResultKind.WRITEBACK_FAILED,
-                completed_phases=completed_phases,
-                failed_phase="durable_writeback",
-                reason=str(
-                    writeback_payload.get("error")
-                    or writeback_payload.get("reason")
-                    or "writeback failed"
-                ),
-            )
-            journal.update(
-                status="failed",
-                reason=failure["reason"],
-                receipt=failure["receipt"],
-            )
-            _write_journal(journal_path, journal)
-            return _execution_payload(
-                plan,
-                journal,
-                execute=True,
-                replayed=False,
-                effects=effects,
-            )
-        effects["state_written"] = True
-        completed_phases = list(TRANSACTION_PHASES[:4])
-        journal.update(
-            completed_phases=completed_phases,
-            writeback={
-                **_compact_callback(writeback_payload),
+            return {
+                **callback_payload,
+                "completion": completion_outcome,
+            }
+        return writeback(result)
+
+    def checkpoint(
+        step_kind: SettlementStepKind,
+        payload: Mapping[str, Any],
+        phases: tuple[str, ...],
+    ) -> None:
+        if step_kind is SettlementStepKind.DURABLE_WRITEBACK:
+            effects["state_written"] = True
+            journal["writeback"] = {
+                **_compact_callback(payload),
                 **(
-                    {"completion": writeback_payload["completion"]}
-                    if isinstance(writeback_payload.get("completion"), dict)
+                    {"completion": payload["completion"]}
+                    if isinstance(payload.get("completion"), dict)
                     else {}
                 ),
-            },
-        )
+            }
+        elif step_kind is SettlementStepKind.QUOTA_SPEND:
+            effects["quota_spent"] = True
+            journal["quota_spend"] = _compact_callback(payload)
+        journal["completed_phases"] = list(phases)
         _write_journal(journal_path, journal)
 
-    if "quota_spend" not in completed_phases:
-        spend_payload = spend()
-        if not spend_payload.get("ok") or not spend_payload.get("appended"):
-            failure = _host_failure(
-                plan,
-                kind=LoopXTurnResultKind.QUOTA_SPEND_FAILED,
-                completed_phases=completed_phases,
-                failed_phase="quota_spend",
-                reason=str(spend_payload.get("reason") or "quota spend failed"),
-            )
-            journal.update(
-                status="failed",
-                reason=failure["reason"],
-                receipt=failure["receipt"],
-            )
-            _write_journal(journal_path, journal)
-            return _execution_payload(
-                plan,
-                journal,
-                execute=True,
-                replayed=False,
-                effects=effects,
-            )
-        effects["quota_spent"] = True
-        completed_phases = list(TRANSACTION_PHASES[:5])
-        journal.update(
+    settlement_result = execute_turn_driver_settlement(
+        transaction_plan,
+        transaction_phases=TRANSACTION_PHASES,
+        completed_phases=completed_phases,
+        writeback_payload=(
+            journal.get("writeback")
+            if isinstance(journal.get("writeback"), Mapping)
+            else None
+        ),
+        quota_spend_payload=(
+            journal.get("quota_spend")
+            if isinstance(journal.get("quota_spend"), Mapping)
+            else None
+        ),
+        writeback=writeback_effect,
+        spend=spend,
+        checkpoint=checkpoint,
+    )
+    journal["settlement_result"] = settlement_result_payload(settlement_result)
+    if settlement_result.failure is not None:
+        failure_step = settlement_result.failure.step_kind
+        result_kind = (
+            LoopXTurnResultKind.VALIDATION_FAILED
+            if failure_step is SettlementStepKind.VALIDATION
+            else LoopXTurnResultKind.WRITEBACK_FAILED
+            if failure_step is SettlementStepKind.DURABLE_WRITEBACK
+            else LoopXTurnResultKind.QUOTA_SPEND_FAILED
+        )
+        completed_phases = list(journal.get("completed_phases") or completed_phases)
+        failure = _host_failure(
+            plan,
+            kind=result_kind,
             completed_phases=completed_phases,
-            quota_spend=_compact_callback(spend_payload),
+            failed_phase=failure_step.value,
+            reason=settlement_result.failure.reason,
+        )
+        journal.update(
+            status="failed",
+            result_kind=result_kind.value,
+            reason=failure["reason"],
+            receipt=failure["receipt"],
         )
         _write_journal(journal_path, journal)
-    else:
-        spend_payload = (
-            dict(journal["quota_spend"])
-            if isinstance(journal.get("quota_spend"), dict)
-            else {"ok": True, "appended": True}
+        return _execution_payload(
+            plan,
+            journal,
+            execute=True,
+            replayed=False,
+            effects=effects,
         )
+
+    settlement_state = settlement_result.value
+    if settlement_state is None or settlement_state.quota_spend is None:
+        raise ValueError("typed Turn settlement completed without a quota spend receipt")
+    completed_phases = list(settlement_state.completed_phases)
+    spend_payload = dict(settlement_state.quota_spend)
+    _write_journal(journal_path, journal)
 
     scheduler_payload = scheduler(spend_payload)
     journal["scheduler"] = scheduler_payload
@@ -1240,7 +1257,7 @@ def run_loopx_turn_once(
         if terminal is not None:
             return terminal
 
-        return _transaction_closeout_stage(
+        return _typed_settlement_stage(
             plan,
             result,
             completed_phases=completed_phases,
