@@ -16,6 +16,7 @@ from ...work_items.autonomous_replan_ack import (
 )
 from ...work_items.autonomous_replan_obligation import (
     AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+    MONITOR_NO_CHANGE_STREAK_THRESHOLD,
     build_autonomous_replan_obligation_payload,
 )
 from ...work_items.repair_delta import repair_delta_kinds_have_frontier_delta
@@ -838,7 +839,7 @@ def _monitor_no_change_streak_trigger(
         if agent_id and claimed_by != agent_id:
             continue
         no_change_count = safe_non_negative_int(item.get("consecutive_no_change"))
-        if no_change_count < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+        if no_change_count < MONITOR_NO_CHANGE_STREAK_THRESHOLD:
             continue
         target_key = str(
             item.get("target_key") or item.get("todo_id") or "monitor"
@@ -861,7 +862,7 @@ def _monitor_no_change_streak_trigger(
         "todo_id": monitor.get("todo_id"),
         "monitor_target_id": target_key,
         "run_count": no_change_count,
-        "threshold": AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        "threshold": MONITOR_NO_CHANGE_STREAK_THRESHOLD,
         "agent_id": agent_id,
     }
 
@@ -1403,7 +1404,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             agent_id=agent_id,
             include_agent_id=True,
-            stall_threshold=AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+            stall_threshold=MONITOR_NO_CHANGE_STREAK_THRESHOLD,
             trigger_count=1,
             triggers=[monitor_no_change_trigger],
             guidance_actions=[
