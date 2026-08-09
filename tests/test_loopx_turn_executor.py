@@ -17,6 +17,7 @@ from loopx.control_plane.turn_driver.executor import (
     BuiltInHostError,
     _task_validation_stage,
 )
+from loopx.control_plane.turn_driver.settlement import execute_turn_driver_settlement
 from loopx.control_plane.turn_driver.transaction import TRANSACTION_PHASES
 
 
@@ -115,6 +116,33 @@ def test_task_validation_stage_reads_result_kind_through_effect_turn(
     assert journal["status"] == "stopped"
     assert payload is not None
     assert payload["status"] == "stopped"
+
+
+def test_typed_settlement_fails_closed_when_journal_receipt_payload_is_missing() -> None:
+    transaction = _plan()["transaction"]
+    assert isinstance(transaction, dict)
+    calls = {"writeback": 0, "spend": 0, "checkpoint": 0}
+
+    result = execute_turn_driver_settlement(
+        transaction,
+        transaction_phases=TRANSACTION_PHASES,
+        completed_phases=TRANSACTION_PHASES[:4],
+        writeback_payload=None,
+        quota_spend_payload=None,
+        writeback=lambda: calls.__setitem__("writeback", calls["writeback"] + 1)
+        or {"ok": True, "appended": True},
+        spend=lambda: calls.__setitem__("spend", calls["spend"] + 1)
+        or {"ok": True, "appended": True},
+        checkpoint=lambda _kind, _payload, _phases: calls.__setitem__(
+            "checkpoint", calls["checkpoint"] + 1
+        ),
+    )
+
+    assert result.failure is not None
+    assert result.failure.kind.value == "receipt_missing"
+    assert result.failure.step_kind.value == "durable_writeback"
+    assert [receipt.step_kind.value for receipt in result.receipts] == ["validation"]
+    assert calls == {"writeback": 0, "spend": 0, "checkpoint": 0}
 
 
 def _host_argv(result_path: Path, count_path: Path) -> list[str]:
@@ -289,6 +317,10 @@ def test_run_once_commits_once_and_replays_without_duplicate_effects(tmp_path: P
     assert first["ok"] is True
     assert first["status"] == "committed"
     assert first["receipt"]["status"] == "committed"
+    assert [
+        receipt["step_kind"]
+        for receipt in first["settlement_result"]["receipts"]
+    ] == ["validation", "durable_writeback", "quota_spend"]
     assert first["effects"]["host_invoked"] is True
     assert first["effects"]["state_written"] is True
     assert first["effects"]["quota_spent"] is True
@@ -425,8 +457,10 @@ def test_invalid_completion_outcome_fails_closed_without_spending(
         or {"completed": True, "acknowledged": True},
     )
 
+    assert payload["result_kind"] == "writeback_failed"
     assert payload["receipt"]["result_kind"] == "writeback_failed"
     assert payload["receipt"]["failed_phase"] == "durable_writeback"
+    assert payload["settlement_result"]["failure"]["kind"] == "writeback_rejected"
     assert calls == {"completion": 1, "spend": 0, "scheduler": 0}
 
 
@@ -660,13 +694,18 @@ def test_cancellation_during_scheduler_preserves_settlement_and_resumes(
     with pytest.raises(KeyboardInterrupt):
         run_loopx_turn_once(plan, scheduler=cancelled_scheduler, **common)
 
-    assert _journal(tmp_path / "runtime")["completed_phases"] == [
+    interrupted_journal = _journal(tmp_path / "runtime")
+    assert interrupted_journal["completed_phases"] == [
         "host_execute",
         "typed_result",
         "validation",
         "durable_writeback",
         "quota_spend",
     ]
+    assert [
+        receipt["step_kind"]
+        for receipt in interrupted_journal["settlement_result"]["receipts"]
+    ] == ["validation", "durable_writeback", "quota_spend"]
 
     def healthy_scheduler(_spend: dict[str, object]) -> dict[str, object]:
         calls["scheduler"] += 1
@@ -802,11 +841,14 @@ def test_budget_rejection_is_typed_and_retry_does_not_repeat_writeback(
     }
     failed = run_loopx_turn_once(plan, spend=reject_budget, **common)
 
-    # Preserve the current M7.1 characterization. M7.2 must replace this split
-    # with one canonical typed settlement result rather than changing it here.
-    assert failed["result_kind"] == "validated_progress"
+    assert failed["result_kind"] == "quota_spend_failed"
     assert failed["receipt"]["result_kind"] == "quota_spend_failed"
     assert failed["receipt"]["failed_phase"] == "quota_spend"
+    assert failed["settlement_result"]["failure"]["kind"] == "budget_rejected"
+    assert [
+        receipt["step_kind"]
+        for receipt in failed["settlement_result"]["receipts"]
+    ] == ["validation", "durable_writeback"]
     assert failed["effects"]["state_written"] is True
     assert failed["effects"]["quota_spent"] is False
 
