@@ -5,6 +5,7 @@ from typing import Any
 
 from ...agents.agent_scope import agent_scope_item_claimed_by
 from ...work_items.repair_delta import repair_delta_kinds_have_frontier_delta
+from ..goal_vision_policy import COMPLETED_TODO_CHAIN_REPLAN_THRESHOLD
 from ..goal_vision_state import goal_vision_state_is_closed
 
 VISION_OUTCOME_CHECKPOINT_REQUIRED_TRIGGER = "vision_outcome_checkpoint_required"
@@ -22,9 +23,6 @@ REPEAT_VISION_REPLAN_SATISFYING_DELTA_KINDS = (
     "runnable_todo_set",
     "successor_or_supersede",
 )
-COMPLETED_TODO_CHAIN_REPLAN_THRESHOLD = 5
-
-
 def _compact_text(value: Any, *, limit: int) -> str | None:
     text = " ".join(str(value or "").strip().split())
     return text[:limit] if text else None
