@@ -15,7 +15,6 @@ from ...work_items.autonomous_replan_ack import (
     autonomous_replan_ack_matches_frontier,
 )
 from ...work_items.autonomous_replan_obligation import (
-    AUTONOMOUS_REPLAN_STALL_THRESHOLD,
     MONITOR_NO_CHANGE_STREAK_THRESHOLD,
     build_autonomous_replan_obligation_payload,
 )
