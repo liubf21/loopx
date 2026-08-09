@@ -8,7 +8,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any
 
-from ..quota.effect_program import (
+from ..effect_program import (
     SettlementIdentity,
     SettlementPlan,
     SettlementStep,

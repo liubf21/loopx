@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..quota.effect_program import (
+from ..effect_program import (
     SettlementFailureKind,
     SettlementReceipt,
     SettlementResult,

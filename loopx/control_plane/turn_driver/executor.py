@@ -13,12 +13,12 @@ from typing import Any
 
 from ...authority import validate_public_safe_text
 from ...file_lock import exclusive_file_lock
-from ..effect_program import interpret_turn_result_packet
-from ..goals.goal_vision import normalize_goal_vision_packet
-from ..quota.effect_program import (
+from ..effect_program import (
     SettlementStepKind,
+    interpret_turn_result_packet,
     settlement_result_payload,
 )
+from ..goals.goal_vision import normalize_goal_vision_packet
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
 from .settlement import execute_turn_driver_settlement
