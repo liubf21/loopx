@@ -6,7 +6,6 @@ from ...work_items.autonomous_replan_ack import (
     latest_autonomous_replan_ack_for_projection,
 )
 
-
 VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "patched",
     "retired_or_superseded",

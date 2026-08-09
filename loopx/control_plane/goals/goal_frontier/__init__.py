@@ -33,6 +33,8 @@ from .replan_rules import (
 )
 from .semantic_history import (
     latest_agent_vision_from_runs as latest_agent_vision_from_runs,
+)
+from .semantic_history import (
     latest_agent_vision_from_status_payload,
     latest_autonomous_replan_ack_from_status_payload,
     latest_missing_vision_checkpoint_from_status_payload,

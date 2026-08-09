@@ -6,10 +6,7 @@ from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
-from .control_plane.runtime.run_context_retention import (
-    goal_semantic_history_from_runs,
-    latest_runs_with_agent_context,
-)
+from .control_plane.runtime.run_context_retention import goal_semantic_history_from_runs, latest_runs_with_agent_context
 from .control_plane.runtime.run_index_duplicates import (
     classify_index_duplicate_records,
     duplicate_repair_decision,
