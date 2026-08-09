@@ -11,7 +11,6 @@ from loopx.control_plane.quota.slot_accounting import (
     build_quota_slot_spend_event,
 )
 
-
 GOAL_ID = "quota-slot-accounting-fixture"
 AGENT_A = "codex-monitor-a"
 AGENT_B = "codex-monitor-b"
@@ -520,6 +519,45 @@ def test_heartbeat_spend_rejects_mismatched_todo_binding(tmp_path: Path) -> None
 
     assert preview["ok"] is False
     assert "binding mismatch" in preview["reason"]
+
+
+def test_heartbeat_spend_reselection_strands_completed_todo_settlement(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    _write_run_index(
+        runtime,
+        [
+            _run(
+                "2026-01-01T00:01:00+00:00",
+                classification="validated_progress",
+                delivery_outcome="outcome_progress",
+            )
+        ],
+    )
+    before = _normal_run_before(todo_id="todo_new_successor")
+
+    preview = build_quota_slot_preview_for_decision(
+        _normal_run_status(runtime),
+        goal_id=GOAL_ID,
+        before=before,
+        after_decision=lambda _: {
+            **before,
+            "quota": {**before["quota"], "spent_slots": 1},
+        },
+        quota_status_builder=lambda goal, **_: goal["quota"],
+        self_repair_spend_actions=frozenset(),
+        agent_id=None,
+        todo_id="todo_completed_delivery",
+        source="heartbeat",
+    )
+
+    # M7.1 characterizes the current split-brain: an accountable delivery is
+    # present, but spend rebinds against a fresh selection instead of the
+    # original turn identity. M7.2 replaces this behavior.
+    assert preview["ok"] is False
+    assert "selected todo is todo_new_successor" in preview["reason"]
+    assert "--todo-id is todo_completed_delivery" in preview["reason"]
 
 
 def test_heartbeat_spend_records_matching_todo_binding(tmp_path: Path) -> None:

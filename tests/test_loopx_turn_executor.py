@@ -577,6 +577,251 @@ def test_run_once_resumes_after_writeback_without_duplicate_effects(tmp_path: Pa
     assert calls == {"writeback": 1, "spend": 1, "scheduler": 1}
 
 
+def test_cancellation_before_writeback_preserves_prefix_and_resumes(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def cancelled_writeback(_result: dict[str, object]) -> dict[str, object]:
+        calls["writeback"] += 1
+        raise KeyboardInterrupt
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "spend": lambda: calls.__setitem__("spend", calls["spend"] + 1)
+        or {"ok": True, "appended": True},
+        "scheduler": lambda _spend: {"completed": True, "acknowledged": True},
+    }
+    with pytest.raises(KeyboardInterrupt):
+        run_loopx_turn_once(plan, writeback=cancelled_writeback, **common)
+
+    assert _journal(tmp_path / "runtime")["completed_phases"] == [
+        "host_execute",
+        "typed_result",
+        "validation",
+    ]
+    recovered = run_loopx_turn_once(
+        plan,
+        writeback=lambda _result: calls.__setitem__(
+            "writeback", calls["writeback"] + 1
+        )
+        or {"ok": True, "appended": True},
+        **common,
+    )
+
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 1, "writeback": 2, "spend": 1}
+
+
+def test_cancellation_during_scheduler_preserves_settlement_and_resumes(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0, "scheduler": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def writeback(_result: dict[str, object]) -> dict[str, object]:
+        calls["writeback"] += 1
+        return {"ok": True, "appended": True}
+
+    def spend() -> dict[str, object]:
+        calls["spend"] += 1
+        return {"ok": True, "appended": True}
+
+    def cancelled_scheduler(_spend: dict[str, object]) -> dict[str, object]:
+        calls["scheduler"] += 1
+        raise KeyboardInterrupt
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": writeback,
+        "spend": spend,
+    }
+    with pytest.raises(KeyboardInterrupt):
+        run_loopx_turn_once(plan, scheduler=cancelled_scheduler, **common)
+
+    assert _journal(tmp_path / "runtime")["completed_phases"] == [
+        "host_execute",
+        "typed_result",
+        "validation",
+        "durable_writeback",
+        "quota_spend",
+    ]
+
+    def healthy_scheduler(_spend: dict[str, object]) -> dict[str, object]:
+        calls["scheduler"] += 1
+        return {"completed": True, "acknowledged": True}
+
+    recovered = run_loopx_turn_once(plan, scheduler=healthy_scheduler, **common)
+
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 1, "writeback": 1, "spend": 1, "scheduler": 2}
+
+
+def test_permission_denial_from_host_is_typed_and_explicitly_retried(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        if calls["host"] == 1:
+            raise PermissionError("host denied")
+        return _host_result(plan)
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": lambda _result: calls.__setitem__(
+            "writeback", calls["writeback"] + 1
+        )
+        or {"ok": True, "appended": True},
+        "spend": lambda: calls.__setitem__("spend", calls["spend"] + 1)
+        or {"ok": True, "appended": True},
+        "scheduler": lambda _spend: {"completed": True, "acknowledged": True},
+    }
+    failed = run_loopx_turn_once(plan, **common)
+    replayed = run_loopx_turn_once(plan, **common)
+    recovered = run_loopx_turn_once(plan, retry_failed=True, **common)
+
+    assert failed["result_kind"] == "host_failure"
+    assert failed["receipt"]["failed_phase"] == "host_execute"
+    assert failed["reason"] == "PermissionError"
+    assert replayed["replayed"] is True
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 2, "writeback": 1, "spend": 1}
+
+
+def test_permission_denial_during_spend_preserves_writeback_and_resumes(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def writeback(_result: dict[str, object]) -> dict[str, object]:
+        calls["writeback"] += 1
+        return {"ok": True, "appended": True}
+
+    def denied_spend() -> dict[str, object]:
+        calls["spend"] += 1
+        raise PermissionError("quota ledger denied")
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": writeback,
+        "scheduler": lambda _spend: {"completed": True, "acknowledged": True},
+    }
+    with pytest.raises(PermissionError):
+        run_loopx_turn_once(plan, spend=denied_spend, **common)
+
+    assert _journal(tmp_path / "runtime")["completed_phases"] == [
+        "host_execute",
+        "typed_result",
+        "validation",
+        "durable_writeback",
+    ]
+    recovered = run_loopx_turn_once(
+        plan,
+        spend=lambda: calls.__setitem__("spend", calls["spend"] + 1)
+        or {"ok": True, "appended": True},
+        **common,
+    )
+
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 1, "writeback": 1, "spend": 2}
+
+
+def test_budget_rejection_is_typed_and_retry_does_not_repeat_writeback(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    calls = {"host": 0, "writeback": 0, "spend": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def writeback(_result: dict[str, object]) -> dict[str, object]:
+        calls["writeback"] += 1
+        return {"ok": True, "appended": True}
+
+    def reject_budget() -> dict[str, object]:
+        calls["spend"] += 1
+        return {
+            "ok": False,
+            "appended": False,
+            "reason": "quota budget rejected",
+        }
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": writeback,
+        "scheduler": lambda _spend: {"completed": True, "acknowledged": True},
+    }
+    failed = run_loopx_turn_once(plan, spend=reject_budget, **common)
+
+    # Preserve the current M7.1 characterization. M7.2 must replace this split
+    # with one canonical typed settlement result rather than changing it here.
+    assert failed["result_kind"] == "validated_progress"
+    assert failed["receipt"]["result_kind"] == "quota_spend_failed"
+    assert failed["receipt"]["failed_phase"] == "quota_spend"
+    assert failed["effects"]["state_written"] is True
+    assert failed["effects"]["quota_spent"] is False
+
+    recovered = run_loopx_turn_once(
+        plan,
+        spend=lambda: calls.__setitem__("spend", calls["spend"] + 1)
+        or {"ok": True, "appended": True},
+        retry_failed=True,
+        **common,
+    )
+
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 1, "writeback": 1, "spend": 2}
+
+
 def test_run_once_fails_closed_without_independent_task_validator(
     tmp_path: Path,
 ) -> None:
