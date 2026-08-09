@@ -12,9 +12,14 @@ Covers:
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control_plane
 from loopx.capabilities.auto_research.demo_supervisor import (
