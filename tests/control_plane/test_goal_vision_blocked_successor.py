@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -31,7 +31,6 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.state_refresh import build_state_refresh_record, refresh_state_run
 from loopx.status import autonomous_replan_obligation_from_runs, compact_run
 
-
 GOAL_ID = "vision-blocked-successor-fixture"
 AGENT_ID = "codex-side-agent"
 PRIMARY_AGENT = "codex-primary-agent"
@@ -49,6 +48,7 @@ def _vision_run(
     state: str = "vision_drift_detected",
     missing_checkpoint: bool = False,
     advancement_policy: str = "repeat_until_closed",
+    vision_todo_ids: list[str] | None = None,
 ) -> dict:
     run = {
         "classification": "vision_blocked_successor_fixture",
@@ -59,6 +59,14 @@ def _vision_run(
             "schema_version": "goal_vision_replan_contract_v0",
             "agent_id": AGENT_ID,
             "state": state,
+            "todo_delta": [
+                f"activate:{todo_id}"
+                for todo_id in (
+                    vision_todo_ids
+                    if vision_todo_ids is not None
+                    else [BLOCKER_ID]
+                )
+            ],
             "vision_patch": {
                 "acceptance_summary": "Deliver the exact successor after its prerequisite clears.",
                 "replan_trigger_summary": "The successor acceptance remains open.",
@@ -230,7 +238,11 @@ def _current_agent_blocker_status_payload(
             "agent_model": "peer_v1",
             "registered_agents": [PRIMARY_AGENT, AGENT_ID],
         },
-        latest_runs=latest_runs if latest_runs is not None else [_vision_run()],
+        latest_runs=(
+            latest_runs
+            if latest_runs is not None
+            else [_vision_run(vision_todo_ids=[PROJECTED_BLOCKER_ID])]
+        ),
     )
 
 
@@ -293,7 +305,16 @@ def test_current_agent_blocker_outranks_exact_blocked_successor() -> None:
         reason="Candidate promotion requires controller assignment.",
     )
 
-    guard = _quota(_status_payload(extra_agent_items=[blocker]))
+    guard = _quota(
+        _status_payload(
+            extra_agent_items=[blocker],
+            latest_runs=[
+                _vision_run(
+                    vision_todo_ids=[PROJECTED_BLOCKER_ID, BLOCKER_ID]
+                )
+            ],
+        )
+    )
 
     wait = guard["goal_frontier_projection"]["vision_wait_state"]
     assert wait["reason_code"] == "current_agent_blocker"
@@ -351,7 +372,10 @@ def test_blocker_delta_ack_clears_existing_vision_replan_obligation() -> None:
         },
     }
     payload = _current_agent_blocker_status_payload(
-        latest_runs=[ack, _vision_run()]
+        latest_runs=[
+            ack,
+            _vision_run(vision_todo_ids=[PROJECTED_BLOCKER_ID]),
+        ]
     )
     item = payload["attention_queue"]["items"][0]
     item["autonomous_replan_obligation"] = obligation
@@ -502,24 +526,48 @@ def test_exact_blocked_successor_defers_only_open_vision_gap(
     ) in markdown
 
 
-def test_agent_claimed_wait_outranks_unclaimed_cross_domain_wait() -> None:
+def test_unrelated_deferred_waits_do_not_hide_open_vision_gap() -> None:
     guard = _quota(_cross_domain_wait_status_payload())
 
-    assert guard["decision"] == "agent_scope_wait"
-    wait = guard["goal_frontier_projection"]["vision_wait_state"]
-    assert wait["selected_todo_id"] == CLAIMED_WAITING_ID
-    assert wait["selected_todo_claimed_by"] == AGENT_ID
-    assert wait["waiting_todo_ids"] == [
-        CLAIMED_WAITING_ID,
-        CROSS_DOMAIN_WAITING_ID,
-    ]
+    assert guard["decision"] == "autonomous_replan_required"
+    assert "vision_wait_state" not in guard["goal_frontier_projection"]
+    assert guard["goal_frontier_projection"]["acceptance_gaps"][0]["kind"] == (
+        "vision_acceptance_gap"
+    )
 
     status_payload = _cross_domain_wait_status_payload()
     attach_agent_lane_next_actions(status_payload, agent_id=AGENT_ID)
     item = status_payload["attention_queue"]["items"][0]
-    status_wait = item["goal_frontier_projection"]["vision_wait_state"]
-    assert status_wait["selected_todo_id"] == CLAIMED_WAITING_ID
-    assert status_wait["waiting_todo_ids"] == wait["waiting_todo_ids"]
+    assert "vision_wait_state" not in item["goal_frontier_projection"]
+    assert item["goal_frontier_projection"]["replan_required"] is True
+
+
+def test_exact_successor_lineage_excludes_unrelated_deferred_waits() -> None:
+    unrelated = quota_todo_item(
+        todo_id=CLAIMED_WAITING_ID,
+        index=3,
+        text="[P0] Wait for an unrelated release capability.",
+        status="deferred",
+        claimed_by=AGENT_ID,
+        required_capabilities=["benchmark_runner"],
+        resume_when="capacity_available:benchmark_runner",
+    )
+
+    guard = _quota(_status_payload(extra_agent_items=[unrelated]))
+
+    wait = guard["goal_frontier_projection"]["vision_wait_state"]
+    assert wait["selected_todo_id"] == WAITING_ID
+    assert wait["waiting_todo_ids"] == [WAITING_ID]
+
+
+def test_exact_wait_without_explicit_vision_lineage_requires_replan() -> None:
+    guard = _quota(
+        _status_payload(latest_runs=[_vision_run(vision_todo_ids=[])])
+    )
+
+    assert guard["decision"] == "autonomous_replan_required"
+    assert "vision_wait_state" not in guard["goal_frontier_projection"]
+    assert guard["goal_frontier_projection"]["replan_required"] is True
 
 
 def test_two_identical_blocked_successor_waits_trigger_bounded_replan() -> None:

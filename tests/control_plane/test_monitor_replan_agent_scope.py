@@ -16,7 +16,6 @@ from loopx.control_plane.testing.quota_fixtures import (
 )
 from loopx.quota import build_quota_should_run
 
-
 GOAL_ID = "monitor-replan-agent-scope-fixture"
 AGENT_ID = "codex-quality-agent"
 PEER_AGENT_ID = "codex-delivery-peer"
@@ -267,6 +266,7 @@ def test_three_peer_status_quota_and_monitor_recommendations_stay_agent_scoped()
                     "schema_version": "goal_vision_replan_contract_v0",
                     "agent_id": AGENT_ID,
                     "state": "vision_active",
+                    "todo_delta": ["activate:todo_quality_prerequisite"],
                     "vision_patch": {
                         "acceptance_summary": (
                             "Keep quality qualification advancing until closed."
@@ -415,6 +415,9 @@ def _combined_user_frontier_guard(*, user_task_class: str) -> dict:
                     "schema_version": "goal_vision_replan_contract_v0",
                     "agent_id": AGENT_ID,
                     "state": "vision_active",
+                    "todo_delta": [
+                        "activate:todo_blocked_release_baseline"
+                    ],
                     "vision_patch": {
                         "acceptance_summary": (
                             "Keep release qualification advancing until closed."
