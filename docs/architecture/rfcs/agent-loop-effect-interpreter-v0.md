@@ -213,6 +213,11 @@ their authority boundaries differ. A generic `Kleisli`, middleware stack,
 executor registry, or general `Effect` monad remains premature until shared
 execution ownership, not just similar packet fields, is proven.
 
+The shared settlement algebra is owned by the core `effect_program` module.
+Quota supplies the Codex App/CLI plan builder and compatibility re-exports;
+each runtime adapter composes the core algebra instead of inheriting a domain
+program or moving its execution authority into a generic base class.
+
 ### Handler Is Data, Not a Callable
 
 Runtime middleware receives a `handler` callable and decides whether to call
