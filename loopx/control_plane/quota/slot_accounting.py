@@ -271,6 +271,45 @@ def _latest_unspent_accountable_delivery_run(
     return None
 
 
+def _missing_delivery_workspace_preview(
+    *,
+    delivery_workspace_causality: dict[str, Any] | None,
+    delivery_workspace: dict[str, Any] | None,
+    goal_id: str,
+    slots: int,
+    agent_id: str | None,
+    before: dict[str, Any],
+) -> dict[str, Any] | None:
+    requirement = str(
+        (delivery_workspace_causality or {}).get("requirement") or ""
+    )
+    if (
+        not delivery_workspace_causality
+        or requirement == "not_required"
+        or delivery_workspace_repository(delivery_workspace)
+    ):
+        return None
+    return {
+        "ok": False,
+        "mode": "spend-slot",
+        "dry_run": True,
+        "goal_id": goal_id,
+        "slots": slots,
+        "agent_id": agent_id,
+        "appended": False,
+        "registry_mutated": False,
+        "reason": (
+            "quota spend requires a valid delivery workspace snapshot for "
+            f"settlement causality requirement {requirement}"
+        ),
+        "delivery_workspace": delivery_workspace,
+        "delivery_workspace_causality": delivery_workspace_causality,
+        "delivery_workspace_validated": False,
+        "before": before,
+        "after": None,
+    }
+
+
 def build_quota_slot_preview_for_decision(
     status_payload: dict[str, Any],
     *,
@@ -403,13 +442,26 @@ def build_quota_slot_preview_for_decision(
         and isinstance(delivery_completion_run.get("delivery_workspace"), dict)
         else None
     )
+    missing_delivery_workspace_preview = _missing_delivery_workspace_preview(
+        delivery_workspace_causality=delivery_workspace_causality,
+        delivery_workspace=raw_delivery_workspace,
+        goal_id=safe_goal_id,
+        slots=safe_slots,
+        agent_id=safe_requested_agent_id,
+        before=before,
+    )
+    if missing_delivery_workspace_preview:
+        return missing_delivery_workspace_preview
+    workspace_requirement = str(
+        (delivery_workspace_causality or {}).get("requirement") or ""
+    )
+    raw_delivery_workspace_repository = delivery_workspace_repository(
+        raw_delivery_workspace
+    )
     delivery_workspace = (
         raw_delivery_workspace
-        if delivery_workspace_repository(raw_delivery_workspace)
-        and str(
-            (delivery_workspace_causality or {}).get("requirement") or "unknown"
-        )
-        != "not_required"
+        if raw_delivery_workspace_repository
+        and workspace_requirement != "not_required"
         else None
     )
     delivery_workspace_guard = (
