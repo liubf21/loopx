@@ -258,6 +258,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "dreaming",
         "global-gates",
         "global-summary",
+        "global-todos",
         "heartbeat-prequota",
         "import-doc-registry-authority",
         "lark-inbox",
