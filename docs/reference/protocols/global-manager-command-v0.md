@@ -13,7 +13,8 @@ request, allowed sources, response shape, privacy boundary, and action ladder
 for Codex hosts, CLI wrappers, or dashboard command palettes. The implemented
 CLI wrappers are `loopx global-summary`, which returns the broad compact
 `/loopx-global-summary` digest, and `loopx global-gates`, which returns the
-focused current-state `/loopx-global-gates` inbox.
+focused current-state `/loopx-global-gates` inbox, and `loopx global-todos`,
+which returns the focused current-state `/loopx-global-todos` work inbox.
 
 ## Command Set
 
@@ -28,9 +29,8 @@ Recommended first commands:
 | `/loopx-pr-review` | Walk the current project's or explicit repository's open and merged GitHub PRs one by one with motivation, scope, checks, risks, and review prompts. | current open + merged PRs, optionally bounded by `--since` |
 | `/loop-goal-summary <goal id>` | Drill into one goal without scanning unrelated projects. | 24 hours |
 
-`/loopx-global-todos`, `/loopx-global-risks`, and `/loop-goal-summary` remain
-host-only manager commands under this protocol; they do not yet have dedicated
-CLI wrappers.
+`/loopx-global-risks` and `/loop-goal-summary` remain host-only manager commands
+under this protocol; they do not yet have dedicated CLI wrappers.
 
 Commands are read-only by default. They can propose follow-up actions, but
 they do not approve gates, promote suggested todos, spend quota, merge PRs,
@@ -83,6 +83,10 @@ Request rules:
 - For `loopx global-gates`, `--agent-id` excludes goals where the selected
   agent is not registered; an unavailable per-goal quota projection is not a
   substitute for agent filtering.
+- For `loopx global-todos`, `--agent-id` is forwarded into each per-goal quota
+  read and applied before the global limit. The successful quota packet must
+  confirm an exact `agent_identity.agent_id` match; a default-lane packet or a
+  failed quota read cannot satisfy the filter.
 - `dry_run=true` is the default because the first implementation should be a
   report, not an executor.
 - Unknown commands must fail closed with a help packet, not a broad status
@@ -104,6 +108,13 @@ Implementations may read only compact LoopX control-plane surfaces:
 consumes compact run-history state to build its current attention queue, but
 the gates builder does not issue a second history read or expose history items
 in its response.
+
+`loopx global-todos` reads status exactly once, inspects a bounded set of unique
+attention-queue goals, and builds at most one authoritative quota packet for
+each inspected goal. Status may consume the compact run-history projection,
+but the todos builder does not issue a second history or store read. It derives
+todo candidates only from the selected lane and structured quota/todo
+projections; it does not parse active-state prose.
 
 They must not include raw transcripts, raw benchmark logs, raw connector
 payloads, credentials, local absolute paths, or private source bodies.
@@ -181,6 +192,66 @@ Focused gate responses follow these relation rules:
   enum; gate owners continue to use the protocol's user, controller,
   registered-agent, or external-system owner classes.
 
+### Focused Global Todos Response
+
+`loopx global-todos` keeps `global_manager_command_response_v0`. Each retained
+item in the flat `todos` list and its corresponding readiness and review groups
+uses this compact public-safe shape:
+
+```json
+{
+  "todo_id": "todo-123",
+  "goal_id": "goal-456",
+  "role": "agent",
+  "status": "open",
+  "priority": "P1",
+  "title": "Review the quota projection",
+  "claimed_by": "codex-reviewer",
+  "action_kind": "review_pr",
+  "readiness": "runnable",
+  "work_kind": "review",
+  "next_safe_action": "Continue the selected quota-authorized todo."
+}
+```
+
+The focused response contains:
+
+- canonical request metadata for `/loopx-global-todos`, its
+  `/loop-global-todos` slash alias, and `loopx global-todos`;
+- a flat `todos` list of unique `(goal_id, todo_id)` rows;
+- `groups.runnable`, `groups.deferred_ready`, `groups.blocked`, and
+  `groups.review`, derived from the retained flat list;
+- `summary.matched_todo_count` before the global result limit and
+  `summary.returned_todo_count` after it;
+- full-match `runnable_count`, `deferred_ready_count`, `blocked_count`, and
+  `review_count`, plus `truncated` when the result limit removed rows;
+- `goal_scan_limit` and `goal_scan_truncated` for the earlier bounded goal scan,
+  which is distinct from result truncation; and
+- bounded, redacted `source_warnings`, while `source_warning_count` reports all
+  warnings observed before that warning list is capped.
+
+Readiness and work kind are orthogonal. Only readiness-classified items enter
+the response: `runnable` requires the quota-selected todo and
+`normal_delivery_allowed=true`; `blocked` requires an explicit blocked
+projection or a formally verified todo-level gate relation; and
+`deferred_ready` requires structured resume readiness. `work_kind=review`
+requires an exact underscore-separated `review` or `reviewer` token in
+`action_kind`, never title or text inference. Therefore, review counts overlap readiness counts;
+do not add them to readiness counts to derive a total.
+
+When projections disagree, the command fails closed to the precedence
+`blocked`, then `deferred_ready`, then `runnable`, and emits a redacted source
+warning. It never maps a goal-level gate fallback to a guessed todo ID. Agent
+filtering, normalization, classification, and deduplication all happen before
+the global limit.
+
+Global and per-goal failures have different envelopes. If the global status
+source is unhealthy, the command returns `ok=false` with a public-safe error
+and exits non-zero; it must not look like a successful empty inbox. If one
+goal's quota read raises or returns `ok=false`, the command skips that
+unverifiable goal, records one bounded redacted warning, and retains results
+from healthy goals.
+
 ## Action Ladder
 
 Responses may include actions, but each action must declare its authority:
@@ -221,8 +292,9 @@ or omission, not the material itself.
 A first implementation is acceptable when:
 
 - command responses are read-only by default;
-- `loopx global-summary` and `loopx global-gates` emit their matching canonical
-  command responses, while the remaining manager commands stay host-only;
+- `loopx global-summary`, `loopx global-gates`, and `loopx global-todos` emit
+  their matching canonical command responses, while global risks and goal
+  summary stay host-only;
 - each command names its compact LoopX source surfaces;
 - gates name owner, formally related blocked todo or goal scope, question, and
   next safe action;

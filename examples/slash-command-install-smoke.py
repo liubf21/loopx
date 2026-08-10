@@ -137,6 +137,12 @@ def main() -> int:
         assert "This command is read-only" in claude_gates_skill_text
         assert "global-summary" not in claude_gates_skill_text
 
+        claude_todos_skill = claude_home / "skills" / "loopx-global-todos" / "SKILL.md"
+        claude_todos_text = claude_todos_skill.read_text(encoding="utf-8")
+        assert "loopx global-todos" in claude_todos_text
+        assert "This command is read-only" in claude_todos_text
+        assert "global-summary" not in claude_todos_text
+
         rerun = json.loads(
             run_cli(
                 "--format",

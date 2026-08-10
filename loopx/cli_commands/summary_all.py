@@ -4,6 +4,11 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
+from ..global_todos import (
+    build_global_todos,
+    build_global_todos_error,
+    render_global_todos_markdown,
+)
 from ..summary_all import (
     build_global_gates,
     build_global_gates_error,
@@ -93,6 +98,20 @@ def register_summary_all_command(
         limit_help="Maximum returned gate count.",
     )
 
+    todos_parser = subparsers.add_parser(
+        "global-todos",
+        help=(
+            "Read a public-safe current-state todo inbox across visible goals; "
+            "see `loopx slash-commands` for slash help."
+        ),
+    )
+    add_subcommand_format(todos_parser)
+    _add_current_manager_flags(
+        todos_parser,
+        agent_help="Registered agent id used to narrow todo projection.",
+        limit_help="Maximum returned todo count.",
+    )
+
 
 def handle_summary_all_command(
     args: argparse.Namespace,
@@ -102,7 +121,7 @@ def handle_summary_all_command(
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int | None:
-    if args.command not in {"global-summary", "global-gates"}:
+    if args.command not in {"global-summary", "global-gates", "global-todos"}:
         return None
     if args.command == "global-gates":
         try:
@@ -116,6 +135,19 @@ def handle_summary_all_command(
         except Exception as exc:
             payload = build_global_gates_error(exc)
         print_payload(payload, output_format(args), render_global_gates_markdown)
+        return 0 if payload.get("ok") else 1
+    if args.command == "global-todos":
+        try:
+            payload = build_global_todos(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                scan_roots=_scan_roots(args),
+                agent_id=args.agent_id,
+                limit=max(1, args.limit),
+            )
+        except Exception as exc:
+            payload = build_global_todos_error(exc)
+        print_payload(payload, output_format(args), render_global_todos_markdown)
         return 0 if payload.get("ok") else 1
 
     try:

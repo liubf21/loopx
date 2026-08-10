@@ -13,8 +13,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOAL_ID = "smoke-goal"
+RUNNABLE_GOAL_ID = "smoke-goal-runnable"
+DEFERRED_GOAL_ID = "smoke-goal-deferred"
 AGENT_ID = "codex-smoke"
 BLOCKED_TODO_ID = "todo_blocked"
+RUNNABLE_REVIEW_TODO_ID = "todo_runnable_review"
+DEFERRED_TODO_ID = "todo_deferred_ready"
+DEFERRED_PREREQUISITE_ID = "todo_deferred_prerequisite"
 PRIVATE_PATTERNS = [
     re.compile(r"/" + r"Users/[A-Za-z0-9._-]+/"),
     re.compile(r"/" + r"private/"),
@@ -65,18 +70,24 @@ def run_cli(
     )
 
 
-def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
-    project = root / "project"
+def write_fixture(root: Path) -> tuple[Path, Path, list[Path]]:
     runtime = root / "runtime"
-    state = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     registry = root / "registry.global.json"
-    run_index = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
-    state.parent.mkdir(parents=True)
-    state.write_text(
+    projects = {
+        GOAL_ID: root / "project-blocked",
+        RUNNABLE_GOAL_ID: root / "project-runnable",
+        DEFERRED_GOAL_ID: root / "project-deferred",
+    }
+    states = {
+        goal_id: project / ".codex" / "goals" / goal_id / "ACTIVE_GOAL_STATE.md"
+        for goal_id, project in projects.items()
+    }
+    states[GOAL_ID].parent.mkdir(parents=True)
+    states[GOAL_ID].write_text(
         "---\n"
         "status: active\n"
         f"goal_id: {GOAL_ID}\n"
-        "updated_at: 2026-06-26T00:00:00+00:00\n"
+        "updated_at: 2026-08-10T00:00:00+00:00\n"
         "---\n\n"
         "# Global Manager CLI Smoke\n\n"
         "## User Todo\n\n"
@@ -92,38 +103,84 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
         "- Approve the public-safe blocked delivery.\n",
         encoding="utf-8",
     )
+    states[RUNNABLE_GOAL_ID].parent.mkdir(parents=True)
+    states[RUNNABLE_GOAL_ID].write_text(
+        "---\n"
+        "status: active\n"
+        f"goal_id: {RUNNABLE_GOAL_ID}\n"
+        "updated_at: 2026-08-10T00:00:00+00:00\n"
+        "---\n\n"
+        "# Runnable Review Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P0] Review the public-safe todo projection.\n"
+        f"  <!-- loopx:todo todo_id={RUNNABLE_REVIEW_TODO_ID} status=open "
+        "task_class=advancement_task action_kind=review_pr "
+        f"claimed_by={AGENT_ID} -->\n\n"
+        "## Next Action\n\n"
+        "- Review the public-safe todo projection.\n",
+        encoding="utf-8",
+    )
+    states[DEFERRED_GOAL_ID].parent.mkdir(parents=True)
+    states[DEFERRED_GOAL_ID].write_text(
+        "---\n"
+        "status: active\n"
+        f"goal_id: {DEFERRED_GOAL_ID}\n"
+        "updated_at: 2026-08-10T00:00:00+00:00\n"
+        "---\n\n"
+        "# Deferred Ready Fixture\n\n"
+        "## Agent Todo\n\n"
+        "- [-] [P0] Resume the ready public-safe successor.\n"
+        f"  <!-- loopx:todo todo_id={DEFERRED_TODO_ID} status=deferred "
+        f"task_class=advancement_task claimed_by={AGENT_ID} "
+        f"resume_when=todo_done:{DEFERRED_PREREQUISITE_ID} -->\n"
+        "- [ ] [P1] Keep the fallback lane available.\n"
+        "  <!-- loopx:todo todo_id=todo_deferred_fallback status=open "
+        f"task_class=advancement_task claimed_by={AGENT_ID} -->\n\n"
+        "## Completed Work Archive\n\n"
+        "- [x] [P0] Complete the deferred prerequisite.\n"
+        f"  <!-- loopx:todo todo_id={DEFERRED_PREREQUISITE_ID} status=done "
+        "task_class=advancement_task -->\n\n"
+        "## Next Action\n\n"
+        "- Resume the ready public-safe successor.\n",
+        encoding="utf-8",
+    )
+
+    goals = []
+    for goal_id, project in projects.items():
+        goals.append(
+            {
+                "id": goal_id,
+                "objective": f"Smoke global manager commands for {goal_id}.",
+                "domain": "loopx-smoke",
+                "status": "active",
+                "repo": str(project),
+                "state_file": str(states[goal_id].relative_to(project)),
+                "adapter": {
+                    "kind": "read_only_project_map_v0",
+                    "status": "connected-read-only",
+                },
+                "coordination": {
+                    "agent_model": "peer_v1",
+                    "registered_agents": [AGENT_ID],
+                },
+            }
+        )
     registry.write_text(
         json.dumps(
             {
                 "common_runtime_root": str(runtime),
-                "goals": [
-                    {
-                        "id": GOAL_ID,
-                        "objective": "Smoke global manager commands.",
-                        "domain": "loopx-smoke",
-                        "status": "active",
-                        "repo": str(project),
-                        "state_file": str(state.relative_to(project)),
-                        "adapter": {
-                            "kind": "read_only_project_map_v0",
-                            "status": "connected-read-only",
-                        },
-                        "coordination": {
-                            "agent_model": "peer_v1",
-                            "registered_agents": [AGENT_ID],
-                        },
-                    }
-                ],
+                "goals": goals,
             },
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
+    run_index = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
     run_index.parent.mkdir(parents=True)
     run_index.write_text(
         json.dumps(
             {
-                "generated_at": "2026-06-26T00:00:00+00:00",
+                "generated_at": "2026-08-10T00:00:00+00:00",
                 "classification": "smoke_progress",
                 "recommended_action": "Continue the next public-safe smoke step.",
                 "json_exists": True,
@@ -134,7 +191,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
         + "\n",
         encoding="utf-8",
     )
-    return registry, runtime, state, run_index
+    return registry, runtime, [*states.values(), run_index]
 
 
 def snapshot_files(paths: list[Path]) -> dict[Path, tuple[bytes, int]]:
@@ -179,6 +236,38 @@ def assert_gates_markdown(markdown: str, *, private_root: Path) -> None:
     assert str(private_root) not in markdown, markdown
 
 
+def assert_todos_payload(payload: dict[str, object]) -> None:
+    assert payload["ok"] is True, payload
+    request = payload["request"]
+    assert request["command"] == "/loopx-global-todos", request
+    assert request["legacy_aliases"] == ["/loop-global-todos"], request
+    assert request["cli_command"] == "loopx global-todos", request
+    assert request["dry_run"] is True, request
+    summary = payload["summary"]
+    assert summary["matched_todo_count"] >= 3, payload
+    assert summary["returned_todo_count"] >= 3, payload
+    groups = payload["groups"]
+    assert groups["runnable"], payload
+    assert groups["blocked"], payload
+    assert groups["deferred_ready"], payload
+    assert groups["review"], payload
+    review_ids = {item["todo_id"] for item in groups["review"]}
+    runnable_ids = {item["todo_id"] for item in groups["runnable"]}
+    assert RUNNABLE_REVIEW_TODO_ID in review_ids & runnable_ids, payload
+    assert_public_safe(payload)
+
+
+def assert_todos_markdown(markdown: str, *, private_root: Path) -> None:
+    assert "# LoopX Global Todos" in markdown, markdown
+    assert "`/loopx-global-todos`" in markdown, markdown
+    assert "## Runnable" in markdown, markdown
+    assert "## Deferred Ready" in markdown, markdown
+    assert "## Blocked" in markdown, markdown
+    assert "## Review" in markdown, markdown
+    assert "Review is an overlapping work-kind facet" in markdown, markdown
+    assert str(private_root) not in markdown, markdown
+
+
 def assert_error_envelope(root: Path, *, runtime: Path) -> None:
     error_registry = root / "private" / "error-registry"
     error_registry.mkdir(parents=True)
@@ -195,6 +284,23 @@ def assert_error_envelope(root: Path, *, runtime: Path) -> None:
     assert str(error_registry) not in error_proc.stdout, error_proc.stdout
     assert "<local-path-redacted>" in error_proc.stdout, error_proc.stdout
     assert_public_safe(payload)
+
+    todos_error_proc = run_cli(
+        registry=error_registry,
+        runtime=runtime,
+        command="global-todos",
+        output_format="json",
+        check=False,
+    )
+    assert todos_error_proc.returncode != 0, todos_error_proc
+    todos_payload = json.loads(todos_error_proc.stdout)
+    assert todos_payload["ok"] is False, todos_payload
+    assert todos_payload["request"]["command"] == "/loopx-global-todos", todos_payload
+    assert "summary" not in todos_payload, todos_payload
+    assert "todos" not in todos_payload, todos_payload
+    assert str(error_registry) not in todos_error_proc.stdout, todos_error_proc.stdout
+    assert "<local-path-redacted>" in todos_error_proc.stdout, todos_error_proc.stdout
+    assert_public_safe(todos_payload)
 
 
 def assert_unhealthy_status_envelope(
@@ -237,12 +343,28 @@ def assert_unhealthy_status_envelope(
     assert str(root) not in gates_proc.stdout, gates_proc.stdout
     assert_public_safe(payload)
 
+    todos_proc = run_cli(
+        registry=unhealthy_registry,
+        runtime=runtime,
+        command="global-todos",
+        output_format="json",
+        check=False,
+    )
+    assert todos_proc.returncode != 0, todos_proc
+    todos_payload = json.loads(todos_proc.stdout)
+    assert todos_payload["ok"] is False, todos_payload
+    assert todos_payload["error"] == "Global status source unavailable.", todos_payload
+    assert "summary" not in todos_payload, todos_payload
+    assert "todos" not in todos_payload, todos_payload
+    assert str(root) not in todos_proc.stdout, todos_proc.stdout
+    assert_public_safe(todos_payload)
+
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-global-manager-smoke-") as tmp:
         root = Path(tmp)
-        registry, runtime, state, run_index = write_fixture(root)
-        files = [registry, state, run_index]
+        registry, runtime, fixture_files = write_fixture(root)
+        files = [registry, *fixture_files]
         before = snapshot_files(files)
 
         summary_proc = run_cli(
@@ -266,10 +388,26 @@ def main() -> int:
             output_format="markdown",
             command_args=["--agent-id", AGENT_ID, "--limit", "5"],
         )
+        todos_proc = run_cli(
+            registry=registry,
+            runtime=runtime,
+            command="global-todos",
+            output_format="json",
+            command_args=["--agent-id", AGENT_ID, "--limit", "5"],
+        )
+        todos_markdown_proc = run_cli(
+            registry=registry,
+            runtime=runtime,
+            command="global-todos",
+            output_format="markdown",
+            command_args=["--agent-id", AGENT_ID, "--limit", "5"],
+        )
 
         assert_summary_payload(json.loads(summary_proc.stdout))
         assert_gates_payload(json.loads(gates_proc.stdout))
         assert_gates_markdown(markdown_proc.stdout, private_root=root)
+        assert_todos_payload(json.loads(todos_proc.stdout))
+        assert_todos_markdown(todos_markdown_proc.stdout, private_root=root)
         assert snapshot_files(files) == before
         assert_error_envelope(root, runtime=runtime)
         assert_unhealthy_status_envelope(
