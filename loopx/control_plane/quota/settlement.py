@@ -30,6 +30,9 @@ from .effect_program import (
     settlement_step_command,
 )
 from .heartbeat_receipt import find_heartbeat_receipt
+from .settlement_workspace_causality import (
+    delivery_workspace_causality_from_event_details,
+)
 
 __all__ = [
     "SETTLEMENT_IDENTITY_SCHEMA_VERSION",
@@ -52,10 +55,31 @@ __all__ = [
     "require_settlement_todo_completion",
     "require_settlement_writeback",
     "resolve_heartbeat_settlement_identity",
+    "resolve_settlement_delivery_workspace_causality",
     "settlement_binding_args",
     "settlement_result_payload",
     "settlement_step_command",
 ]
+
+
+def resolve_settlement_delivery_workspace_causality(
+    runtime_root: Path,
+    identity: SettlementIdentity,
+) -> dict[str, str] | None:
+    receipt_event = find_heartbeat_receipt(
+        runtime_root,
+        goal_id=identity.goal_id,
+        agent_id=identity.agent_id,
+        turn_instance_id=identity.turn_instance_id,
+    )
+    if not isinstance(receipt_event, Mapping):
+        return None
+    details_value = receipt_event.get("details")
+    details = details_value if isinstance(details_value, Mapping) else {}
+    return delivery_workspace_causality_from_event_details(
+        details,
+        todo_id=identity.todo_id,
+    )
 
 
 def _identity_mismatch(reason: str) -> SettlementResult[SettlementIdentity]:
