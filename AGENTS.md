@@ -142,6 +142,14 @@ the first viewport. Do not move the review gate into a PR comment, todo note, or
 final summary after the fact. It must happen before the public first-screen
 change is finalized.
 
+## UI Design Standard
+
+Before changing or reproducing any LoopX UI, read and follow the repository-root
+`DESIGN.md`. This includes websites, dashboards, desktop applications,
+documentation, prototypes, screenshots, and framework migrations. When an
+approved design source is provided, match it and use `DESIGN.md` for unspecified
+details.
+
 ## Public And Private Boundary
 
 Do not commit internal department, team, customer, meeting, reporting,
