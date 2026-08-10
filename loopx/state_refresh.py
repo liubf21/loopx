@@ -22,6 +22,7 @@ from .control_plane.quota.settlement import (
     find_settlement_writeback,
     require_settlement_writeback,
     resolve_heartbeat_settlement_identity,
+    resolve_settlement_delivery_workspace_causality,
     settlement_result_payload,
 )
 from .control_plane.work_items.repair_delta import (
@@ -67,7 +68,6 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_USER_GATE,
     normalize_todo_claimed_by,
 )
-
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 DEFAULT_REFRESH_ACTION = "inspect refreshed active goal state and continue the next bounded progress segment"
@@ -994,6 +994,7 @@ def refresh_state_run(
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     settlement_identity = None
     settlement_result = None
+    delivery_workspace_causality = None
     if todo_id or turn_instance_id:
         if normalized_delivery_outcome not in ACCOUNTABLE_DELIVERY_OUTCOMES:
             raise ValueError(
@@ -1011,6 +1012,9 @@ def refresh_state_run(
         settlement_identity = settlement_result.value
         if settlement_identity is None:
             raise ValueError("turn-scoped refresh-state has no settlement identity")
+        delivery_workspace_causality = resolve_settlement_delivery_workspace_causality(
+            runtime_root, settlement_identity
+        )
         if not dry_run:
             prior_writeback = require_settlement_writeback(
                 runtime_root,
@@ -1252,7 +1256,18 @@ def refresh_state_run(
         repair_delta_kinds=validated_repair_delta_kinds,
     )
     delivery_workspace = None
-    if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
+    workspace_requirement = str(
+        (delivery_workspace_causality or {}).get("requirement") or "unknown"
+    )
+    if delivery_workspace_path is not None and workspace_requirement == "not_required":
+        raise ValueError(
+            "--delivery-workspace-path conflicts with the original Todo's "
+            "explicit non-delivery settlement contract"
+        )
+    if (
+        normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES
+        and workspace_requirement != "not_required"
+    ):
         delivery_workspace = capture_delivery_workspace(
             current_path=delivery_workspace_path,
             peer_independent_worktree_required=peer_independent_worktree_required,
@@ -1297,6 +1312,8 @@ def refresh_state_run(
         delivery_workspace=delivery_workspace,
         settlement_identity=settlement_identity,
     )
+    if delivery_workspace_causality:
+        record["delivery_workspace_causality"] = delivery_workspace_causality
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
             record["autonomous_replan_ack"] = {

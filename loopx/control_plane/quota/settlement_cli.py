@@ -13,6 +13,10 @@ from .settlement import (
     resolve_heartbeat_settlement_identity,
     settlement_result_payload,
 )
+from .settlement_workspace_causality import (
+    build_delivery_workspace_causality,
+    delivery_workspace_causality_event_fields,
+)
 
 
 def quota_rollout_todo_id(
@@ -42,7 +46,13 @@ def quota_rollout_details(
         if isinstance(payload.get("successor_todo_ids"), list)
         else []
     )
-    return {
+    selected_todo = (
+        payload.get("selected_todo")
+        if isinstance(payload.get("selected_todo"), Mapping)
+        else None
+    )
+    workspace_causality = build_delivery_workspace_causality(selected_todo)
+    details: dict[str, object] = {
         "command": "quota",
         "quota_command": args.quota_command,
         "ok": bool(payload.get("ok")),
@@ -64,6 +74,9 @@ def quota_rollout_details(
             else ""
         ),
     }
+    if workspace_causality:
+        details.update(delivery_workspace_causality_event_fields(workspace_causality))
+    return details
 
 
 def attach_spend_settlement_result(
